@@ -1,0 +1,96 @@
+@import "tailwindcss";
+
+:root {
+  /* Parallel brand — Ink, Orange, warm neutrals */
+  --background: #f7f6f4;
+  --foreground: #0f1117;
+  --muted: #6b6b72;
+  --border: #e8e8ec;
+  --surface: #ffffff;
+  --surface-2: #f0efed;
+  --accent: #e8420a;
+  --accent-hover: #b33208;
+  --accent-soft: #fff1ee;
+  --danger: #b91c1c;
+  --column: #f0efed;
+  --ink: #0f1117;
+  --orange: #e8420a;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-sans);
+  --font-display: var(--font-display);
+}
+
+html {
+  min-height: 100%;
+  background-color: var(--background);
+}
+
+body {
+  min-height: 100%;
+  background-color: var(--background);
+  background-image:
+    linear-gradient(165deg, rgba(232, 66, 10, 0.06) 0%, transparent 38%),
+    linear-gradient(320deg, rgba(15, 17, 23, 0.03) 0%, transparent 42%);
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  color: var(--foreground);
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Shared content width — matches task list / board */
+.app-container {
+  margin-inline: auto;
+  width: 100%;
+  max-width: 80rem; /* max-w-7xl */
+  padding-inline: 1rem;
+}
+
+@media (min-width: 640px) {
+  .app-container {
+    padding-inline: 1.5rem;
+  }
+}
+
+/* Room for sticky header + mobile bottom nav */
+.app-shell {
+  padding-bottom: calc(4.5rem + env(safe-area-inset-bottom));
+}
+
+@media (min-width: 768px) {
+  .app-shell {
+    padding-bottom: 0;
+  }
+}
+
+.font-display {
+  font-family: var(--font-display), var(--font-sans), ui-sans-serif, system-ui,
+    sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.rdp-root {
+  --rdp-accent-color: var(--accent);
+  --rdp-accent-background-color: var(--accent-soft);
+  --rdp-day-height: 2.25rem;
+  --rdp-day-width: 2.25rem;
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  color: var(--foreground);
+}
+
+/* Hide scrollbar on intentional horizontal carousels (board columns, tabs) */
+.scroll-x-fade {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.scroll-x-fade::-webkit-scrollbar {
+  display: none;
+}
+
