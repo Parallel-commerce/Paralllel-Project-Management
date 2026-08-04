@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 
 import {
   deleteTaskAttachment,
@@ -22,7 +22,38 @@ export function TaskAttachments({
 }) {
   const [attachments, setAttachments] = useState(initial);
   const [error, setError] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
   const [pending, startTransition] = useTransition();
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function uploadFiles(files: FileList | File[]) {
+    const list = Array.from(files).filter((file) => file.size > 0);
+    if (list.length === 0) return;
+
+    startTransition(async () => {
+      setError(null);
+      for (const file of list) {
+        const formData = new FormData();
+        formData.set("file", file);
+        const result = await uploadTaskAttachment(
+          projectId,
+          listId,
+          taskId,
+          formData,
+        );
+        if (result && "error" in result && result.error) {
+          setError(result.error);
+          break;
+        }
+        if (result && "attachment" in result && result.attachment) {
+          setAttachments((prev) => [...prev, result.attachment]);
+        }
+      }
+      if (inputRef.current) {
+        inputRef.current.value = "";
+      }
+    });
+  }
 
   return (
     <div className="mt-6 border-t border-[var(--border)] pt-4">
@@ -80,49 +111,70 @@ export function TaskAttachments({
         )}
       </ul>
 
-      <form
-        className="mt-3 flex flex-col gap-2"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const form = event.currentTarget;
-          const formData = new FormData(form);
-          startTransition(async () => {
-            const result = await uploadTaskAttachment(
-              projectId,
-              listId,
-              taskId,
-              formData,
-            );
-            if (result && "error" in result) {
-              setError(result.error ?? "Upload failed.");
-            } else if (result && "attachment" in result && result.attachment) {
-              setAttachments((prev) => [...prev, result.attachment]);
-              setError(null);
-              form.reset();
-            }
-          });
+      <div
+        role="button"
+        tabIndex={0}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            inputRef.current?.click();
+          }
         }}
+        onClick={() => inputRef.current?.click()}
+        onDragEnter={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          setDragging(true);
+        }}
+        onDragOver={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          setDragging(true);
+        }}
+        onDragLeave={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          setDragging(false);
+        }}
+        onDrop={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          setDragging(false);
+          if (event.dataTransfer.files?.length) {
+            uploadFiles(event.dataTransfer.files);
+          }
+        }}
+        className={`mt-3 cursor-pointer rounded-xl border border-dashed px-4 py-6 text-center transition ${
+          dragging
+            ? "border-[var(--accent)] bg-[var(--accent-soft)]"
+            : "border-[var(--border)] bg-[var(--surface)]/60 hover:border-[var(--foreground)]/20"
+        } ${pending ? "pointer-events-none opacity-60" : ""}`}
       >
         <input
-          name="file"
+          ref={inputRef}
           type="file"
-          required
-          className="text-sm file:mr-3 file:rounded-md file:border-0 file:bg-[var(--surface-2)] file:px-3 file:py-1.5"
+          multiple
+          className="sr-only"
+          onChange={(event) => {
+            if (event.target.files?.length) {
+              uploadFiles(event.target.files);
+            }
+          }}
         />
-        <button
-          type="submit"
-          disabled={pending}
-          className="self-start rounded-md border border-[var(--border)] px-3 py-1.5 text-sm hover:bg-[var(--surface-2)] disabled:opacity-60"
-        >
-          {pending ? "Uploading…" : "Upload file"}
-        </button>
-      </form>
+        <p className="text-sm font-medium">
+          {pending
+            ? "Uploading…"
+            : dragging
+              ? "Drop files to upload"
+              : "Drop files here or click to browse"}
+        </p>
+        <p className="mt-1 text-xs text-[var(--muted)]">
+          Images, PDF, Word, Excel, PowerPoint, CSV, ZIP · max 10MB each
+        </p>
+      </div>
       {error ? (
         <p className="mt-2 text-sm text-[var(--danger)]">{error}</p>
       ) : null}
-      <p className="mt-2 text-xs text-[var(--muted)]">
-        Images, PDF, or docs · max 10MB
-      </p>
     </div>
   );
 }
