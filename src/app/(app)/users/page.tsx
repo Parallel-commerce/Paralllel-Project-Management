@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 
+import { AddUserForm } from "@/components/add-user-form";
 import { AppHeader } from "@/components/app-header";
 import { UsersTable, type UserRow } from "@/components/users-table";
 import { createClient } from "@/lib/supabase/server";
@@ -25,14 +26,20 @@ export default async function UsersPage() {
     redirect("/projects");
   }
 
-  const { data: profiles } = await supabase
-    .from("profiles")
-    .select("id, email, full_name, title, is_platform_admin")
-    .order("email", { ascending: true });
-
-  const { data: memberships } = await supabase
-    .from("project_members")
-    .select("user_id, project_id, role, projects(id, name)");
+  const [{ data: profiles }, { data: memberships }, { data: projects }] =
+    await Promise.all([
+      supabase
+        .from("profiles")
+        .select("id, email, full_name, title, is_platform_admin")
+        .order("email", { ascending: true }),
+      supabase
+        .from("project_members")
+        .select("user_id, project_id, role, projects(id, name)"),
+      supabase
+        .from("projects")
+        .select("id, name")
+        .order("name", { ascending: true }),
+    ]);
 
   const membershipsByUser = new Map<string, UserRow["memberships"]>();
 
@@ -58,16 +65,29 @@ export default async function UsersPage() {
     ),
   }));
 
+  const projectOptions =
+    projects?.map((project) => ({
+      id: project.id as string,
+      name: project.name as string,
+    })) ?? [];
+
   return (
     <div className="app-shell min-h-full">
       <AppHeader isPlatformAdmin />
       <main className="app-container py-6 sm:py-10">
         <h1 className="font-display text-3xl tracking-tight">Users</h1>
         <p className="mt-2 text-sm text-[var(--muted)]">
-          Manage accounts, project roles, and platform admins.
+          Invite people, assign projects, and manage platform admins.
         </p>
         <div className="mt-8">
-          <UsersTable users={users} currentUserId={user.id} />
+          <AddUserForm projects={projectOptions} />
+        </div>
+        <div className="mt-8">
+          <UsersTable
+            users={users}
+            projects={projectOptions}
+            currentUserId={user.id}
+          />
         </div>
       </main>
     </div>

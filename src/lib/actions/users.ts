@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { sendInviteMagicLink } from "@/lib/notify";
 import { AVATAR_BUCKET } from "@/lib/profile-avatar";
 import { createClient } from "@/lib/supabase/server";
 import type { ProjectRole } from "@/types/database";
@@ -14,6 +15,8 @@ const AVATAR_MIME_TYPES = new Set([
   "image/gif",
 ]);
 const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
+
+const VALID_ROLES = new Set<ProjectRole>(["admin", "member", "client"]);
 
 async function requireUser() {
   const supabase = await createClient();
@@ -41,6 +44,171 @@ async function requirePlatformAdmin() {
   return { supabase, user };
 }
 
+function parseProjectAllocations(formData: FormData) {
+  const projectIds = formData.getAll("project_id").map((value) => String(value));
+  const roles = formData.getAll("project_role").map((value) => String(value));
+  const allocations: { projectId: string; role: ProjectRole }[] = [];
+  const seen = new Set<string>();
+
+  for (let i = 0; i < projectIds.length; i += 1) {
+    const projectId = projectIds[i]?.trim();
+    const role = (roles[i] ?? "client") as ProjectRole;
+    if (!projectId) continue;
+    if (!VALID_ROLES.has(role)) continue;
+    if (seen.has(projectId)) continue;
+    seen.add(projectId);
+    allocations.push({ projectId, role });
+  }
+
+  return allocations;
+}
+
+export async function invitePlatformUser(formData: FormData) {
+  const admin = await requirePlatformAdmin();
+  if ("error" in admin) {
+    return { error: admin.error };
+  }
+
+  const { supabase, user } = admin;
+  const email = String(formData.get("email") ?? "")
+    .trim()
+    .toLowerCase();
+  const fullName = String(formData.get("full_name") ?? "").trim();
+  const title = String(formData.get("title") ?? "").trim();
+  const makePlatformAdmin =
+    String(formData.get("is_platform_admin") ?? "") === "on" ||
+    String(formData.get("is_platform_admin") ?? "") === "1" ||
+    String(formData.get("is_platform_admin") ?? "") === "true";
+  const allocations = parseProjectAllocations(formData);
+
+  if (!email || !email.includes("@")) {
+    return { error: "A valid email is required." };
+  }
+
+  const { data: existingProfile } = await supabase
+    .from("profiles")
+    .select("id, email, is_platform_admin")
+    .ilike("email", email)
+    .maybeSingle();
+
+  if (existingProfile) {
+    const { error: profileError } = await supabase
+      .from("profiles")
+      .update({
+        full_name: fullName || null,
+        title: title || null,
+        is_platform_admin: makePlatformAdmin,
+      })
+      .eq("id", existingProfile.id);
+
+    if (profileError) {
+      return { error: profileError.message };
+    }
+  }
+
+  const invitedProjectIds: string[] = [];
+  for (const allocation of allocations) {
+    const { error } = await supabase.from("project_invites").insert({
+      project_id: allocation.projectId,
+      email,
+      role: allocation.role,
+      invited_by: user.id,
+    });
+
+    if (error) {
+      if (error.code === "23505") {
+        return {
+          error: `${email} already has a pending invite for one of the selected projects.`,
+        };
+      }
+      return { error: error.message };
+    }
+
+    invitedProjectIds.push(allocation.projectId);
+  }
+
+  const nextPath =
+    invitedProjectIds.length === 1
+      ? `/projects/${invitedProjectIds[0]}`
+      : "/projects";
+
+  const magic = await sendInviteMagicLink(email, nextPath);
+
+  for (const projectId of invitedProjectIds) {
+    revalidatePath(`/projects/${projectId}`);
+  }
+  revalidatePath("/users");
+  revalidatePath("/projects");
+
+  if (magic.error) {
+    return {
+      success: true as const,
+      warning:
+        existingProfile || invitedProjectIds.length > 0
+          ? "User updated / invites saved, but the magic-link email failed to send."
+          : "Could not send the magic-link email.",
+      message: magic.error,
+    };
+  }
+
+  return {
+    success: true as const,
+    message: existingProfile
+      ? invitedProjectIds.length > 0
+        ? "User updated, added to projects, and a sign-in email was sent."
+        : "User updated and a sign-in email was sent."
+      : invitedProjectIds.length > 0
+        ? "Invites created and a sign-in email was sent. They’ll join the projects when they open the link."
+        : "Sign-in email sent. They’ll appear here after their first login.",
+    platformAdminPending: !existingProfile && makePlatformAdmin,
+  };
+}
+
+export async function addMemberToProject(
+  projectId: string,
+  userId: string,
+  role: ProjectRole,
+) {
+  const result = await requirePlatformAdmin();
+  if ("error" in result) {
+    return result;
+  }
+
+  const { supabase } = result;
+
+  if (!VALID_ROLES.has(role)) {
+    return { error: "Invalid role." };
+  }
+
+  const { data: existing } = await supabase
+    .from("project_members")
+    .select("user_id")
+    .eq("project_id", projectId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (existing) {
+    return { error: "User is already on this project." };
+  }
+
+  const { error } = await supabase.from("project_members").insert({
+    project_id: projectId,
+    user_id: userId,
+    role,
+  });
+
+  if (error) {
+    if (error.code === "23505") {
+      return { error: "User is already on this project." };
+    }
+    return { error: error.message };
+  }
+
+  revalidatePath(`/projects/${projectId}`);
+  revalidatePath("/users");
+  return { success: true };
+}
+
 export async function updateMemberRole(
   projectId: string,
   userId: string,
@@ -48,7 +216,7 @@ export async function updateMemberRole(
 ) {
   const { supabase, user } = await requireUser();
 
-  if (!["admin", "member", "client"].includes(role)) {
+  if (!VALID_ROLES.has(role)) {
     return { error: "Invalid role." };
   }
 

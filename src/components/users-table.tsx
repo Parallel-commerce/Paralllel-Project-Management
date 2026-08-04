@@ -3,12 +3,15 @@
 import { useState, useTransition } from "react";
 
 import {
+  addMemberToProject,
   removeMemberFromProject,
   setPlatformAdmin,
   updateMemberRole,
   updateUserProfile,
 } from "@/lib/actions/users";
 import { PROJECT_ROLES, type ProjectRole } from "@/types/database";
+
+import type { ProjectOption } from "./add-user-form";
 
 export type UserMembership = {
   project_id: string;
@@ -27,9 +30,11 @@ export type UserRow = {
 
 export function UsersTable({
   users,
+  projects,
   currentUserId,
 }: {
   users: UserRow[];
+  projects: ProjectOption[];
   currentUserId: string;
 }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -68,6 +73,7 @@ export function UsersTable({
                   <UserTableRows
                     key={user.id}
                     user={user}
+                    projects={projects}
                     currentUserId={currentUserId}
                     isOpen={isOpen}
                     pending={pending}
@@ -92,6 +98,7 @@ export function UsersTable({
 
 function UserTableRows({
   user,
+  projects,
   currentUserId,
   isOpen,
   pending,
@@ -100,6 +107,7 @@ function UserTableRows({
   startTransition,
 }: {
   user: UserRow;
+  projects: ProjectOption[];
   currentUserId: string;
   isOpen: boolean;
   pending: boolean;
@@ -109,9 +117,16 @@ function UserTableRows({
 }) {
   const [fullName, setFullName] = useState(user.full_name ?? "");
   const [title, setTitle] = useState(user.title ?? "");
+  const [addProjectId, setAddProjectId] = useState("");
+  const [addRole, setAddRole] = useState<ProjectRole>("client");
   const dirty =
     fullName.trim() !== (user.full_name ?? "").trim() ||
     title.trim() !== (user.title ?? "").trim();
+
+  const memberProjectIds = new Set(user.memberships.map((m) => m.project_id));
+  const availableProjects = projects.filter(
+    (project) => !memberProjectIds.has(project.id),
+  );
 
   return (
     <>
@@ -254,6 +269,69 @@ function UserTableRows({
                   </li>
                 ))}
               </ul>
+            )}
+
+            {availableProjects.length > 0 ? (
+              <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[var(--border)] pt-3">
+                <span className="text-sm text-[var(--muted)]">Add to project</span>
+                <select
+                  value={addProjectId}
+                  disabled={pending}
+                  onChange={(event) => setAddProjectId(event.target.value)}
+                  className="min-w-[12rem] flex-1 rounded-md border border-[var(--border)] bg-white px-2 py-1.5 text-sm sm:flex-none"
+                >
+                  <option value="">Select project</option>
+                  {availableProjects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={addRole}
+                  disabled={pending}
+                  onChange={(event) =>
+                    setAddRole(event.target.value as ProjectRole)
+                  }
+                  className="rounded-md border border-[var(--border)] bg-white px-2 py-1.5 text-sm"
+                >
+                  {PROJECT_ROLES.map((role) => (
+                    <option key={role.value} value={role.value}>
+                      {role.label}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  disabled={pending || !addProjectId}
+                  onClick={() => {
+                    if (!addProjectId) return;
+                    startTransition(async () => {
+                      const result = await addMemberToProject(
+                        addProjectId,
+                        user.id,
+                        addRole,
+                      );
+                      onError(result?.error ?? null);
+                      if (!result?.error) {
+                        setAddProjectId("");
+                        setAddRole("client");
+                      }
+                    });
+                  }}
+                  className="rounded-md bg-[var(--accent)] px-2.5 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50"
+                >
+                  Add
+                </button>
+              </div>
+            ) : projects.length === 0 ? (
+              <p className="mt-3 text-xs text-[var(--muted)]">
+                Create a project first to allocate people.
+              </p>
+            ) : (
+              <p className="mt-3 text-xs text-[var(--muted)]">
+                Already on every project.
+              </p>
             )}
           </td>
         </tr>
