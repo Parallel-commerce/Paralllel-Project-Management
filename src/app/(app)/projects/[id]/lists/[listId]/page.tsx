@@ -67,7 +67,10 @@ export default async function ListBoardPage({
   const isAdmin = role === "admin" || isPlatformAdmin;
   const canTrackTime =
     isPlatformAdmin || role === "admin" || role === "member";
-  const canManageList = role === "admin" || list.created_by === user.id;
+  const canManageList =
+    role === "admin" || isPlatformAdmin || list.created_by === user.id;
+  const canDeleteList =
+    isPlatformAdmin || role === "admin" || role === "member";
 
   const { data: memberRows } = await supabase
     .from("project_members")
@@ -194,6 +197,7 @@ export default async function ListBoardPage({
               name={list.name}
               visibility={list.visibility as ListVisibility}
               canManage={canManageList}
+              canDelete={canDeleteList}
             />
           </div>
         </div>

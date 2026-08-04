@@ -111,7 +111,11 @@ export default async function ProjectPage({
   const role = (membership?.role ?? "client") as ProjectRole;
   const isPlatformAdmin = !!profile?.is_platform_admin;
   const isAdmin = role === "admin" || isPlatformAdmin;
-  const canCreateLists = role === "admin" || role === "member";
+  const canCreateLists =
+    isPlatformAdmin ||
+    role === "admin" ||
+    role === "member" ||
+    role === "client";
 
   const { data: lists } = await supabase
     .from("lists")

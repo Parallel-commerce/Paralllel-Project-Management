@@ -411,6 +411,30 @@ export async function updateList(
 export async function deleteList(projectId: string, listId: string) {
   const { supabase, user } = await requireUser();
 
+  const [{ data: membership }, { data: profile }] = await Promise.all([
+    supabase
+      .from("project_members")
+      .select("role")
+      .eq("project_id", projectId)
+      .eq("user_id", user.id)
+      .maybeSingle(),
+    supabase
+      .from("profiles")
+      .select("is_platform_admin")
+      .eq("id", user.id)
+      .maybeSingle(),
+  ]);
+
+  const role = membership?.role ?? null;
+  const canDelete =
+    !!profile?.is_platform_admin ||
+    role === "admin" ||
+    role === "member";
+
+  if (!canDelete) {
+    return { error: "Clients cannot delete lists." };
+  }
+
   const { data: list } = await supabase
     .from("lists")
     .select("name")
