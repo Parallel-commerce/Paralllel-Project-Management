@@ -211,6 +211,12 @@ export default async function ProjectPage({
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Link
+                href={`/projects/${id}/messages`}
+                className="min-h-10 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm hover:bg-[var(--surface-2)]"
+              >
+                Messages
+              </Link>
+              <Link
                 href={`/projects/${id}/reports`}
                 className="min-h-10 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm hover:bg-[var(--surface-2)]"
               >

@@ -67,6 +67,12 @@ export async function AppHeader({
               >
                 My work
               </Link>
+              <Link
+                href="/messages"
+                className="text-[var(--muted)] hover:text-[var(--foreground)]"
+              >
+                Messages
+              </Link>
               {platformAdmin ? (
                 <Link
                   href="/users"

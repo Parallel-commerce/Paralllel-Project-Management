@@ -95,6 +95,22 @@ export type TaskComment = {
   updated_at: string;
 };
 
+export type Conversation = {
+  id: string;
+  project_id: string;
+  client_user_id: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Message = {
+  id: string;
+  conversation_id: string;
+  sender_id: string;
+  body: string;
+  created_at: string;
+};
+
 export type Notification = {
   id: string;
   user_id: string;
@@ -361,6 +377,64 @@ export type Database = {
           },
         ];
       };
+      conversations: {
+        Row: Conversation;
+        Insert: {
+          id?: string;
+          project_id: string;
+          client_user_id: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "conversations_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "conversations_client_user_id_fkey";
+            columns: ["client_user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      messages: {
+        Row: Message;
+        Insert: {
+          id?: string;
+          conversation_id: string;
+          sender_id: string;
+          body: string;
+          created_at?: string;
+        };
+        Update: {
+          body?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "messages_conversation_id_fkey";
+            columns: ["conversation_id"];
+            isOneToOne: false;
+            referencedRelation: "conversations";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "messages_sender_id_fkey";
+            columns: ["sender_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       notifications: {
         Row: Notification;
         Insert: {
@@ -504,6 +578,14 @@ export type Database = {
       };
       can_view_list: {
         Args: { p_list_id: string };
+        Returns: boolean;
+      };
+      can_access_conversation: {
+        Args: { p_conversation_id: string };
+        Returns: boolean;
+      };
+      can_send_in_conversation: {
+        Args: { p_conversation_id: string };
         Returns: boolean;
       };
       is_platform_admin: {
