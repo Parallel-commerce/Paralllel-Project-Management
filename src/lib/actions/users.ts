@@ -484,3 +484,40 @@ export async function deleteUser(userId: string) {
   revalidatePath("/tasks");
   return { success: true };
 }
+
+export async function reinstateUser(userId: string, email?: string) {
+  const result = await requirePlatformAdmin();
+  if ("error" in result) {
+    return { error: result.error };
+  }
+
+  const { supabase } = result;
+  const restoreEmail = email?.trim().toLowerCase() || null;
+
+  const { error } = await supabase.rpc("reinstate_user", {
+    p_user_id: userId,
+    p_email: restoreEmail,
+  });
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("email, full_name")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (profile?.email) {
+    try {
+      await sendInviteMagicLink(profile.email);
+    } catch {
+      // Account is reinstated even if the magic link email fails
+    }
+  }
+
+  revalidatePath("/users");
+  revalidatePath("/projects");
+  return { success: true, email: profile?.email ?? restoreEmail };
+}

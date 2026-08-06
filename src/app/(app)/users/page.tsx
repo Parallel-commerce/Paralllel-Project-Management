@@ -25,21 +25,32 @@ export default async function UsersPage() {
     redirect("/projects");
   }
 
-  const [{ data: profiles }, { data: memberships }, { data: projects }] =
-    await Promise.all([
-      supabase
-        .from("profiles")
-        .select("id, email, full_name, title, is_platform_admin")
-        .is("deleted_at", null)
-        .order("email", { ascending: true }),
-      supabase
-        .from("project_members")
-        .select("user_id, project_id, role, projects(id, name)"),
-      supabase
-        .from("projects")
-        .select("id, name")
-        .order("name", { ascending: true }),
-    ]);
+  const [
+    { data: profiles },
+    { data: removedProfiles },
+    { data: memberships },
+    { data: projects },
+  ] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("id, email, full_name, title, is_platform_admin")
+      .is("deleted_at", null)
+      .order("email", { ascending: true }),
+    supabase
+      .from("profiles")
+      .select(
+        "id, email, full_name, title, is_platform_admin, deleted_at, previous_email",
+      )
+      .not("deleted_at", "is", null)
+      .order("deleted_at", { ascending: false }),
+    supabase
+      .from("project_members")
+      .select("user_id, project_id, role, projects(id, name)"),
+    supabase
+      .from("projects")
+      .select("id, name")
+      .order("name", { ascending: true }),
+  ]);
 
   const membershipsByUser = new Map<string, UserRow["memberships"]>();
 
@@ -65,6 +76,17 @@ export default async function UsersPage() {
     ),
   }));
 
+  const removedUsers: UserRow[] = (removedProfiles ?? []).map((profile) => ({
+    id: profile.id,
+    email: profile.email,
+    full_name: profile.full_name,
+    title: profile.title,
+    is_platform_admin: false,
+    deleted_at: profile.deleted_at,
+    previous_email: profile.previous_email,
+    memberships: [],
+  }));
+
   const projectOptions =
     projects?.map((project) => ({
       id: project.id as string,
@@ -73,20 +95,22 @@ export default async function UsersPage() {
 
   return (
     <main className="app-container py-6 sm:py-10">
-        <h1 className="font-display text-3xl tracking-tight">Users</h1>
-        <p className="mt-2 text-sm text-[var(--muted)]">
-          Invite people, assign projects, and manage platform admins.
-        </p>
-        <div className="mt-8">
-          <AddUserForm projects={projectOptions} />
-        </div>
-        <div className="mt-8">
-          <UsersTable
-            users={users}
-            projects={projectOptions}
-            currentUserId={user.id}
-          />
-        </div>
-      </main>
+      <h1 className="font-display text-3xl tracking-tight">Users</h1>
+      <p className="mt-2 text-sm text-[var(--muted)]">
+        Invite people, assign projects, and manage platform admins. Removed
+        users keep their history and can be reinstated.
+      </p>
+      <div className="mt-8">
+        <AddUserForm projects={projectOptions} />
+      </div>
+      <div className="mt-8">
+        <UsersTable
+          users={users}
+          removedUsers={removedUsers}
+          projects={projectOptions}
+          currentUserId={user.id}
+        />
+      </div>
+    </main>
   );
 }

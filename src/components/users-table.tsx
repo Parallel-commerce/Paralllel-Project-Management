@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 
 import {
   addMemberToProject,
   deleteUser,
+  reinstateUser,
   removeMemberFromProject,
   setPlatformAdmin,
   updateMemberRole,
@@ -26,21 +27,44 @@ export type UserRow = {
   full_name: string | null;
   title: string | null;
   is_platform_admin: boolean;
+  deleted_at?: string | null;
+  previous_email?: string | null;
   memberships: UserMembership[];
 };
 
+function formatRemovedAt(iso: string) {
+  try {
+    return new Intl.DateTimeFormat(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(new Date(iso));
+  } catch {
+    return iso;
+  }
+}
+
 export function UsersTable({
   users,
+  removedUsers,
   projects,
   currentUserId,
 }: {
   users: UserRow[];
+  removedUsers: UserRow[];
   projects: ProjectOption[];
   currentUserId: string;
 }) {
+  const [tab, setTab] = useState<"active" | "removed">("active");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  const confirmUser = useMemo(
+    () => users.find((user) => user.id === confirmDeleteId) ?? null,
+    [users, confirmDeleteId],
+  );
 
   return (
     <div>
@@ -49,51 +73,299 @@ export function UsersTable({
           {error}
         </p>
       ) : null}
+      {info ? (
+        <p className="mb-4 text-sm text-[var(--accent)]" role="status">
+          {info}
+        </p>
+      ) : null}
 
-      <div className="overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--surface)]">
-        <table className="w-full min-w-[720px] text-left text-sm">
-          <thead className="border-b border-[var(--border)] bg-[var(--surface-2)]/60 text-[var(--muted)]">
-            <tr>
-              <th className="px-4 py-3 font-medium">User</th>
-              <th className="px-4 py-3 font-medium">Projects</th>
-              <th className="px-4 py-3 font-medium">Platform admin</th>
-              <th className="px-4 py-3 font-medium" />
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[var(--border)]">
-            {users.length === 0 ? (
-              <tr>
-                <td colSpan={4} className="px-4 py-8 text-[var(--muted)]">
-                  No users yet.
-                </td>
-              </tr>
-            ) : (
-              users.map((user) => {
-                const isOpen = expanded[user.id] ?? false;
-                return (
-                  <UserTableRows
-                    key={user.id}
-                    user={user}
-                    projects={projects}
-                    currentUserId={currentUserId}
-                    isOpen={isOpen}
-                    pending={pending}
-                    onToggle={() =>
-                      setExpanded((prev) => ({
-                        ...prev,
-                        [user.id]: !isOpen,
-                      }))
-                    }
-                    onError={setError}
-                    startTransition={startTransition}
-                  />
-                );
-              })
-            )}
-          </tbody>
-        </table>
+      <div
+        className="mb-4 inline-flex rounded-md border border-[var(--border)] bg-[var(--surface)] p-0.5"
+        role="tablist"
+        aria-label="User lists"
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "active"}
+          onClick={() => setTab("active")}
+          className={`rounded px-3 py-1.5 text-sm ${
+            tab === "active"
+              ? "bg-[var(--accent)] text-white"
+              : "text-[var(--muted)] hover:text-[var(--foreground)]"
+          }`}
+        >
+          Active ({users.length})
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "removed"}
+          onClick={() => setTab("removed")}
+          className={`rounded px-3 py-1.5 text-sm ${
+            tab === "removed"
+              ? "bg-[var(--accent)] text-white"
+              : "text-[var(--muted)] hover:text-[var(--foreground)]"
+          }`}
+        >
+          Removed ({removedUsers.length})
+        </button>
       </div>
+
+      {tab === "active" ? (
+        <div className="overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--surface)]">
+          <table className="w-full min-w-[720px] text-left text-sm">
+            <thead className="border-b border-[var(--border)] bg-[var(--surface-2)]/60 text-[var(--muted)]">
+              <tr>
+                <th className="px-4 py-3 font-medium">User</th>
+                <th className="px-4 py-3 font-medium">Projects</th>
+                <th className="px-4 py-3 font-medium">Platform admin</th>
+                <th className="px-4 py-3 font-medium">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--border)]">
+              {users.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="px-4 py-8 text-[var(--muted)]">
+                    No active users yet.
+                  </td>
+                </tr>
+              ) : (
+                users.map((user) => {
+                  const isOpen = expanded[user.id] ?? false;
+                  return (
+                    <UserTableRows
+                      key={user.id}
+                      user={user}
+                      projects={projects}
+                      currentUserId={currentUserId}
+                      isOpen={isOpen}
+                      pending={pending}
+                      onToggle={() =>
+                        setExpanded((prev) => ({
+                          ...prev,
+                          [user.id]: !isOpen,
+                        }))
+                      }
+                      onError={setError}
+                      onInfo={setInfo}
+                      onRequestDelete={() => setConfirmDeleteId(user.id)}
+                      startTransition={startTransition}
+                    />
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <RemovedUsersPanel
+          users={removedUsers}
+          pending={pending}
+          onError={setError}
+          onInfo={setInfo}
+          startTransition={startTransition}
+        />
+      )}
+
+      {confirmUser ? (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4"
+          onClick={() => setConfirmDeleteId(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-user-title"
+            className="w-full max-w-md rounded-t-2xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-lg sm:rounded-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2
+              id="delete-user-title"
+              className="font-display text-xl tracking-tight"
+            >
+              Remove user?
+            </h2>
+            <p className="mt-2 text-sm text-[var(--muted)]">
+              Remove{" "}
+              <span className="font-medium text-[var(--foreground)]">
+                {confirmUser.full_name?.trim() || confirmUser.email}
+              </span>{" "}
+              from Parallel?
+            </p>
+            <ul className="mt-4 list-disc space-y-1.5 pl-5 text-sm text-[var(--muted)]">
+              <li>They lose access immediately and leave every project</li>
+              <li>
+                Tasks, comments, messages, and time stay — their name shows as
+                (removed)
+              </li>
+              <li>You can reinstate them later from the Removed tab</li>
+            </ul>
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => setConfirmDeleteId(null)}
+                className="min-h-10 rounded-md border border-[var(--border)] px-4 py-2 text-sm hover:bg-[var(--surface-2)] disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => {
+                  startTransition(async () => {
+                    const result = await deleteUser(confirmUser.id);
+                    if (result?.error) {
+                      setError(result.error);
+                      setInfo(null);
+                    } else {
+                      setError(null);
+                      setInfo(
+                        `${confirmUser.full_name?.trim() || confirmUser.email} was removed. You can reinstate them from the Removed tab.`,
+                      );
+                      setConfirmDeleteId(null);
+                      setTab("removed");
+                    }
+                  });
+                }}
+                className="min-h-10 rounded-md bg-[var(--danger)] px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+              >
+                {pending ? "Removing…" : "Remove user"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
+  );
+}
+
+function RemovedUsersPanel({
+  users,
+  pending,
+  onError,
+  onInfo,
+  startTransition,
+}: {
+  users: UserRow[];
+  pending: boolean;
+  onError: (message: string | null) => void;
+  onInfo: (message: string | null) => void;
+  startTransition: (fn: () => void) => void;
+}) {
+  return (
+    <div className="overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--surface)]">
+      <div className="border-b border-[var(--border)] px-4 py-3 text-sm text-[var(--muted)]">
+        Removed accounts keep their history. Reinstate to restore login and let
+        you add them to projects again.
+      </div>
+      <table className="w-full min-w-[640px] text-left text-sm">
+        <thead className="border-b border-[var(--border)] bg-[var(--surface-2)]/60 text-[var(--muted)]">
+          <tr>
+            <th className="px-4 py-3 font-medium">User</th>
+            <th className="px-4 py-3 font-medium">Removed</th>
+            <th className="px-4 py-3 font-medium">Actions</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-[var(--border)]">
+          {users.length === 0 ? (
+            <tr>
+              <td colSpan={3} className="px-4 py-8 text-[var(--muted)]">
+                No removed users.
+              </td>
+            </tr>
+          ) : (
+            users.map((user) => (
+              <RemovedUserRow
+                key={user.id}
+                user={user}
+                pending={pending}
+                onError={onError}
+                onInfo={onInfo}
+                startTransition={startTransition}
+              />
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function RemovedUserRow({
+  user,
+  pending,
+  onError,
+  onInfo,
+  startTransition,
+}: {
+  user: UserRow;
+  pending: boolean;
+  onError: (message: string | null) => void;
+  onInfo: (message: string | null) => void;
+  startTransition: (fn: () => void) => void;
+}) {
+  const [email, setEmail] = useState(user.previous_email ?? "");
+
+  return (
+    <tr className="align-top">
+      <td className="px-4 py-3">
+        <p className="font-medium">
+          {user.full_name?.trim() || "Removed user"}{" "}
+          <span className="font-normal text-[var(--muted)]">(removed)</span>
+        </p>
+        <p className="mt-1 text-xs text-[var(--muted)]">
+          {user.previous_email
+            ? `Was ${user.previous_email}`
+            : "Original email unknown — enter one to reinstate"}
+        </p>
+        <label className="mt-2 block max-w-sm">
+          <span className="sr-only">Email to restore</span>
+          <input
+            type="email"
+            value={email}
+            disabled={pending}
+            onChange={(event) => setEmail(event.target.value)}
+            placeholder="Email to restore"
+            className="w-full rounded-md border border-[var(--border)] bg-white px-2.5 py-1.5 text-sm"
+          />
+        </label>
+      </td>
+      <td className="px-4 py-3 text-[var(--muted)]">
+        {user.deleted_at ? formatRemovedAt(user.deleted_at) : "—"}
+      </td>
+      <td className="px-4 py-3">
+        <button
+          type="button"
+          disabled={pending || !email.trim()}
+          onClick={() => {
+            if (
+              !window.confirm(
+                `Reinstate ${user.full_name?.trim() || email}? They’ll get a magic link at ${email.trim()}.`,
+              )
+            ) {
+              return;
+            }
+            startTransition(async () => {
+              const result = await reinstateUser(user.id, email.trim());
+              if (result?.error) {
+                onError(result.error);
+                onInfo(null);
+              } else {
+                onError(null);
+                onInfo(
+                  `${user.full_name?.trim() || result.email} was reinstated. A magic link was sent to ${result.email}.`,
+                );
+              }
+            });
+          }}
+          className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50"
+        >
+          {pending ? "Reinstating…" : "Reinstate"}
+        </button>
+      </td>
+    </tr>
   );
 }
 
@@ -105,6 +377,8 @@ function UserTableRows({
   pending,
   onToggle,
   onError,
+  onInfo,
+  onRequestDelete,
   startTransition,
 }: {
   user: UserRow;
@@ -114,6 +388,8 @@ function UserTableRows({
   pending: boolean;
   onToggle: () => void;
   onError: (message: string | null) => void;
+  onInfo: (message: string | null) => void;
+  onRequestDelete: () => void;
   startTransition: (fn: () => void) => void;
 }) {
   const [fullName, setFullName] = useState(user.full_name ?? "");
@@ -166,6 +442,7 @@ function UserTableRows({
                   startTransition(async () => {
                     const result = await updateUserProfile(user.id, formData);
                     onError(result?.error ?? null);
+                    onInfo(null);
                   });
                 }}
                 className="self-start rounded-md bg-[var(--accent)] px-2.5 py-1 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50"
@@ -189,6 +466,7 @@ function UserTableRows({
                 startTransition(async () => {
                   const result = await setPlatformAdmin(user.id, enabled);
                   onError(result?.error ?? null);
+                  onInfo(null);
                 });
               }}
             />
@@ -198,8 +476,8 @@ function UserTableRows({
             <p className="mt-1 text-xs text-[var(--muted)]">That’s you</p>
           ) : null}
         </td>
-        <td className="px-4 py-3 text-right">
-          <div className="flex flex-col items-end gap-2">
+        <td className="px-4 py-3">
+          <div className="flex flex-col items-stretch gap-2 sm:items-end">
             <button
               type="button"
               onClick={onToggle}
@@ -211,24 +489,10 @@ function UserTableRows({
               <button
                 type="button"
                 disabled={pending}
-                onClick={() => {
-                  const label =
-                    user.full_name?.trim() || user.email || "this user";
-                  if (
-                    !window.confirm(
-                      `Delete ${label}? Their tasks, comments, and messages stay, but they’ll show as (removed) and lose access.`,
-                    )
-                  ) {
-                    return;
-                  }
-                  startTransition(async () => {
-                    const result = await deleteUser(user.id);
-                    onError(result?.error ?? null);
-                  });
-                }}
-                className="text-xs text-[var(--danger)] hover:underline disabled:opacity-50"
+                onClick={onRequestDelete}
+                className="rounded-md border border-[var(--danger)]/30 px-2.5 py-1.5 text-xs font-medium text-[var(--danger)] hover:bg-red-50 disabled:opacity-50"
               >
-                Delete user
+                Remove user
               </button>
             ) : null}
           </div>
@@ -263,6 +527,7 @@ function UserTableRows({
                             role,
                           );
                           onError(result?.error ?? null);
+                          onInfo(null);
                         });
                       }}
                       className="rounded-md border border-[var(--border)] bg-white px-2 py-1.5 text-sm"
@@ -284,6 +549,7 @@ function UserTableRows({
                               user.id,
                             );
                             onError(result?.error ?? null);
+                            onInfo(null);
                           });
                         }}
                         className="text-xs text-[var(--danger)] hover:underline"
@@ -340,6 +606,7 @@ function UserTableRows({
                         addRole,
                       );
                       onError(result?.error ?? null);
+                      onInfo(null);
                       if (!result?.error) {
                         setAddProjectId("");
                         setAddRole("client");

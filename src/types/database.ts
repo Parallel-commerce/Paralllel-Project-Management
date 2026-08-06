@@ -14,6 +14,7 @@ export type Profile = {
   avatar_path: string | null;
   is_platform_admin: boolean;
   deleted_at: string | null;
+  previous_email: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -197,6 +198,7 @@ export type Database = {
           avatar_path?: string | null;
           is_platform_admin?: boolean;
           deleted_at?: string | null;
+          previous_email?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -207,6 +209,7 @@ export type Database = {
           avatar_path?: string | null;
           is_platform_admin?: boolean;
           deleted_at?: string | null;
+          previous_email?: string | null;
           updated_at?: string;
         };
         Relationships: [];
@@ -603,6 +606,10 @@ export type Database = {
       };
       soft_delete_user: {
         Args: { p_user_id: string };
+        Returns: undefined;
+      };
+      reinstate_user: {
+        Args: { p_user_id: string; p_email?: string | null };
         Returns: undefined;
       };
       project_task_stats: {

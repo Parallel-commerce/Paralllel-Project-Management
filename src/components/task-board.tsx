@@ -575,6 +575,7 @@ export function TaskBoard({
   const [reporterFilter, setReporterFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<"all" | TaskStatus>("all");
   const [dueFilter, setDueFilter] = useState<DueFilter>("all");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [, startTransition] = useTransition();
 
   useEffect(() => {
@@ -632,6 +633,21 @@ export function TaskBoard({
 
   const timeSecondsByTaskId = canTrackTime ? initialTimeSeconds : undefined;
 
+  const filtersActive =
+    query.trim() !== "" ||
+    assigneeFilter !== "all" ||
+    reporterFilter !== "all" ||
+    statusFilter !== "all" ||
+    dueFilter !== "all";
+
+  function clearFilters() {
+    setQuery("");
+    setAssigneeFilter("all");
+    setReporterFilter("all");
+    setStatusFilter("all");
+    setDueFilter("all");
+  }
+
   const activeTask = activeId
     ? (tasks.find((task) => task.id === activeId) ?? null)
     : null;
@@ -677,7 +693,7 @@ export function TaskBoard({
     <div>
       <div className="mb-4 flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             <p className="text-sm text-[var(--muted)]">
               {filtered.length} of {tasks.length} task
               {tasks.length === 1 ? "" : "s"}
@@ -713,6 +729,33 @@ export function TaskBoard({
                 Board
               </button>
             </div>
+            <button
+              type="button"
+              onClick={() => setFiltersOpen((open) => !open)}
+              aria-expanded={filtersOpen}
+              className={`inline-flex min-h-9 items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm ${
+                filtersOpen || filtersActive
+                  ? "border-[var(--accent)]/40 bg-[var(--accent-soft)] text-[var(--accent)]"
+                  : "border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] hover:bg-[var(--surface-2)]"
+              }`}
+            >
+              Filters
+              {filtersActive ? (
+                <span
+                  className="h-1.5 w-1.5 rounded-full bg-[var(--accent)]"
+                  aria-hidden
+                />
+              ) : null}
+            </button>
+            {filtersActive ? (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="text-sm text-[var(--muted)] hover:text-[var(--foreground)] hover:underline"
+              >
+                Clear
+              </button>
+            ) : null}
           </div>
           <button
             type="button"
@@ -723,80 +766,82 @@ export function TaskBoard({
           </button>
         </div>
 
-        <div className="grid gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 sm:grid-cols-2 xl:grid-cols-5">
-          <label className="flex flex-col gap-1 text-xs text-[var(--muted)]">
-            Search
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Title, key, assignee, reporter…"
-              className="min-h-10 rounded-md border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-xs text-[var(--muted)]">
-            Assignee
-            <select
-              value={assigneeFilter}
-              onChange={(event) => setAssigneeFilter(event.target.value)}
-              className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--foreground)]"
-            >
-              <option value="all">Anyone</option>
-              <option value="unassigned">Unassigned</option>
-              {members.map((member) => (
-                <option key={member.id} value={member.id}>
-                  {displayName(member)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1 text-xs text-[var(--muted)]">
-            Reporter
-            <select
-              value={reporterFilter}
-              onChange={(event) => setReporterFilter(event.target.value)}
-              className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--foreground)]"
-            >
-              <option value="all">Anyone</option>
-              {members.map((member) => (
-                <option key={member.id} value={member.id}>
-                  {displayName(member)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1 text-xs text-[var(--muted)]">
-            Status
-            <select
-              value={statusFilter}
-              onChange={(event) =>
-                setStatusFilter(event.target.value as "all" | TaskStatus)
-              }
-              className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--foreground)]"
-            >
-              <option value="all">All statuses</option>
-              {TASK_STATUSES.map((status) => (
-                <option key={status.value} value={status.value}>
-                  {status.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1 text-xs text-[var(--muted)]">
-            Due date
-            <select
-              value={dueFilter}
-              onChange={(event) =>
-                setDueFilter(event.target.value as DueFilter)
-              }
-              className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--foreground)]"
-            >
-              <option value="all">Any due date</option>
-              <option value="overdue">Overdue</option>
-              <option value="this_week">Due this week</option>
-              <option value="none">No due date</option>
-            </select>
-          </label>
-        </div>
+        {filtersOpen ? (
+          <div className="grid gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 sm:grid-cols-2 xl:grid-cols-5">
+            <label className="flex flex-col gap-1 text-xs text-[var(--muted)]">
+              Search
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Title, key, assignee, reporter…"
+                className="min-h-10 rounded-md border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-[var(--muted)]">
+              Assignee
+              <select
+                value={assigneeFilter}
+                onChange={(event) => setAssigneeFilter(event.target.value)}
+                className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--foreground)]"
+              >
+                <option value="all">Anyone</option>
+                <option value="unassigned">Unassigned</option>
+                {members.map((member) => (
+                  <option key={member.id} value={member.id}>
+                    {displayName(member)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-[var(--muted)]">
+              Reporter
+              <select
+                value={reporterFilter}
+                onChange={(event) => setReporterFilter(event.target.value)}
+                className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--foreground)]"
+              >
+                <option value="all">Anyone</option>
+                {members.map((member) => (
+                  <option key={member.id} value={member.id}>
+                    {displayName(member)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-[var(--muted)]">
+              Status
+              <select
+                value={statusFilter}
+                onChange={(event) =>
+                  setStatusFilter(event.target.value as "all" | TaskStatus)
+                }
+                className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--foreground)]"
+              >
+                <option value="all">All statuses</option>
+                {TASK_STATUSES.map((status) => (
+                  <option key={status.value} value={status.value}>
+                    {status.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-[var(--muted)]">
+              Due date
+              <select
+                value={dueFilter}
+                onChange={(event) =>
+                  setDueFilter(event.target.value as DueFilter)
+                }
+                className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--foreground)]"
+              >
+                <option value="all">Any due date</option>
+                <option value="overdue">Overdue</option>
+                <option value="this_week">Due this week</option>
+                <option value="none">No due date</option>
+              </select>
+            </label>
+          </div>
+        ) : null}
       </div>
 
       {tasks.length === 0 ? (
