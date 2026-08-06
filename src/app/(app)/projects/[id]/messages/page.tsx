@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-import { AppHeader } from "@/components/app-header";
 import { MessagesInbox } from "@/components/messages-inbox";
 import {
   ensureClientConversation,
@@ -68,9 +67,7 @@ export default async function ProjectMessagesPage({
   ]);
 
   return (
-    <div className="app-shell min-h-full">
-      <AppHeader isPlatformAdmin={isPlatformAdmin} />
-      <main className="app-container py-6 sm:py-10">
+    <main className="app-container py-6 sm:py-10">
         <Link
           href={`/projects/${projectId}`}
           className="text-sm text-[var(--muted)] hover:text-[var(--foreground)]"
@@ -90,6 +87,5 @@ export default async function ProjectMessagesPage({
           />
         </div>
       </main>
-    </div>
   );
 }

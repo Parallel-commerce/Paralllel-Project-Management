@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { AppHeader } from "@/components/app-header";
 import { MessagesInbox } from "@/components/messages-inbox";
 import {
   ensureClientConversation,
@@ -52,9 +51,7 @@ export default async function MessagesPage() {
 
   if (isOnlyClient && conversations.length === 0 && clientProjects.length > 0) {
     return (
-      <div className="app-shell min-h-full">
-        <AppHeader isPlatformAdmin={isPlatformAdmin} />
-        <main className="app-container py-6 sm:py-10">
+      <main className="app-container py-6 sm:py-10">
           <h1 className="font-display text-2xl tracking-tight sm:text-3xl">
             Messages
           </h1>
@@ -87,14 +84,11 @@ export default async function MessagesPage() {
             })}
           </ul>
         </main>
-      </div>
     );
   }
 
   return (
-    <div className="app-shell min-h-full">
-      <AppHeader isPlatformAdmin={isPlatformAdmin} />
-      <main className="app-container py-6 sm:py-10">
+    <main className="app-container py-6 sm:py-10">
         <Link
           href="/projects"
           className="text-sm text-[var(--muted)] hover:text-[var(--foreground)]"
@@ -115,6 +109,5 @@ export default async function MessagesPage() {
           />
         </div>
       </main>
-    </div>
   );
 }

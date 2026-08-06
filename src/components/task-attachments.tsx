@@ -1,9 +1,10 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 
 import {
   deleteTaskAttachment,
+  listTaskAttachments,
   uploadTaskAttachment,
 } from "@/lib/actions/projects";
 import { taskAttachmentPublicUrl } from "@/lib/task-attachments";
@@ -13,18 +14,34 @@ export function TaskAttachments({
   projectId,
   listId,
   taskId,
-  attachments: initial,
 }: {
   projectId: string;
   listId: string;
   taskId: string;
-  attachments: TaskAttachment[];
 }) {
-  const [attachments, setAttachments] = useState(initial);
+  const [attachments, setAttachments] = useState<TaskAttachment[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [pending, startTransition] = useTransition();
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    listTaskAttachments(projectId, listId, taskId).then((result) => {
+      if (cancelled) return;
+      if (result.error) {
+        setError(result.error);
+      } else {
+        setAttachments(result.attachments);
+      }
+      setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, listId, taskId]);
 
   function uploadFiles(files: FileList | File[]) {
     const list = Array.from(files).filter((file) => file.size > 0);
@@ -59,7 +76,9 @@ export function TaskAttachments({
     <div className="mt-6 border-t border-[var(--border)] pt-4">
       <h3 className="text-sm font-medium">Attachments</h3>
       <ul className="mt-3 space-y-2">
-        {attachments.length === 0 ? (
+        {loading ? (
+          <li className="text-sm text-[var(--muted)]">Loading files…</li>
+        ) : attachments.length === 0 ? (
           <li className="text-sm text-[var(--muted)]">No files yet.</li>
         ) : (
           attachments.map((file) => {

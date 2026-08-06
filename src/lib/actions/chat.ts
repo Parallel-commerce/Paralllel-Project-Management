@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { notifyUser } from "@/lib/notify";
+import { personDisplayName } from "@/lib/person";
 import { createClient } from "@/lib/supabase/server";
 
 async function requireUser() {
@@ -115,12 +116,12 @@ export async function ensureClientConversation(
 }
 
 export async function listConversations(projectId?: string) {
-  const { supabase, user } = await requireUser();
+  const { supabase } = await requireUser();
 
   let query = supabase
     .from("conversations")
     .select(
-      "id, project_id, client_user_id, updated_at, projects(name), profiles!conversations_client_user_id_fkey(email, full_name)",
+      "id, project_id, client_user_id, updated_at, last_message_body, last_message_at, projects(name), profiles!conversations_client_user_id_fkey(email, full_name, deleted_at)",
     )
     .order("updated_at", { ascending: false });
 
@@ -134,48 +135,27 @@ export async function listConversations(projectId?: string) {
     return { error: error.message, conversations: [] as ConversationListItem[] };
   }
 
-  const ids = (rows ?? []).map((row) => row.id as string);
-  const lastByConversation = new Map<
-    string,
-    { body: string; created_at: string }
-  >();
-
-  if (ids.length > 0) {
-    const { data: recent } = await supabase
-      .from("messages")
-      .select("conversation_id, body, created_at")
-      .in("conversation_id", ids)
-      .order("created_at", { ascending: false });
-
-    for (const msg of recent ?? []) {
-      const conversationId = msg.conversation_id as string;
-      if (!lastByConversation.has(conversationId)) {
-        lastByConversation.set(conversationId, {
-          body: msg.body as string,
-          created_at: msg.created_at as string,
-        });
-      }
-    }
-  }
-
   const conversations: ConversationListItem[] = (rows ?? []).map((row) => {
     const project = Array.isArray(row.projects) ? row.projects[0] : row.projects;
     const client = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
-    const last = lastByConversation.get(row.id as string);
 
     return {
       id: row.id as string,
       project_id: row.project_id as string,
       project_name: (project?.name as string) ?? "Project",
       client_user_id: row.client_user_id as string,
-      client_name:
-        (client?.full_name as string | null) ||
-        (client?.email as string) ||
+      client_name: personDisplayName(
+        {
+          full_name: (client?.full_name as string | null) ?? null,
+          email: (client?.email as string | null) ?? null,
+          deleted_at: (client?.deleted_at as string | null) ?? null,
+        },
         "Client",
+      ),
       client_email: (client?.email as string) ?? "",
       updated_at: row.updated_at as string,
-      last_message: last?.body ?? null,
-      last_message_at: last?.created_at ?? null,
+      last_message: (row.last_message_body as string | null) ?? null,
+      last_message_at: (row.last_message_at as string | null) ?? null,
     };
   });
 
@@ -188,7 +168,7 @@ export async function listMessages(conversationId: string) {
   const { data: conversation, error: convError } = await supabase
     .from("conversations")
     .select(
-      "id, project_id, client_user_id, projects(name), profiles!conversations_client_user_id_fkey(id, email, full_name)",
+      "id, project_id, client_user_id, projects(name), profiles!conversations_client_user_id_fkey(id, email, full_name, deleted_at)",
     )
     .eq("id", conversationId)
     .maybeSingle();
@@ -200,7 +180,7 @@ export async function listMessages(conversationId: string) {
   const { data: messages, error } = await supabase
     .from("messages")
     .select(
-      "id, conversation_id, sender_id, body, created_at, profiles!messages_sender_id_fkey(id, email, full_name)",
+      "id, conversation_id, sender_id, body, created_at, profiles!messages_sender_id_fkey(id, email, full_name, deleted_at)",
     )
     .eq("conversation_id", conversationId)
     .order("created_at", { ascending: true });
@@ -222,10 +202,14 @@ export async function listMessages(conversationId: string) {
       project_id: conversation.project_id as string,
       project_name: (project?.name as string) ?? "Project",
       client_user_id: conversation.client_user_id as string,
-      client_name:
-        (client?.full_name as string | null) ||
-        (client?.email as string) ||
+      client_name: personDisplayName(
+        {
+          full_name: (client?.full_name as string | null) ?? null,
+          email: (client?.email as string | null) ?? null,
+          deleted_at: (client?.deleted_at as string | null) ?? null,
+        },
         "Client",
+      ),
       client_email: (client?.email as string) ?? "",
     },
     messages: (messages ?? []).map((row) => {
@@ -238,10 +222,14 @@ export async function listMessages(conversationId: string) {
         sender_id: row.sender_id as string,
         body: row.body as string,
         created_at: row.created_at as string,
-        sender_name:
-          (sender?.full_name as string | null) ||
-          (sender?.email as string) ||
+        sender_name: personDisplayName(
+          {
+            full_name: (sender?.full_name as string | null) ?? null,
+            email: (sender?.email as string | null) ?? null,
+            deleted_at: (sender?.deleted_at as string | null) ?? null,
+          },
           "Someone",
+        ),
       };
     }),
   };
@@ -339,7 +327,7 @@ export async function listProjectClients(projectId: string) {
 
   const { data, error } = await supabase
     .from("project_members")
-    .select("user_id, profiles(id, email, full_name)")
+    .select("user_id, profiles(id, email, full_name, deleted_at)")
     .eq("project_id", projectId)
     .eq("role", "client")
     .order("user_id");
@@ -349,17 +337,24 @@ export async function listProjectClients(projectId: string) {
   }
 
   const clients =
-    data?.map((row) => {
-      const profile = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
-      return {
-        id: row.user_id as string,
-        email: (profile?.email as string) ?? "",
-        name:
-          (profile?.full_name as string | null) ||
-          (profile?.email as string) ||
-          "Client",
-      };
-    }) ?? [];
+    data
+      ?.map((row) => {
+        const profile = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
+        if (profile?.deleted_at) return null;
+        return {
+          id: row.user_id as string,
+          email: (profile?.email as string) ?? "",
+          name: personDisplayName(
+            {
+              full_name: (profile?.full_name as string | null) ?? null,
+              email: (profile?.email as string | null) ?? null,
+              deleted_at: null,
+            },
+            "Client",
+          ),
+        };
+      })
+      .filter((client): client is { id: string; name: string; email: string } => !!client) ?? [];
 
   return { clients };
 }

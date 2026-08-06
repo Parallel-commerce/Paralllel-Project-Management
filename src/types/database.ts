@@ -13,6 +13,7 @@ export type Profile = {
   title: string | null;
   avatar_path: string | null;
   is_platform_admin: boolean;
+  deleted_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -101,6 +102,8 @@ export type Conversation = {
   client_user_id: string;
   created_at: string;
   updated_at: string;
+  last_message_body: string | null;
+  last_message_at: string | null;
 };
 
 export type Message = {
@@ -193,6 +196,7 @@ export type Database = {
           title?: string | null;
           avatar_path?: string | null;
           is_platform_admin?: boolean;
+          deleted_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -202,6 +206,7 @@ export type Database = {
           title?: string | null;
           avatar_path?: string | null;
           is_platform_admin?: boolean;
+          deleted_at?: string | null;
           updated_at?: string;
         };
         Relationships: [];
@@ -385,9 +390,13 @@ export type Database = {
           client_user_id: string;
           created_at?: string;
           updated_at?: string;
+          last_message_body?: string | null;
+          last_message_at?: string | null;
         };
         Update: {
           updated_at?: string;
+          last_message_body?: string | null;
+          last_message_at?: string | null;
         };
         Relationships: [
           {
@@ -591,6 +600,26 @@ export type Database = {
       is_platform_admin: {
         Args: Record<string, never>;
         Returns: boolean;
+      };
+      soft_delete_user: {
+        Args: { p_user_id: string };
+        Returns: undefined;
+      };
+      project_task_stats: {
+        Args: { p_project_ids: string[] };
+        Returns: {
+          project_id: string;
+          status: TaskStatus;
+          task_count: number;
+        }[];
+      };
+      list_task_stats: {
+        Args: { p_project_id: string };
+        Returns: {
+          list_id: string;
+          status: TaskStatus;
+          task_count: number;
+        }[];
       };
       create_notification: {
         Args: {

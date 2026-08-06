@@ -22,7 +22,12 @@ export default async function LoginPage({
           needed.
         </p>
 
-        {params.error ? (
+        {params.error === "removed" ? (
+          <p className="mt-4 rounded-md bg-[var(--accent-soft)] px-3 py-2 text-sm text-[var(--accent-hover)]">
+            This account has been removed. Contact Parallel if you need access
+            again.
+          </p>
+        ) : params.error ? (
           <p className="mt-4 rounded-md bg-[var(--accent-soft)] px-3 py-2 text-sm text-[var(--accent-hover)]">
             Sign-in failed. Request a new magic link.
           </p>

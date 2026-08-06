@@ -22,6 +22,7 @@ export type CommentAuthor = {
   id: string;
   email: string;
   full_name: string | null;
+  deleted_at: string | null;
   avatar_url: string | null;
 };
 
@@ -41,6 +42,7 @@ function mapAuthor(
         id: string;
         email: string;
         full_name: string | null;
+        deleted_at?: string | null;
         avatar_path: string | null;
         updated_at?: string;
       }
@@ -48,7 +50,9 @@ function mapAuthor(
     | undefined,
 ): CommentAuthor | null {
   if (!profile) return null;
-  const baseUrl = profileAvatarPublicUrl(profile.avatar_path);
+  const baseUrl = profile.deleted_at
+    ? null
+    : profileAvatarPublicUrl(profile.avatar_path);
   const avatarUrl = baseUrl
     ? `${baseUrl}?v=${encodeURIComponent(profile.updated_at ?? "")}`
     : null;
@@ -56,6 +60,7 @@ function mapAuthor(
     id: profile.id,
     email: profile.email,
     full_name: profile.full_name,
+    deleted_at: profile.deleted_at ?? null,
     avatar_url: avatarUrl,
   };
 }
@@ -68,7 +73,7 @@ export async function listTaskComments(
   const { data, error } = await supabase
     .from("task_comments")
     .select(
-      "id, task_id, parent_id, body, created_by, created_at, profiles(id, email, full_name, avatar_path, updated_at)",
+      "id, task_id, parent_id, body, created_by, created_at, profiles(id, email, full_name, deleted_at, avatar_path, updated_at)",
     )
     .eq("task_id", taskId)
     .order("created_at", { ascending: true });
@@ -92,6 +97,7 @@ export async function listTaskComments(
               id: profile.id as string,
               email: profile.email as string,
               full_name: (profile.full_name as string | null) ?? null,
+              deleted_at: (profile.deleted_at as string | null) ?? null,
               avatar_path: (profile.avatar_path as string | null) ?? null,
               updated_at: (profile.updated_at as string | undefined) ?? undefined,
             }

@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { personDisplayName } from "@/lib/person";
 import type { ProjectRole } from "@/types/database";
 
 function formatWhen(iso: string) {
@@ -25,7 +26,7 @@ export async function ActivityFeed({
   const { data: events } = await supabase
     .from("activity_events")
     .select(
-      "id, summary, action, created_at, actor_id, profiles!activity_events_actor_id_fkey(full_name, email)",
+      "id, summary, action, created_at, actor_id, profiles!activity_events_actor_id_fkey(full_name, email, deleted_at)",
     )
     .eq("project_id", projectId)
     .order("created_at", { ascending: false })
@@ -50,10 +51,14 @@ export async function ActivityFeed({
             const profile = Array.isArray(event.profiles)
               ? event.profiles[0]
               : event.profiles;
-            const actor =
-              (profile?.full_name as string | null) ||
-              (profile?.email as string | null) ||
-              "Someone";
+            const actor = personDisplayName(
+              {
+                full_name: (profile?.full_name as string | null) ?? null,
+                email: (profile?.email as string | null) ?? null,
+                deleted_at: (profile?.deleted_at as string | null) ?? null,
+              },
+              "Someone",
+            );
             return (
               <li
                 key={event.id}

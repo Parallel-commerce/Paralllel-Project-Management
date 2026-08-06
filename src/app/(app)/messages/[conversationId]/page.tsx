@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-import { AppHeader } from "@/components/app-header";
 import { ChatThread } from "@/components/chat-thread";
 import { listMessages } from "@/lib/actions/chat";
 import { createClient } from "@/lib/supabase/server";
@@ -37,9 +36,7 @@ export default async function ConversationPage({
   const isClient = conversation.client_user_id === user.id;
 
   return (
-    <div className="app-shell min-h-full">
-      <AppHeader isPlatformAdmin={!!profile?.is_platform_admin} />
-      <main className="app-container py-6 sm:py-10">
+    <main className="app-container py-6 sm:py-10">
         <Link
           href={
             isClient
@@ -66,6 +63,5 @@ export default async function ConversationPage({
           />
         </div>
       </main>
-    </div>
   );
 }

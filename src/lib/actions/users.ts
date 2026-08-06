@@ -457,3 +457,30 @@ export async function removeMemberFromProject(
   revalidatePath("/users");
   return { success: true };
 }
+
+export async function deleteUser(userId: string) {
+  const result = await requirePlatformAdmin();
+  if ("error" in result) {
+    return { error: result.error };
+  }
+
+  const { supabase, user } = result;
+
+  if (userId === user.id) {
+    return { error: "You cannot delete your own account." };
+  }
+
+  const { error } = await supabase.rpc("soft_delete_user", {
+    p_user_id: userId,
+  });
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  revalidatePath("/users");
+  revalidatePath("/projects");
+  revalidatePath("/messages");
+  revalidatePath("/tasks");
+  return { success: true };
+}

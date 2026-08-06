@@ -27,10 +27,10 @@ import {
   updateTask,
   updateTaskStatus,
 } from "@/lib/actions/projects";
+import { personDisplayName } from "@/lib/person";
 import {
   TASK_STATUSES,
   type Task,
-  type TaskAttachment,
   type TaskStatus,
 } from "@/types/database";
 
@@ -38,6 +38,7 @@ type ProfileOption = {
   id: string;
   email: string;
   full_name: string | null;
+  deleted_at?: string | null;
 };
 
 export type TaskWithPeople = Task & {
@@ -50,7 +51,7 @@ type DueFilter = "all" | "overdue" | "this_week" | "none";
 
 function displayName(profile?: ProfileOption | null) {
   if (!profile) return "Unassigned";
-  return profile.full_name || profile.email;
+  return personDisplayName(profile, profile.email || "Someone");
 }
 
 function todayIso() {
@@ -79,16 +80,6 @@ function matchesDueFilter(task: TaskWithPeople, dueFilter: DueFilter) {
     return task.due_date >= today && task.due_date <= weekEnd;
   }
   return true;
-}
-
-function taskLoggedSeconds(
-  taskId: string,
-  timeEntriesByTaskId: Record<string, TimeEntryRow[]>,
-) {
-  return (timeEntriesByTaskId[taskId] ?? []).reduce(
-    (sum, entry) => sum + (entry.duration_seconds ?? 0),
-    0,
-  );
 }
 
 function TaskCard({
@@ -318,10 +309,8 @@ function TaskModal({
   members,
   currentUserId,
   task,
-  attachments = [],
   canTrackTime = false,
   isTimeAdmin = false,
-  timeEntries = [],
   runningEntry = null,
   onClose,
 }: {
@@ -331,10 +320,8 @@ function TaskModal({
   members: ProfileOption[];
   currentUserId: string;
   task?: TaskWithPeople | null;
-  attachments?: TaskAttachment[];
   canTrackTime?: boolean;
   isTimeAdmin?: boolean;
-  timeEntries?: TimeEntryRow[];
   runningEntry?: TimeEntryRow | null;
   onClose: () => void;
 }) {
@@ -534,7 +521,6 @@ function TaskModal({
                 taskId={task.id}
                 currentUserId={currentUserId}
                 isAdmin={isTimeAdmin}
-                entries={timeEntries}
                 runningEntry={runningEntry}
               />
             ) : null}
@@ -542,7 +528,6 @@ function TaskModal({
               projectId={projectId}
               listId={listId}
               taskId={task.id}
-              attachments={attachments}
             />
             <TaskComments
               projectId={projectId}
@@ -564,10 +549,9 @@ export function TaskBoard({
   members,
   currentUserId,
   initialTaskId,
-  attachmentsByTaskId = {},
   canTrackTime = false,
   isTimeAdmin = false,
-  timeEntriesByTaskId = {},
+  timeSecondsByTaskId: initialTimeSeconds = {},
   runningEntry = null,
 }: {
   projectId: string;
@@ -576,10 +560,9 @@ export function TaskBoard({
   members: ProfileOption[];
   currentUserId: string;
   initialTaskId?: string | null;
-  attachmentsByTaskId?: Record<string, TaskAttachment[]>;
   canTrackTime?: boolean;
   isTimeAdmin?: boolean;
-  timeEntriesByTaskId?: Record<string, TimeEntryRow[]>;
+  timeSecondsByTaskId?: Record<string, number>;
   runningEntry?: TimeEntryRow | null;
 }) {
   const [tasks, setTasks] = useState(initialTasks);
@@ -647,15 +630,7 @@ export function TaskBoard({
     return map;
   }, [filtered]);
 
-  const timeSecondsByTaskId = useMemo(() => {
-    if (!canTrackTime) return undefined;
-    const map: Record<string, number> = {};
-    for (const task of tasks) {
-      const seconds = taskLoggedSeconds(task.id, timeEntriesByTaskId);
-      if (seconds > 0) map[task.id] = seconds;
-    }
-    return map;
-  }, [canTrackTime, tasks, timeEntriesByTaskId]);
+  const timeSecondsByTaskId = canTrackTime ? initialTimeSeconds : undefined;
 
   const activeTask = activeId
     ? (tasks.find((task) => task.id === activeId) ?? null)
@@ -906,10 +881,8 @@ export function TaskBoard({
           members={members}
           currentUserId={currentUserId}
           task={editing}
-          attachments={attachmentsByTaskId[editing.id] ?? []}
           canTrackTime={canTrackTime}
           isTimeAdmin={isTimeAdmin}
-          timeEntries={timeEntriesByTaskId[editing.id] ?? []}
           runningEntry={runningEntry}
           onClose={() => setEditing(null)}
         />

@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-import { AppHeader } from "@/components/app-header";
 import { RestoreArchivedTaskButton } from "@/components/restore-archived-task-button";
+import { personDisplayName } from "@/lib/person";
 import { createClient } from "@/lib/supabase/server";
 import { TASK_STATUSES, type TaskStatus } from "@/types/database";
 
@@ -51,45 +51,55 @@ export default async function ListArchivePage({
     .eq("id", id)
     .maybeSingle();
 
-  await supabase.rpc("archive_eligible_tasks", {
+  // Keep archive up to date without blocking the first paint
+  void supabase.rpc("archive_eligible_tasks", {
     p_list_id: listId,
     p_project_id: id,
   });
 
-  const [{ data: memberRows }, { data: taskRows }] = await Promise.all([
-    supabase
-      .from("project_members")
-      .select("user_id, profiles(id, email, full_name)")
-      .eq("project_id", id),
-    supabase
-      .from("tasks")
-      .select(
-        "id, key, title, status, due_date, assigned_to, completed_at, archived_at, updated_at",
-      )
-      .eq("list_id", listId)
-      .not("archived_at", "is", null)
-      .order("archived_at", { ascending: false }),
-  ]);
+  const { data: taskRows } = await supabase
+    .from("tasks")
+    .select(
+      "id, key, title, status, due_date, assigned_to, completed_at, archived_at, updated_at",
+    )
+    .eq("list_id", listId)
+    .not("archived_at", "is", null)
+    .order("archived_at", { ascending: false });
+
+  const assigneeIds = [
+    ...new Set(
+      (taskRows ?? [])
+        .map((task) => task.assigned_to as string | null)
+        .filter((value): value is string => !!value),
+    ),
+  ];
+
+  const { data: personRows } =
+    assigneeIds.length > 0
+      ? await supabase
+          .from("profiles")
+          .select("id, email, full_name, deleted_at")
+          .in("id", assigneeIds)
+      : { data: [] };
 
   const profileById = Object.fromEntries(
-    (memberRows ?? []).map((row) => {
-      const profileRow = Array.isArray(row.profiles)
-        ? row.profiles[0]
-        : row.profiles;
-      const name =
-        (profileRow?.full_name as string | null) ||
-        (profileRow?.email as string | null) ||
-        "Someone";
-      return [row.user_id as string, name];
-    }),
+    (personRows ?? []).map((profile) => [
+      profile.id as string,
+      personDisplayName(
+        {
+          full_name: (profile.full_name as string | null) ?? null,
+          email: (profile.email as string | null) ?? null,
+          deleted_at: (profile.deleted_at as string | null) ?? null,
+        },
+        "Someone",
+      ),
+    ]),
   );
 
   const tasks = taskRows ?? [];
 
   return (
-    <div className="app-shell min-h-full">
-      <AppHeader />
-      <main className="app-container py-6 sm:py-10">
+    <main className="app-container py-6 sm:py-10">
         <Link
           href={`/projects/${id}/lists/${listId}`}
           className="text-sm text-[var(--muted)] hover:text-[var(--foreground)]"
@@ -156,6 +166,5 @@ export default async function ListArchivePage({
           )}
         </ul>
       </main>
-    </div>
   );
 }

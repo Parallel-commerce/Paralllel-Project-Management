@@ -9,6 +9,7 @@ import {
   listTaskComments,
   type CommentWithAuthor,
 } from "@/lib/actions/comments";
+import { personDisplayName } from "@/lib/person";
 
 function formatWhen(iso: string) {
   try {
@@ -22,7 +23,7 @@ function formatWhen(iso: string) {
 }
 
 function authorLabel(comment: CommentWithAuthor) {
-  return comment.author?.full_name || comment.author?.email || "Unknown";
+  return personDisplayName(comment.author, "Unknown");
 }
 
 function initialsFromName(name: string) {

@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-import { AppHeader } from "@/components/app-header";
 import { GenerateReportForm } from "@/components/generate-report-form";
 import { createClient } from "@/lib/supabase/server";
 import type { ProjectRole } from "@/types/database";
@@ -59,9 +58,7 @@ export default async function ProjectReportsPage({
     .order("created_at", { ascending: false });
 
   return (
-    <div className="app-shell min-h-full">
-      <AppHeader />
-      <main className="app-container py-6 sm:py-10">
+    <main className="app-container py-6 sm:py-10">
         <Link
           href={`/projects/${id}`}
           className="text-sm text-[var(--muted)] hover:text-[var(--foreground)]"
@@ -114,6 +111,5 @@ export default async function ProjectReportsPage({
           </section>
         </div>
       </main>
-    </div>
   );
 }

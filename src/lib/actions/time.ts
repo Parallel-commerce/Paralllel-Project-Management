@@ -4,6 +4,14 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
+import type { TimeEntry } from "@/types/database";
+
+type TimeEntryWithProfile = TimeEntry & {
+  profiles?:
+    | { full_name: string | null; email: string; deleted_at?: string | null }
+    | { full_name: string | null; email: string; deleted_at?: string | null }[]
+    | null;
+};
 
 async function requireUser() {
   const supabase = await createClient();
@@ -280,6 +288,43 @@ export async function addManualTimeEntry(
 
   revalidateTime(projectId, listId);
   return { success: true };
+}
+
+export async function listTaskTimeEntries(
+  projectId: string,
+  listId: string,
+  taskId: string,
+) {
+  const access = await requireInternal(projectId);
+  if ("error" in access) {
+    return { error: access.error, entries: [] as TimeEntryWithProfile[] };
+  }
+
+  const { supabase } = access;
+  const taskCheck = await assertTaskInProject(
+    supabase,
+    projectId,
+    listId,
+    taskId,
+  );
+  if ("error" in taskCheck) {
+    return { error: taskCheck.error, entries: [] as TimeEntryWithProfile[] };
+  }
+
+  const { data, error } = await supabase
+    .from("time_entries")
+    .select(
+      "id, project_id, user_id, task_id, description, started_at, ended_at, duration_seconds, source, created_at, updated_at, profiles(full_name, email, deleted_at)",
+    )
+    .eq("task_id", taskId)
+    .not("ended_at", "is", null)
+    .order("started_at", { ascending: false });
+
+  if (error) {
+    return { error: error.message, entries: [] as TimeEntryWithProfile[] };
+  }
+
+  return { entries: (data ?? []) as TimeEntryWithProfile[] };
 }
 
 export async function deleteTimeEntry(

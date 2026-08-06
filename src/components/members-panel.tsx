@@ -8,12 +8,17 @@ import {
   removeMember,
   updateMemberRole,
 } from "@/lib/actions/projects";
+import { personDisplayName } from "@/lib/person";
 import { PROJECT_ROLES, type ProjectRole } from "@/types/database";
 
 type MemberRow = {
   user_id: string;
   role: ProjectRole;
-  profile: { email: string; full_name: string | null } | null;
+  profile: {
+    email: string;
+    full_name: string | null;
+    deleted_at?: string | null;
+  } | null;
 };
 
 type InviteRow = {
@@ -49,7 +54,7 @@ export function MembersPanel({
               key={m.user_id}
               className="flex items-center justify-between gap-2"
             >
-              <span>{m.profile?.full_name || m.profile?.email}</span>
+              <span>{personDisplayName(m.profile, m.profile?.email ?? "Someone")}</span>
               <span className="text-[var(--muted)] capitalize">{m.role}</span>
             </li>
           ))}
@@ -66,7 +71,7 @@ export function MembersPanel({
           <li key={m.user_id} className="flex flex-col gap-2">
             <div className="flex items-start justify-between gap-2">
               <div>
-                <p>{m.profile?.full_name || m.profile?.email}</p>
+                <p>{personDisplayName(m.profile, m.profile?.email ?? "Someone")}</p>
                 <p className="text-xs text-[var(--muted)]">
                   {m.profile?.email}
                 </p>

@@ -12,7 +12,7 @@ import { logActivity, notifyUser, sendInviteMagicLink } from "@/lib/notify";
 import { PROJECT_LOGO_BUCKET } from "@/lib/project-logo";
 import { projectTaskPrefix } from "@/lib/task-key";
 import { TASK_ATTACHMENT_BUCKET } from "@/lib/task-attachments";
-import type { ListVisibility, ProjectRole, TaskStatus } from "@/types/database";
+import type { ListVisibility, ProjectRole, TaskAttachment, TaskStatus } from "@/types/database";
 
 const LOGO_MIME_TYPES = new Set([
   "image/jpeg",
@@ -894,6 +894,50 @@ export async function restoreArchivedTask(
   revalidatePath(`/projects/${projectId}`);
   revalidatePath("/tasks");
   return { success: true };
+}
+
+export async function listTaskAttachments(
+  projectId: string,
+  listId: string,
+  taskId: string,
+) {
+  const { supabase } = await requireUser();
+
+  const { data: list } = await supabase
+    .from("lists")
+    .select("id")
+    .eq("id", listId)
+    .eq("project_id", projectId)
+    .maybeSingle();
+
+  if (!list) {
+    return { error: "List not found.", attachments: [] as TaskAttachment[] };
+  }
+
+  const { data: task } = await supabase
+    .from("tasks")
+    .select("id")
+    .eq("id", taskId)
+    .eq("list_id", listId)
+    .maybeSingle();
+
+  if (!task) {
+    return { error: "Task not found.", attachments: [] as TaskAttachment[] };
+  }
+
+  const { data, error } = await supabase
+    .from("task_attachments")
+    .select(
+      "id, task_id, file_path, file_name, content_type, size_bytes, uploaded_by, created_at",
+    )
+    .eq("task_id", taskId)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    return { error: error.message, attachments: [] as TaskAttachment[] };
+  }
+
+  return { attachments: (data ?? []) as TaskAttachment[] };
 }
 
 export async function uploadTaskAttachment(

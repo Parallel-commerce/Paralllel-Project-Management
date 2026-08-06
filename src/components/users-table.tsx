@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 
 import {
   addMemberToProject,
+  deleteUser,
   removeMemberFromProject,
   setPlatformAdmin,
   updateMemberRole,
@@ -198,13 +199,39 @@ function UserTableRows({
           ) : null}
         </td>
         <td className="px-4 py-3 text-right">
-          <button
-            type="button"
-            onClick={onToggle}
-            className="text-sm text-[var(--accent)] hover:underline"
-          >
-            {isOpen ? "Hide projects" : "Manage projects"}
-          </button>
+          <div className="flex flex-col items-end gap-2">
+            <button
+              type="button"
+              onClick={onToggle}
+              className="text-sm text-[var(--accent)] hover:underline"
+            >
+              {isOpen ? "Hide projects" : "Manage projects"}
+            </button>
+            {user.id !== currentUserId ? (
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => {
+                  const label =
+                    user.full_name?.trim() || user.email || "this user";
+                  if (
+                    !window.confirm(
+                      `Delete ${label}? Their tasks, comments, and messages stay, but they’ll show as (removed) and lose access.`,
+                    )
+                  ) {
+                    return;
+                  }
+                  startTransition(async () => {
+                    const result = await deleteUser(user.id);
+                    onError(result?.error ?? null);
+                  });
+                }}
+                className="text-xs text-[var(--danger)] hover:underline disabled:opacity-50"
+              >
+                Delete user
+              </button>
+            ) : null}
+          </div>
         </td>
       </tr>
       {isOpen ? (

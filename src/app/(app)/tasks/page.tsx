@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { AppHeader } from "@/components/app-header";
 import { createClient } from "@/lib/supabase/server";
 import { TASK_STATUSES, type TaskStatus } from "@/types/database";
 
@@ -208,9 +207,7 @@ export default async function MyTasksPage({
             : "No assigned tasks due through the end of this week.";
 
   return (
-    <div className="app-shell min-h-full">
-      <AppHeader />
-      <main className="app-container py-6 sm:py-10">
+    <main className="app-container py-6 sm:py-10">
         <h1 className="font-display text-2xl tracking-tight sm:text-3xl">My work</h1>
         <p className="mt-2 text-sm text-[var(--muted)]">
           {view === "waiting"
@@ -288,6 +285,5 @@ export default async function MyTasksPage({
           )}
         </ul>
       </main>
-    </div>
   );
 }

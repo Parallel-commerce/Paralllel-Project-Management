@@ -21,10 +21,14 @@ function formatWhen(iso: string) {
   }
 }
 
-export function NotificationBell() {
+export function NotificationBell({
+  initialUnreadCount = 0,
+}: {
+  initialUnreadCount?: number;
+}) {
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
+  const [unreadCount, setUnreadCount] = useState(initialUnreadCount);
   const [pending, startTransition] = useTransition();
 
   function refresh() {
@@ -36,9 +40,8 @@ export function NotificationBell() {
   }
 
   useEffect(() => {
-    refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    setUnreadCount(initialUnreadCount);
+  }, [initialUnreadCount]);
 
   return (
     <div className="relative">

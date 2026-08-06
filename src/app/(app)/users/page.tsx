@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 
 import { AddUserForm } from "@/components/add-user-form";
-import { AppHeader } from "@/components/app-header";
 import { UsersTable, type UserRow } from "@/components/users-table";
 import { createClient } from "@/lib/supabase/server";
 import type { ProjectRole } from "@/types/database";
@@ -31,6 +30,7 @@ export default async function UsersPage() {
       supabase
         .from("profiles")
         .select("id, email, full_name, title, is_platform_admin")
+        .is("deleted_at", null)
         .order("email", { ascending: true }),
       supabase
         .from("project_members")
@@ -72,9 +72,7 @@ export default async function UsersPage() {
     })) ?? [];
 
   return (
-    <div className="app-shell min-h-full">
-      <AppHeader isPlatformAdmin />
-      <main className="app-container py-6 sm:py-10">
+    <main className="app-container py-6 sm:py-10">
         <h1 className="font-display text-3xl tracking-tight">Users</h1>
         <p className="mt-2 text-sm text-[var(--muted)]">
           Invite people, assign projects, and manage platform admins.
@@ -90,6 +88,5 @@ export default async function UsersPage() {
           />
         </div>
       </main>
-    </div>
   );
 }

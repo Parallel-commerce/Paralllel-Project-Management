@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 
 import { sendMessage } from "@/lib/actions/chat";
+import { personDisplayName } from "@/lib/person";
 import { createClient } from "@/lib/supabase/client";
 
 export type ChatMessage = {
@@ -81,12 +82,11 @@ export function ChatThread({
           if (row.sender_id !== currentUserId) {
             const { data: profile } = await supabase
               .from("profiles")
-              .select("full_name, email")
+              .select("full_name, email, deleted_at")
               .eq("id", row.sender_id)
               .maybeSingle();
 
-            const name =
-              profile?.full_name || profile?.email || "Someone";
+            const name = personDisplayName(profile, "Someone");
 
             setMessages((prev) =>
               prev.map((m) =>

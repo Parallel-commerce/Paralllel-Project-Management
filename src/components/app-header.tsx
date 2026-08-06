@@ -5,48 +5,31 @@ import { MobileBottomNav } from "@/components/mobile-bottom-nav";
 import { NotificationBell } from "@/components/notification-bell";
 import { ParallelLogo } from "@/components/parallel-logo";
 import { ProfileMenu } from "@/components/profile-menu";
+import { getCurrentProfile, getSessionUser } from "@/lib/auth";
 import { profileAvatarPublicUrl } from "@/lib/profile-avatar";
-import { createClient } from "@/lib/supabase/server";
 
 export async function AppHeader({
   isPlatformAdmin,
+  initialUnreadCount = 0,
 }: {
   email?: string | null;
   isPlatformAdmin?: boolean;
+  initialUnreadCount?: number;
 } = {}) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const [{ user }, profile] = await Promise.all([
+    getSessionUser(),
+    getCurrentProfile(),
+  ]);
 
-  let platformAdmin = isPlatformAdmin ?? false;
-  let email = user?.email ?? "";
-  let fullName: string | null = null;
-  let title: string | null = null;
-  let avatarUrl: string | null = null;
-
-  if (user) {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select(
-        "email, full_name, title, avatar_path, is_platform_admin, updated_at",
-      )
-      .eq("id", user.id)
-      .maybeSingle();
-
-    if (profile) {
-      email = profile.email || email;
-      fullName = profile.full_name;
-      title = profile.title;
-      const baseUrl = profileAvatarPublicUrl(profile.avatar_path);
-      avatarUrl = baseUrl
-        ? `${baseUrl}?v=${encodeURIComponent(profile.updated_at)}`
-        : null;
-      if (isPlatformAdmin === undefined) {
-        platformAdmin = profile.is_platform_admin ?? false;
-      }
-    }
-  }
+  const platformAdmin =
+    isPlatformAdmin ?? profile?.is_platform_admin ?? false;
+  const email = profile?.email || user?.email || "";
+  const fullName = profile?.full_name ?? null;
+  const title = profile?.title ?? null;
+  const baseUrl = profileAvatarPublicUrl(profile?.avatar_path ?? null);
+  const avatarUrl = baseUrl
+    ? `${baseUrl}?v=${encodeURIComponent(profile?.updated_at ?? "")}`
+    : null;
 
   return (
     <>
@@ -84,7 +67,7 @@ export async function AppHeader({
             </nav>
           </div>
           <div className="flex shrink-0 items-center gap-2 text-sm sm:gap-3">
-            <NotificationBell />
+            <NotificationBell initialUnreadCount={initialUnreadCount} />
             {user ? (
               <ProfileMenu
                 email={email}
@@ -107,12 +90,4 @@ export async function AppHeader({
       <MobileBottomNav isPlatformAdmin={platformAdmin} />
     </>
   );
-}
-
-export async function requireSession() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  return { supabase, user };
 }

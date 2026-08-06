@@ -5,15 +5,17 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import {
   addManualTimeEntry,
   deleteTimeEntry,
+  listTaskTimeEntries,
   startTimer,
   stopTimer,
 } from "@/lib/actions/time";
+import { personDisplayName } from "@/lib/person";
 import type { TimeEntry } from "@/types/database";
 
 export type TimeEntryRow = TimeEntry & {
   profiles?:
-    | { full_name: string | null; email: string }
-    | { full_name: string | null; email: string }[]
+    | { full_name: string | null; email: string; deleted_at?: string | null }
+    | { full_name: string | null; email: string; deleted_at?: string | null }[]
     | null;
 };
 
@@ -47,7 +49,7 @@ function personLabel(entry: TimeEntryRow) {
   const profile = Array.isArray(entry.profiles)
     ? entry.profiles[0]
     : entry.profiles;
-  return profile?.full_name || profile?.email || "Teammate";
+  return personDisplayName(profile, "Teammate");
 }
 
 function todayInputValue() {
@@ -60,7 +62,6 @@ export function TimeTrackingPanel({
   taskId,
   currentUserId,
   isAdmin,
-  entries,
   runningEntry,
 }: {
   projectId: string;
@@ -68,14 +69,33 @@ export function TimeTrackingPanel({
   taskId: string;
   currentUserId: string;
   isAdmin: boolean;
-  entries: TimeEntryRow[];
+  entries?: TimeEntryRow[];
   runningEntry: TimeEntryRow | null;
 }) {
+  const [entries, setEntries] = useState<TimeEntryRow[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [pending, startTransition] = useTransition();
   const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    listTaskTimeEntries(projectId, listId, taskId).then((result) => {
+      if (cancelled) return;
+      if (result.error) {
+        setError(result.error);
+      } else {
+        setEntries(result.entries as TimeEntryRow[]);
+      }
+      setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, listId, taskId]);
 
   const runningOnThisTask =
     !!runningEntry &&
@@ -121,7 +141,7 @@ export function TimeTrackingPanel({
           </p>
         </div>
         <p className="shrink-0 text-sm font-medium tabular-nums">
-          {formatDuration(totalSeconds)}
+          {loading ? "…" : formatDuration(totalSeconds)}
         </p>
       </div>
 
@@ -159,6 +179,14 @@ export function TimeTrackingPanel({
                   } else {
                     setMessage("Timer stopped.");
                     setNote("");
+                    const refreshed = await listTaskTimeEntries(
+                      projectId,
+                      listId,
+                      taskId,
+                    );
+                    if (!refreshed.error) {
+                      setEntries(refreshed.entries as TimeEntryRow[]);
+                    }
                   }
                 });
               }}
@@ -235,6 +263,14 @@ export function TimeTrackingPanel({
             } else {
               setMessage("Manual time added.");
               event.currentTarget.reset();
+              const refreshed = await listTaskTimeEntries(
+                projectId,
+                listId,
+                taskId,
+              );
+              if (!refreshed.error) {
+                setEntries(refreshed.entries as TimeEntryRow[]);
+              }
             }
           });
         }}
@@ -294,7 +330,9 @@ export function TimeTrackingPanel({
       <div className="mt-4 border-t border-[var(--border)] pt-4">
         <h4 className="text-sm font-medium">Entries on this task</h4>
         <ul className="mt-3 max-h-56 space-y-2 overflow-y-auto">
-          {entries.length === 0 && !runningOnThisTask ? (
+          {loading ? (
+            <li className="text-sm text-[var(--muted)]">Loading entries…</li>
+          ) : entries.length === 0 && !runningOnThisTask ? (
             <li className="text-sm text-[var(--muted)]">No time logged yet.</li>
           ) : (
             <>
@@ -356,6 +394,10 @@ export function TimeTrackingPanel({
                               );
                               if (result && "error" in result) {
                                 setError(result.error ?? "Could not delete.");
+                              } else {
+                                setEntries((prev) =>
+                                  prev.filter((item) => item.id !== entry.id),
+                                );
                               }
                             });
                           }}
