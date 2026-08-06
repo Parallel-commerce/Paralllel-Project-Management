@@ -58,8 +58,7 @@ export default async function HomeDashboardPage() {
     supabase
       .from("lists")
       .select("id, name, project_id, created_at, projects(id, name)")
-      .order("created_at", { ascending: false })
-      .limit(12),
+      .order("name", { ascending: true }),
     supabase
       .from("tasks")
       .select(
@@ -72,15 +71,22 @@ export default async function HomeDashboardPage() {
       .limit(8),
   ]);
 
-  const lists: HomeListOption[] = (listRows ?? []).map((row) => {
-    const project = Array.isArray(row.projects) ? row.projects[0] : row.projects;
-    return {
-      id: row.id as string,
-      name: row.name as string,
-      projectId: (project?.id as string) ?? (row.project_id as string),
-      projectName: (project?.name as string) ?? "Project",
-    };
-  });
+  const lists: HomeListOption[] = (listRows ?? [])
+    .map((row) => {
+      const project = Array.isArray(row.projects) ? row.projects[0] : row.projects;
+      const projectId =
+        (row.project_id as string) ||
+        (project?.id as string | undefined) ||
+        "";
+      if (!projectId) return null;
+      return {
+        id: row.id as string,
+        name: row.name as string,
+        projectId,
+        projectName: (project?.name as string) ?? "Project",
+      };
+    })
+    .filter((list): list is HomeListOption => !!list);
 
   // Prefer a stable list order for the create picker: by project then list name
   const listOptions = [...lists].sort((a, b) => {
@@ -89,6 +95,7 @@ export default async function HomeDashboardPage() {
     return a.name.localeCompare(b.name);
   });
 
+  const listShortcuts = listOptions.slice(0, 12);
   const name = firstName(profile?.full_name, profile?.email || user.email || "");
 
   return (
@@ -252,12 +259,12 @@ export default async function HomeDashboardPage() {
               </p>
             </div>
             <ul className="mt-4 grid gap-2 sm:grid-cols-2">
-              {lists.length === 0 ? (
+              {listShortcuts.length === 0 ? (
                 <li className="rounded-xl border border-dashed border-[var(--border)] px-4 py-8 text-sm text-[var(--muted)] sm:col-span-2">
                   No lists to show yet.
                 </li>
               ) : (
-                lists.map((list) => (
+                listShortcuts.map((list) => (
                   <li key={list.id}>
                     <Link
                       href={`/projects/${list.projectId}/lists/${list.id}`}
@@ -277,8 +284,8 @@ export default async function HomeDashboardPage() {
           </section>
         </div>
 
-        <aside className="lg:sticky lg:top-20 lg:self-start">
-          <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
+        <aside className="relative z-10 lg:sticky lg:top-20 lg:self-start">
+          <section className="overflow-visible rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
             <h2 className="font-medium">New task</h2>
             <p className="mt-1 text-sm text-[var(--muted)]">
               Capture work and put it on a list. You&apos;ll be set as assignee.

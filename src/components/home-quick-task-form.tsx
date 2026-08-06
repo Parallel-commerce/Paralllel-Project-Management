@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import { DueDatePicker } from "@/components/due-date-picker";
 import { createTask } from "@/lib/actions/projects";
@@ -20,15 +20,44 @@ export function HomeQuickTaskForm({
   currentUserId: string;
 }) {
   const [listId, setListId] = useState(lists[0]?.id ?? "");
+  const [listOpen, setListOpen] = useState(false);
   const [formKey, setFormKey] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const listPickerRef = useRef<HTMLDivElement>(null);
 
   const selected = useMemo(
-    () => lists.find((list) => list.id === listId) ?? null,
+    () => lists.find((list) => list.id === listId) ?? lists[0] ?? null,
     [lists, listId],
   );
+
+  useEffect(() => {
+    if (!listId && lists[0]?.id) {
+      setListId(lists[0].id);
+    }
+  }, [listId, lists]);
+
+  useEffect(() => {
+    if (!listOpen) return;
+
+    function onPointerDown(event: MouseEvent) {
+      if (!listPickerRef.current?.contains(event.target as Node)) {
+        setListOpen(false);
+      }
+    }
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setListOpen(false);
+    }
+
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [listOpen]);
 
   if (lists.length === 0) {
     return (
@@ -67,6 +96,7 @@ export function HomeQuickTaskForm({
           setMessage("Task created.");
           event.currentTarget.reset();
           setListId(lists[0]?.id ?? "");
+          setListOpen(false);
           setFormKey((value) => value + 1);
         });
       }}
@@ -81,27 +111,70 @@ export function HomeQuickTaskForm({
         />
       </label>
 
-      <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
-        List
-        <select
-          value={listId}
-          onChange={(event) => setListId(event.target.value)}
-          required
-          className="min-h-10 rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)]"
+      <div ref={listPickerRef} className="relative flex flex-col gap-1.5 text-sm text-[var(--muted)]">
+        <span id="home-list-label">List</span>
+        <input type="hidden" name="list_id" value={selected?.id ?? ""} />
+        <button
+          type="button"
+          aria-haspopup="listbox"
+          aria-expanded={listOpen}
+          aria-labelledby="home-list-label"
+          disabled={pending}
+          onClick={() => setListOpen((open) => !open)}
+          className="flex min-h-10 w-full items-center justify-between gap-2 rounded-md border border-[var(--border)] bg-white px-3 py-2 text-left text-sm text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2 disabled:opacity-60"
         >
-          {lists.map((list) => (
-            <option key={list.id} value={list.id}>
-              {list.projectName} · {list.name}
-            </option>
-          ))}
-        </select>
-      </label>
+          <span className="min-w-0 truncate">
+            {selected
+              ? `${selected.projectName} · ${selected.name}`
+              : "Choose a list"}
+          </span>
+          <span aria-hidden className="shrink-0 text-[var(--muted)]">
+            ▾
+          </span>
+        </button>
+
+        {listOpen ? (
+          <ul
+            role="listbox"
+            aria-labelledby="home-list-label"
+            className="absolute left-0 right-0 top-full z-50 mt-1 max-h-60 overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--surface)] py-1 shadow-lg"
+          >
+            {lists.map((list) => {
+              const isSelected = list.id === selected?.id;
+              return (
+                <li key={list.id} role="none">
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={isSelected}
+                    onClick={() => {
+                      setListId(list.id);
+                      setListOpen(false);
+                      setError(null);
+                    }}
+                    className={`flex w-full flex-col items-start gap-0.5 px-3 py-2.5 text-left text-sm transition hover:bg-[var(--accent-soft)] ${
+                      isSelected
+                        ? "bg-[var(--accent-soft)]/70 text-[var(--accent)]"
+                        : "text-[var(--foreground)]"
+                    }`}
+                  >
+                    <span className="font-medium">{list.name}</span>
+                    <span className="text-xs text-[var(--muted)]">
+                      {list.projectName}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        ) : null}
+      </div>
 
       <DueDatePicker name="due_date" label="Due date (optional)" />
 
       <button
         type="submit"
-        disabled={pending || !listId}
+        disabled={pending || !selected}
         className="min-h-10 w-full rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-60 sm:w-auto"
       >
         {pending ? "Creating…" : "Create task"}
