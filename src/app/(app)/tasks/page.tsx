@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { format, parseISO } from "date-fns";
 import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
@@ -21,6 +22,14 @@ function endOfWeekIso() {
 
 function statusLabel(status: TaskStatus) {
   return TASK_STATUSES.find((item) => item.value === status)?.label ?? status;
+}
+
+function formatDueDate(value: string) {
+  try {
+    return format(parseISO(value.slice(0, 10)), "d MMM yyyy");
+  } catch {
+    return value;
+  }
 }
 
 type TaskRow = {
@@ -266,18 +275,20 @@ export default async function MyTasksPage({
                     <p className="mt-1 text-sm text-[var(--muted)]">
                       {task.projectName} · {task.listName}
                     </p>
+                    <p
+                      className={`mt-1 text-sm ${
+                        task.due_date && task.due_date < today
+                          ? "text-[var(--danger)]"
+                          : "text-[var(--muted)]"
+                      }`}
+                    >
+                      {task.due_date
+                        ? `Due ${formatDueDate(task.due_date)}`
+                        : "No due date"}
+                    </p>
                   </div>
                   <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm text-[var(--muted)]">
                     <span>{statusLabel(task.status)}</span>
-                    <span
-                      className={
-                        task.due_date && task.due_date < today
-                          ? "text-[var(--danger)]"
-                          : ""
-                      }
-                    >
-                      {task.due_date ? `Due ${task.due_date}` : "No due date"}
-                    </span>
                   </div>
                 </Link>
               </li>

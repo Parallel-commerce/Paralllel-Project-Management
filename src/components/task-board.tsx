@@ -403,7 +403,7 @@ function TaskModal({
             />
           </label>
           <div className="grid gap-3 sm:grid-cols-2">
-            <DueDatePicker defaultValue={task?.due_date ?? ""} />
+            <DueDatePicker name="due_date" defaultValue={task?.due_date ?? ""} />
             <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
               Status
               <select
