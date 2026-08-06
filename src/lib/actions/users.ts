@@ -130,7 +130,7 @@ export async function invitePlatformUser(formData: FormData) {
   const nextPath =
     invitedProjectIds.length === 1
       ? `/projects/${invitedProjectIds[0]}`
-      : "/projects";
+      : "/home";
 
   const magic = await sendInviteMagicLink(email, nextPath);
 

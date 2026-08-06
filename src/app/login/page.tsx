@@ -34,7 +34,7 @@ export default async function LoginPage({
         ) : null}
 
         <div className="mt-6">
-          <LoginForm nextPath={params.next || "/projects"} />
+          <LoginForm nextPath={params.next || "/home"} />
         </div>
       </div>
 

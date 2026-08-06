@@ -4,7 +4,7 @@ import { useState } from "react";
 
 import { createClient } from "@/lib/supabase/client";
 
-export function LoginForm({ nextPath = "/projects" }: { nextPath?: string }) {
+export function LoginForm({ nextPath = "/home" }: { nextPath?: string }) {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "sent" | "error">(
     "idle",

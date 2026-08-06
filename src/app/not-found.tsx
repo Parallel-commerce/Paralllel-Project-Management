@@ -8,10 +8,10 @@ export default function NotFound() {
         That project or list isn&apos;t available, or you don&apos;t have access.
       </p>
       <Link
-        href="/projects"
+        href="/home"
         className="mt-6 text-sm text-[var(--accent)] hover:underline"
       >
-        Back to projects
+        Back home
       </Link>
     </main>
   );

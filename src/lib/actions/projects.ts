@@ -584,6 +584,7 @@ export async function createTask(projectId: string, listId: string, formData: Fo
   revalidatePath(`/projects/${projectId}/lists/${listId}`);
   revalidatePath(`/projects/${projectId}`);
   revalidatePath("/tasks");
+  revalidatePath("/home");
   return { success: true };
 }
 

@@ -22,7 +22,7 @@ export default async function UsersPage() {
     .maybeSingle();
 
   if (!me?.is_platform_admin) {
-    redirect("/projects");
+    redirect("/home");
   }
 
   const [

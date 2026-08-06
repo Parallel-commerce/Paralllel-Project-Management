@@ -116,7 +116,7 @@ export async function logActivity(input: {
   }
 }
 
-export async function sendInviteMagicLink(email: string, nextPath = "/projects") {
+export async function sendInviteMagicLink(email: string, nextPath = "/home") {
   const supabase = await createClient();
   const origin = appUrl().startsWith("http")
     ? appUrl()

@@ -2,7 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 
 export function ParallelLogo({
-  href = "/projects",
+  href = "/home",
   className = "h-7 w-auto",
   priority = false,
 }: {

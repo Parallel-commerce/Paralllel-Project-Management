@@ -11,9 +11,26 @@ export function MobileBottomNav({
   const pathname = usePathname();
 
   const items = [
-    { href: "/projects", label: "Projects", match: (p: string) => p.startsWith("/projects") },
-    { href: "/tasks", label: "My work", match: (p: string) => p.startsWith("/tasks") },
-    { href: "/messages", label: "Messages", match: (p: string) => p.startsWith("/messages") },
+    {
+      href: "/home",
+      label: "Home",
+      match: (p: string) => p === "/home" || p.startsWith("/home/"),
+    },
+    {
+      href: "/projects",
+      label: "Projects",
+      match: (p: string) => p.startsWith("/projects"),
+    },
+    {
+      href: "/tasks",
+      label: "My work",
+      match: (p: string) => p.startsWith("/tasks"),
+    },
+    {
+      href: "/messages",
+      label: "Messages",
+      match: (p: string) => p.startsWith("/messages"),
+    },
     ...(isPlatformAdmin
       ? [
           {
