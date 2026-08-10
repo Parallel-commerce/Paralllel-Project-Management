@@ -5,12 +5,12 @@ Simple multi-project task tracking for internal teams and clients.
 ## Stack
 
 - **Next.js** (App Router) + TypeScript + Tailwind
-- **Supabase** (Auth magic links, Postgres, Row Level Security)
+- **Supabase** (Auth email OTP + magic links, Postgres, Row Level Security)
 - Deploy on **Vercel** (recommended)
 
 ## Features
 
-- Magic-link sign-in (no passwords)
+- Email OTP sign-in (6-digit code; magic link still included in the same email)
 - Projects with roles: **admin**, **member** (internal), **client**
 - Platform admins with a **/users** management page
 - Invite people by email (sends a Supabase magic-link sign-in email)
@@ -53,12 +53,28 @@ A Supabase project named `parallel-project-management` was provisioned for this 
 
 In **Authentication → URL Configuration**:
 
-- Site URL: `http://localhost:3000` (local) or your Vercel URL (production)
+- Site URL: `https://clients.parallelcommerce.co.uk` (production) or `http://localhost:3000` (local)
 - Redirect URLs allow list:
   - `http://localhost:3000/auth/callback`
+  - `https://clients.parallelcommerce.co.uk/auth/callback`
   - `https://<your-vercel-domain>/auth/callback`
 
-Enable **Email** provider and magic link / OTP email templates as needed.
+Enable **Email** provider. Magic links and email OTP both use the **Magic Link** email template.
+
+### 3b. Email OTP template (required for code sign-in)
+
+In **Authentication → Email Templates → Magic link**, include `{{ .Token }}` so the 6-digit code appears. Example:
+
+```html
+<h2>Sign in to Parallel</h2>
+<p>Your one-time code is:</p>
+<p style="font-size:24px;letter-spacing:4px;"><strong>{{ .Token }}</strong></p>
+<p>Or use this magic link on the same device:</p>
+<p><a href="{{ .ConfirmationURL }}">Sign in</a></p>
+<p>This code expires shortly and can only be used once.</p>
+```
+
+Auth emails (codes + magic links) are sent by **Supabase Auth → SMTP** (e.g. Resend SMTP). That is separate from `RESEND_API_KEY` in the app, which is only for in-app notifications/reports.
 
 ### 4. Run locally
 

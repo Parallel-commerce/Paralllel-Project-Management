@@ -15,11 +15,11 @@ export default async function LoginPage({
       <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-sm sm:p-8">
         <ParallelLogo href="/" className="h-8 w-auto" priority />
         <h1 className="mt-5 font-display text-xl tracking-tight">
-          Sign in with a magic link
+          Sign in
         </h1>
         <p className="mt-2 text-sm text-[var(--muted)]">
-          Enter your email and we&apos;ll send a one-time link. No password
-          needed.
+          We&apos;ll email you a one-time code. No password needed. Works on any
+          device — and the email still includes a magic link if you prefer.
         </p>
 
         {params.error === "removed" ? (
@@ -29,7 +29,7 @@ export default async function LoginPage({
           </p>
         ) : params.error ? (
           <p className="mt-4 rounded-md bg-[var(--accent-soft)] px-3 py-2 text-sm text-[var(--accent-hover)]">
-            Sign-in failed. Request a new magic link.
+            Sign-in failed. Request a new code from the form below.
           </p>
         ) : null}
 
