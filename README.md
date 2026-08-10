@@ -10,7 +10,7 @@ Simple multi-project task tracking for internal teams and clients.
 
 ## Features
 
-- Email OTP sign-in (6-digit code; magic link still included in the same email)
+- Email OTP sign-in (6–8 digit code; magic link still included in the same email)
 - Projects with roles: **admin**, **member** (internal), **client**
 - Platform admins with a **/users** management page
 - Invite people by email (sends a Supabase magic-link sign-in email)
@@ -63,7 +63,7 @@ Enable **Email** provider. Magic links and email OTP both use the **Magic Link**
 
 ### 3b. Email OTP template (required for code sign-in)
 
-In **Authentication → Email Templates → Magic link**, include `{{ .Token }}` so the 6-digit code appears. Example:
+In **Authentication → Email Templates → Magic link**, include `{{ .Token }}` so the one-time code appears (6 or 8 digits, depending on your Auth settings). Example:
 
 ```html
 <h2>Sign in to Parallel</h2>

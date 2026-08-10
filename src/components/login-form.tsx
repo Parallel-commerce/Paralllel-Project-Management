@@ -56,9 +56,10 @@ export function LoginForm({ nextPath = "/home" }: { nextPath?: string }) {
   async function verifyCode(event: React.FormEvent) {
     event.preventDefault();
     const token = code.replace(/\s+/g, "");
-    if (!/^\d{6}$/.test(token)) {
+    // Supabase email OTPs are typically 6 or 8 digits depending on project settings.
+    if (!/^\d{6,8}$/.test(token)) {
       setStatus("error");
-      setMessage("Enter the 6-digit code from your email.");
+      setMessage("Enter the code from your email.");
       return;
     }
 
@@ -104,20 +105,22 @@ export function LoginForm({ nextPath = "/home" }: { nextPath?: string }) {
             inputMode="numeric"
             autoComplete="one-time-code"
             pattern="[0-9]*"
-            maxLength={6}
+            maxLength={8}
             required
             value={code}
             onChange={(event) =>
-              setCode(event.target.value.replace(/[^\d]/g, "").slice(0, 6))
+              setCode(event.target.value.replace(/[^\d]/g, "").slice(0, 8))
             }
-            placeholder="123456"
+            placeholder="12345678"
             className="rounded-md border border-[var(--border)] bg-white px-3 py-2.5 text-center font-display text-xl tracking-[0.35em] text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
           />
         </label>
 
         <button
           type="submit"
-          disabled={status === "loading" || code.length < 6}
+          disabled={
+            status === "loading" || (code.length !== 6 && code.length !== 8)
+          }
           className="rounded-md bg-[var(--accent)] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[var(--accent-hover)] disabled:cursor-not-allowed disabled:opacity-60"
         >
           {status === "loading" ? "Signing in…" : "Sign in"}
