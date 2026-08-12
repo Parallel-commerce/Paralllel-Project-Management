@@ -221,29 +221,74 @@ function TaskListRow({
   );
 }
 
+function statusColumnStyle(status: TaskStatus) {
+  switch (status) {
+    case "todo":
+      return {
+        bg: "bg-[var(--status-todo-bg)]",
+        border: "border-[var(--status-todo-border)]/35",
+        accent: "bg-[var(--status-todo-border)]",
+        label: "text-[var(--status-todo-label)]",
+      };
+    case "in_progress":
+      return {
+        bg: "bg-[var(--status-progress-bg)]",
+        border: "border-[var(--status-progress-border)]/35",
+        accent: "bg-[var(--status-progress-border)]",
+        label: "text-[var(--status-progress-label)]",
+      };
+    case "requiring_feedback":
+      return {
+        bg: "bg-[var(--status-feedback-bg)]",
+        border: "border-[var(--status-feedback-border)]/30",
+        accent: "bg-[var(--status-feedback-border)]",
+        label: "text-[var(--status-feedback-label)]",
+      };
+    case "done":
+      return {
+        bg: "bg-[var(--status-done-bg)]",
+        border: "border-[var(--status-done-border)]/35",
+        accent: "bg-[var(--status-done-border)]",
+        label: "text-[var(--status-done-label)]",
+      };
+  }
+}
+
 function StatusListSection({
+  status,
   label,
   tasks,
   onOpen,
   timeSecondsByTaskId,
 }: {
+  status: TaskStatus;
   label: string;
   tasks: TaskWithPeople[];
   onOpen: (task: TaskWithPeople) => void;
   timeSecondsByTaskId?: Record<string, number>;
 }) {
+  const colors = statusColumnStyle(status);
+
   return (
-    <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)]/50">
-      <div className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-3">
-        <h2 className="text-sm font-medium tracking-tight">
+    <section
+      className={`overflow-hidden rounded-xl border ${colors.border} ${colors.bg}`}
+    >
+      <div
+        className={`flex items-center gap-2.5 border-b ${colors.border} px-4 py-3`}
+      >
+        <span
+          className={`h-2.5 w-2.5 shrink-0 rounded-full ${colors.accent}`}
+          aria-hidden
+        />
+        <h2 className={`text-sm font-medium tracking-tight ${colors.label}`}>
           {label}
-          <span className="ml-2 text-[var(--muted)]">{tasks.length}</span>
+          <span className="ml-2 font-normal opacity-70">{tasks.length}</span>
         </h2>
       </div>
       {tasks.length === 0 ? (
         <p className="px-4 py-6 text-sm text-[var(--muted)]">No tasks</p>
       ) : (
-        <ul className="divide-y divide-[var(--border)]">
+        <ul className="divide-y divide-[var(--border)] bg-[var(--surface)]/70">
           {tasks.map((task) => (
             <TaskListRow
               key={task.id}
@@ -272,18 +317,25 @@ function StatusColumn({
   timeSecondsByTaskId?: Record<string, number>;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
+  const colors = statusColumnStyle(status);
 
   return (
     <section
       ref={setNodeRef}
-      className={`rounded-xl p-3 transition ${
-        isOver ? "bg-[var(--accent-soft)]/70" : "bg-[var(--column)]/70"
+      className={`rounded-xl border p-3 transition ${colors.border} ${
+        isOver ? "bg-[var(--accent-soft)]/80 ring-2 ring-[var(--accent)]/30" : colors.bg
       }`}
     >
-      <h2 className="px-1 text-sm font-medium tracking-tight">
-        {label}
-        <span className="ml-2 text-[var(--muted)]">{tasks.length}</span>
-      </h2>
+      <div className="flex items-center gap-2 px-1">
+        <span
+          className={`h-2.5 w-2.5 shrink-0 rounded-full ${colors.accent}`}
+          aria-hidden
+        />
+        <h2 className={`text-sm font-medium tracking-tight ${colors.label}`}>
+          {label}
+          <span className="ml-2 font-normal opacity-70">{tasks.length}</span>
+        </h2>
+      </div>
       <div className="mt-3 flex min-h-24 flex-col gap-2">
         {tasks.length === 0 ? (
           <p className="px-1 py-6 text-xs text-[var(--muted)]">
@@ -875,6 +927,7 @@ export function TaskBoard({
           {TASK_STATUSES.map((status) => (
             <StatusListSection
               key={status.value}
+              status={status.value}
               label={status.label}
               tasks={grouped[status.value]}
               onOpen={setEditing}

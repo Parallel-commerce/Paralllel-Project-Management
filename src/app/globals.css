@@ -15,6 +15,20 @@
   --column: #f0efed;
   --ink: #0f1117;
   --orange: #e8420a;
+
+  /* Board / list status columns — soft distinction, brand-aligned */
+  --status-todo-bg: #eef1f4;
+  --status-todo-border: #7d8b99;
+  --status-todo-label: #3d4a57;
+  --status-progress-bg: #eaf5f7;
+  --status-progress-border: #4f8f9e;
+  --status-progress-label: #245864;
+  --status-feedback-bg: #fff1ee;
+  --status-feedback-border: #e8420a;
+  --status-feedback-label: #b33208;
+  --status-done-bg: #eef6f0;
+  --status-done-border: #5a9a6e;
+  --status-done-label: #2f5d3d;
 }
 
 @theme inline {
