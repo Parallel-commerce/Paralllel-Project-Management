@@ -11,11 +11,13 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 
 import { DueDatePicker } from "@/components/due-date-picker";
 import { TaskAttachments } from "@/components/task-attachments";
 import { TaskComments } from "@/components/task-comments";
+import { TaskStatusHistory } from "@/components/task-status-history";
 import {
   formatTaskTime,
   TimeTrackingPanel,
@@ -325,8 +327,10 @@ function TaskModal({
   runningEntry?: TimeEntryRow | null;
   onClose: () => void;
 }) {
+  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [historyKey, setHistoryKey] = useState(0);
 
   return (
     <div
@@ -380,6 +384,8 @@ function TaskModal({
                 onClose();
               } else {
                 setError(null);
+                setHistoryKey((value) => value + 1);
+                router.refresh();
               }
             });
           }}
@@ -514,6 +520,11 @@ function TaskModal({
 
         {mode === "edit" && task ? (
           <>
+            <TaskStatusHistory
+              projectId={projectId}
+              taskId={task.id}
+              refreshKey={historyKey}
+            />
             {canTrackTime ? (
               <TimeTrackingPanel
                 projectId={projectId}

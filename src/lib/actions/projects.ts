@@ -577,6 +577,22 @@ export async function createTask(projectId: string, listId: string, formData: Fo
       reported_by: reporter.reportedBy,
       task_key: allocation.task_key,
       task_number: allocation.task_number,
+      status,
+    },
+    clientVisible,
+  });
+
+  await logActivity({
+    projectId,
+    actorId: user.id,
+    entityType: "task",
+    entityId: task.id,
+    action: "status_changed",
+    summary: `Opened “${title}” as ${status.replaceAll("_", " ")}`,
+    metadata: {
+      from: null,
+      to: status,
+      list_visibility: visibility,
     },
     clientVisible,
   });
@@ -693,6 +709,25 @@ export async function updateTask(
         link: deepLink,
       });
     }
+  }
+
+  const statusChanged = before?.status !== status;
+
+  if (statusChanged) {
+    await logActivity({
+      projectId,
+      actorId: user.id,
+      entityType: "task",
+      entityId: taskId,
+      action: "status_changed",
+      summary: `Moved “${title}” to ${status.replaceAll("_", " ")}`,
+      metadata: {
+        from: before?.status ?? null,
+        to: status,
+        list_visibility: visibility,
+      },
+      clientVisible,
+    });
   }
 
   await logActivity({
@@ -1025,4 +1060,70 @@ export async function deleteTaskAttachment(
 
   revalidatePath(`/projects/${projectId}/lists/${listId}`);
   return { success: true };
+}
+
+export type TaskStatusHistoryRow = {
+  id: string;
+  created_at: string;
+  summary: string;
+  from: TaskStatus | null;
+  to: TaskStatus | null;
+  actor: {
+    full_name: string | null;
+    email: string | null;
+    deleted_at: string | null;
+  } | null;
+};
+
+export async function listTaskStatusHistory(
+  projectId: string,
+  taskId: string,
+): Promise<{ error?: string; events: TaskStatusHistoryRow[] }> {
+  const { supabase } = await requireUser();
+
+  const { data, error } = await supabase
+    .from("activity_events")
+    .select(
+      "id, summary, created_at, metadata, profiles!activity_events_actor_id_fkey(full_name, email, deleted_at)",
+    )
+    .eq("project_id", projectId)
+    .eq("entity_type", "task")
+    .eq("entity_id", taskId)
+    .eq("action", "status_changed")
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    return { error: error.message, events: [] };
+  }
+
+  const events: TaskStatusHistoryRow[] = (data ?? []).map((row) => {
+    const profile = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
+    const metadata =
+      row.metadata &&
+      typeof row.metadata === "object" &&
+      !Array.isArray(row.metadata)
+        ? (row.metadata as Record<string, unknown>)
+        : {};
+    const from =
+      typeof metadata.from === "string" ? (metadata.from as TaskStatus) : null;
+    const to =
+      typeof metadata.to === "string" ? (metadata.to as TaskStatus) : null;
+
+    return {
+      id: row.id,
+      created_at: row.created_at,
+      summary: row.summary,
+      from,
+      to,
+      actor: profile
+        ? {
+            full_name: (profile.full_name as string | null) ?? null,
+            email: (profile.email as string | null) ?? null,
+            deleted_at: (profile.deleted_at as string | null) ?? null,
+          }
+        : null,
+    };
+  });
+
+  return { events };
 }

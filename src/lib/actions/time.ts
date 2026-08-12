@@ -104,7 +104,7 @@ export async function startTimer(
   listId: string,
   taskId: string,
   formData?: FormData,
-): Promise<{ error: string } | { success: true }> {
+): Promise<{ error: string } | { success: true; entry: TimeEntry }> {
   const auth = await requireInternal(projectId);
   if (!("ok" in auth)) {
     return { error: auth.error };
@@ -139,23 +139,30 @@ export async function startTimer(
     };
   }
 
-  const { error } = await supabase.from("time_entries").insert({
-    project_id: projectId,
-    task_id: taskId,
-    user_id: user.id,
-    description: description || null,
-    started_at: new Date().toISOString(),
-    ended_at: null,
-    duration_seconds: null,
-    source: "timer",
-  });
+  const startedAt = new Date().toISOString();
+  const { data: entry, error } = await supabase
+    .from("time_entries")
+    .insert({
+      project_id: projectId,
+      task_id: taskId,
+      user_id: user.id,
+      description: description || null,
+      started_at: startedAt,
+      ended_at: null,
+      duration_seconds: null,
+      source: "timer",
+    })
+    .select(
+      "id, project_id, user_id, task_id, description, started_at, ended_at, duration_seconds, source, created_at, updated_at",
+    )
+    .single();
 
-  if (error) {
-    return { error: error.message };
+  if (error || !entry) {
+    return { error: error?.message ?? "Could not start timer." };
   }
 
   revalidateTime(projectId, listId);
-  return { success: true };
+  return { success: true, entry };
 }
 
 export async function stopTimer(

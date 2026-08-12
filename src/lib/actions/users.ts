@@ -89,6 +89,7 @@ export async function invitePlatformUser(formData: FormData) {
     .from("profiles")
     .select("id, email, is_platform_admin")
     .ilike("email", email)
+    .is("deleted_at", null)
     .maybeSingle();
 
   if (existingProfile) {
@@ -132,7 +133,36 @@ export async function invitePlatformUser(formData: FormData) {
       ? `/projects/${invitedProjectIds[0]}`
       : "/home";
 
-  const magic = await sendInviteMagicLink(email, nextPath);
+  const magic = await sendInviteMagicLink(email, nextPath, {
+    fullName,
+    title,
+  });
+
+  // OTP may create the auth user immediately; apply name/title/admin after.
+  const { data: createdOrExisting } = await supabase
+    .from("profiles")
+    .select("id")
+    .ilike("email", email)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  let platformAdminPending = false;
+  if (createdOrExisting) {
+    const { error: profileError } = await supabase
+      .from("profiles")
+      .update({
+        full_name: fullName || null,
+        title: title || null,
+        is_platform_admin: makePlatformAdmin,
+      })
+      .eq("id", createdOrExisting.id);
+
+    if (profileError) {
+      return { error: profileError.message };
+    }
+  } else {
+    platformAdminPending = makePlatformAdmin;
+  }
 
   for (const projectId of invitedProjectIds) {
     revalidatePath(`/projects/${projectId}`);
@@ -144,23 +174,23 @@ export async function invitePlatformUser(formData: FormData) {
     return {
       success: true as const,
       warning:
-        existingProfile || invitedProjectIds.length > 0
-          ? "User updated / invites saved, but the magic-link email failed to send."
-          : "Could not send the magic-link email.",
+        existingProfile || invitedProjectIds.length > 0 || createdOrExisting
+          ? "User updated / invites saved, but the sign-in email failed to send."
+          : "Could not send the sign-in email.",
       message: magic.error,
     };
   }
 
   return {
     success: true as const,
-    message: existingProfile
+    message: createdOrExisting
       ? invitedProjectIds.length > 0
-        ? "User updated, added to projects, and a sign-in email was sent."
-        : "User updated and a sign-in email was sent."
+        ? "User saved, added to projects, and a sign-in email was sent."
+        : "User saved and a sign-in email was sent."
       : invitedProjectIds.length > 0
-        ? "Invites created and a sign-in email was sent. They’ll join the projects when they open the link."
+        ? "Invites created and a sign-in email was sent. They’ll join the projects when they sign in."
         : "Sign-in email sent. They’ll appear here after their first login.",
-    platformAdminPending: !existingProfile && makePlatformAdmin,
+    platformAdminPending,
   };
 }
 

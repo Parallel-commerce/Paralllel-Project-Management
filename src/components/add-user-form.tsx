@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { invitePlatformUser } from "@/lib/actions/users";
@@ -17,6 +18,7 @@ type AllocationRow = {
 };
 
 export function AddUserForm({ projects }: { projects: ProjectOption[] }) {
+  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -31,8 +33,8 @@ export function AddUserForm({ projects }: { projects: ProjectOption[] }) {
     <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 sm:p-5">
       <h2 className="font-medium">Add user</h2>
       <p className="mt-1 text-sm text-[var(--muted)]">
-        Send a magic-link invite. Optionally assign projects now. For brand-new
-        emails, turn on platform admin after their first sign-in.
+        Send a sign-in invite. Name and title are saved with the account.
+        Optionally assign projects now.
       </p>
 
       <form
@@ -66,6 +68,7 @@ export function AddUserForm({ projects }: { projects: ProjectOption[] }) {
             setInfo(message);
             form.reset();
             setAllocations([]);
+            router.refresh();
           });
         }}
       >

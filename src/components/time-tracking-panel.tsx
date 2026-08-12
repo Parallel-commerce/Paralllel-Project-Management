@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 
 import {
@@ -56,6 +57,21 @@ function todayInputValue() {
   return new Date().toISOString().slice(0, 10);
 }
 
+async function refreshEntries(
+  projectId: string,
+  listId: string,
+  taskId: string,
+  setEntries: (entries: TimeEntryRow[]) => void,
+  setError: (error: string | null) => void,
+) {
+  const refreshed = await listTaskTimeEntries(projectId, listId, taskId);
+  if (refreshed.error) {
+    setError(refreshed.error);
+    return;
+  }
+  setEntries(refreshed.entries as TimeEntryRow[]);
+}
+
 export function TimeTrackingPanel({
   projectId,
   listId,
@@ -72,13 +88,21 @@ export function TimeTrackingPanel({
   entries?: TimeEntryRow[];
   runningEntry: TimeEntryRow | null;
 }) {
+  const router = useRouter();
   const [entries, setEntries] = useState<TimeEntryRow[]>([]);
+  const [activeRunning, setActiveRunning] = useState<TimeEntryRow | null>(
+    runningEntry,
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [pending, startTransition] = useTransition();
   const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    setActiveRunning(runningEntry);
+  }, [runningEntry]);
 
   useEffect(() => {
     let cancelled = false;
@@ -98,14 +122,14 @@ export function TimeTrackingPanel({
   }, [projectId, listId, taskId]);
 
   const runningOnThisTask =
-    !!runningEntry &&
-    runningEntry.task_id === taskId &&
-    runningEntry.user_id === currentUserId;
+    !!activeRunning &&
+    activeRunning.task_id === taskId &&
+    activeRunning.user_id === currentUserId;
 
   const runningElsewhere =
-    !!runningEntry &&
-    runningEntry.user_id === currentUserId &&
-    runningEntry.task_id !== taskId;
+    !!activeRunning &&
+    activeRunning.user_id === currentUserId &&
+    activeRunning.task_id !== taskId;
 
   useEffect(() => {
     if (!runningOnThisTask) return;
@@ -114,14 +138,14 @@ export function TimeTrackingPanel({
   }, [runningOnThisTask]);
 
   const liveSeconds = useMemo(() => {
-    if (!runningOnThisTask || !runningEntry) return 0;
+    if (!runningOnThisTask || !activeRunning) return 0;
     return Math.max(
       0,
       Math.floor(
-        (now - new Date(runningEntry.started_at).getTime()) / 1000,
+        (now - new Date(activeRunning.started_at).getTime()) / 1000,
       ),
     );
-  }, [runningEntry, runningOnThisTask, now]);
+  }, [activeRunning, runningOnThisTask, now]);
 
   const totalSeconds = useMemo(() => {
     const completed = entries.reduce(
@@ -146,7 +170,7 @@ export function TimeTrackingPanel({
       </div>
 
       <div className="mt-3 rounded-lg border border-[var(--border)] bg-[var(--background)]/60 px-3 py-3">
-        {runningOnThisTask && runningEntry ? (
+        {runningOnThisTask && activeRunning ? (
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
@@ -155,9 +179,9 @@ export function TimeTrackingPanel({
               <p className="mt-1 font-display text-2xl tabular-nums tracking-tight">
                 {formatClock(liveSeconds)}
               </p>
-              {runningEntry.description ? (
+              {activeRunning.description ? (
                 <p className="mt-1 text-sm text-[var(--muted)]">
-                  {runningEntry.description}
+                  {activeRunning.description}
                 </p>
               ) : null}
             </div>
@@ -167,26 +191,28 @@ export function TimeTrackingPanel({
               onClick={() => {
                 setError(null);
                 setMessage(null);
+                const entryId = activeRunning.id;
                 startTransition(async () => {
                   const result = await stopTimer(
                     projectId,
                     listId,
                     taskId,
-                    runningEntry.id,
+                    entryId,
                   );
                   if (result && "error" in result) {
                     setError(result.error ?? "Could not stop timer.");
                   } else {
+                    setActiveRunning(null);
                     setMessage("Timer stopped.");
                     setNote("");
-                    const refreshed = await listTaskTimeEntries(
+                    await refreshEntries(
                       projectId,
                       listId,
                       taskId,
+                      setEntries,
+                      setError,
                     );
-                    if (!refreshed.error) {
-                      setEntries(refreshed.entries as TimeEntryRow[]);
-                    }
+                    router.refresh();
                   }
                 });
               }}
@@ -205,7 +231,8 @@ export function TimeTrackingPanel({
             className="flex flex-col gap-2"
             onSubmit={(event) => {
               event.preventDefault();
-              const formData = new FormData(event.currentTarget);
+              const form = event.currentTarget;
+              const formData = new FormData(form);
               setError(null);
               setMessage(null);
               startTransition(async () => {
@@ -217,8 +244,12 @@ export function TimeTrackingPanel({
                 );
                 if (result && "error" in result) {
                   setError(result.error ?? "Could not start timer.");
-                } else {
+                } else if (result && "entry" in result) {
+                  setActiveRunning(result.entry);
                   setMessage("Timer started.");
+                  setNote("");
+                  form.reset();
+                  router.refresh();
                 }
               });
             }}
@@ -248,7 +279,8 @@ export function TimeTrackingPanel({
         className="mt-4 grid gap-2 border-t border-[var(--border)] pt-4 sm:grid-cols-2"
         onSubmit={(event) => {
           event.preventDefault();
-          const formData = new FormData(event.currentTarget);
+          const form = event.currentTarget;
+          const formData = new FormData(form);
           setError(null);
           setMessage(null);
           startTransition(async () => {
@@ -262,15 +294,15 @@ export function TimeTrackingPanel({
               setError(result.error ?? "Could not add time.");
             } else {
               setMessage("Manual time added.");
-              event.currentTarget.reset();
-              const refreshed = await listTaskTimeEntries(
+              form.reset();
+              await refreshEntries(
                 projectId,
                 listId,
                 taskId,
+                setEntries,
+                setError,
               );
-              if (!refreshed.error) {
-                setEntries(refreshed.entries as TimeEntryRow[]);
-              }
+              router.refresh();
             }
           });
         }}
@@ -336,13 +368,13 @@ export function TimeTrackingPanel({
             <li className="text-sm text-[var(--muted)]">No time logged yet.</li>
           ) : (
             <>
-              {runningOnThisTask && runningEntry ? (
+              {runningOnThisTask && activeRunning ? (
                 <li className="rounded-lg border border-[var(--accent)]/30 bg-[var(--accent-soft)]/50 px-3 py-2 text-sm">
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <p className="font-medium">Running · you</p>
                       <p className="mt-0.5 text-[var(--muted)]">
-                        {runningEntry.description || "No note"}
+                        {activeRunning.description || "No note"}
                       </p>
                     </div>
                     <span className="tabular-nums">
@@ -398,6 +430,7 @@ export function TimeTrackingPanel({
                                 setEntries((prev) =>
                                   prev.filter((item) => item.id !== entry.id),
                                 );
+                                router.refresh();
                               }
                             });
                           }}

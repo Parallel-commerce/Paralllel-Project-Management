@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 
 import {
@@ -54,6 +55,7 @@ export function UsersTable({
   projects: ProjectOption[];
   currentUserId: string;
 }) {
+  const router = useRouter();
   const [tab, setTab] = useState<"active" | "removed">("active");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
@@ -149,6 +151,7 @@ export function UsersTable({
                       }
                       onError={setError}
                       onInfo={setInfo}
+                      onSuccess={() => router.refresh()}
                       onRequestDelete={() => setConfirmDeleteId(user.id)}
                       startTransition={startTransition}
                     />
@@ -164,6 +167,7 @@ export function UsersTable({
           pending={pending}
           onError={setError}
           onInfo={setInfo}
+          onSuccess={() => router.refresh()}
           startTransition={startTransition}
         />
       )}
@@ -226,6 +230,7 @@ export function UsersTable({
                       );
                       setConfirmDeleteId(null);
                       setTab("removed");
+                      router.refresh();
                     }
                   });
                 }}
@@ -246,12 +251,14 @@ function RemovedUsersPanel({
   pending,
   onError,
   onInfo,
+  onSuccess,
   startTransition,
 }: {
   users: UserRow[];
   pending: boolean;
   onError: (message: string | null) => void;
   onInfo: (message: string | null) => void;
+  onSuccess: () => void;
   startTransition: (fn: () => void) => void;
 }) {
   return (
@@ -283,6 +290,7 @@ function RemovedUsersPanel({
                 pending={pending}
                 onError={onError}
                 onInfo={onInfo}
+                onSuccess={onSuccess}
                 startTransition={startTransition}
               />
             ))
@@ -298,12 +306,14 @@ function RemovedUserRow({
   pending,
   onError,
   onInfo,
+  onSuccess,
   startTransition,
 }: {
   user: UserRow;
   pending: boolean;
   onError: (message: string | null) => void;
   onInfo: (message: string | null) => void;
+  onSuccess: () => void;
   startTransition: (fn: () => void) => void;
 }) {
   const [email, setEmail] = useState(user.previous_email ?? "");
@@ -357,6 +367,7 @@ function RemovedUserRow({
                 onInfo(
                   `${user.full_name?.trim() || result.email} was reinstated. A magic link was sent to ${result.email}.`,
                 );
+                onSuccess();
               }
             });
           }}
@@ -378,6 +389,7 @@ function UserTableRows({
   onToggle,
   onError,
   onInfo,
+  onSuccess,
   onRequestDelete,
   startTransition,
 }: {
@@ -389,6 +401,7 @@ function UserTableRows({
   onToggle: () => void;
   onError: (message: string | null) => void;
   onInfo: (message: string | null) => void;
+  onSuccess: () => void;
   onRequestDelete: () => void;
   startTransition: (fn: () => void) => void;
 }) {
@@ -443,6 +456,9 @@ function UserTableRows({
                     const result = await updateUserProfile(user.id, formData);
                     onError(result?.error ?? null);
                     onInfo(null);
+                    if (!result?.error) {
+                      onSuccess();
+                    }
                   });
                 }}
                 className="self-start rounded-md bg-[var(--accent)] px-2.5 py-1 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50"
@@ -467,6 +483,9 @@ function UserTableRows({
                   const result = await setPlatformAdmin(user.id, enabled);
                   onError(result?.error ?? null);
                   onInfo(null);
+                  if (!result?.error) {
+                    onSuccess();
+                  }
                 });
               }}
             />
@@ -528,6 +547,9 @@ function UserTableRows({
                           );
                           onError(result?.error ?? null);
                           onInfo(null);
+                          if (!result?.error) {
+                            onSuccess();
+                          }
                         });
                       }}
                       className="rounded-md border border-[var(--border)] bg-white px-2 py-1.5 text-sm"
@@ -550,6 +572,9 @@ function UserTableRows({
                             );
                             onError(result?.error ?? null);
                             onInfo(null);
+                            if (!result?.error) {
+                              onSuccess();
+                            }
                           });
                         }}
                         className="text-xs text-[var(--danger)] hover:underline"
@@ -610,6 +635,7 @@ function UserTableRows({
                       if (!result?.error) {
                         setAddProjectId("");
                         setAddRole("client");
+                        onSuccess();
                       }
                     });
                   }}

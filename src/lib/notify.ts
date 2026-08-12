@@ -116,16 +116,29 @@ export async function logActivity(input: {
   }
 }
 
-export async function sendInviteMagicLink(email: string, nextPath = "/home") {
+export async function sendInviteMagicLink(
+  email: string,
+  nextPath = "/home",
+  profile?: { fullName?: string; title?: string },
+) {
   const supabase = await createClient();
   const origin = appUrl().startsWith("http")
     ? appUrl()
     : `https://${appUrl()}`;
 
+  const data: Record<string, string> = {};
+  if (profile?.fullName?.trim()) {
+    data.full_name = profile.fullName.trim();
+  }
+  if (profile?.title?.trim()) {
+    data.title = profile.title.trim();
+  }
+
   const { error } = await supabase.auth.signInWithOtp({
     email: email.trim().toLowerCase(),
     options: {
       shouldCreateUser: true,
+      data,
       emailRedirectTo: `${origin}/auth/callback?next=${encodeURIComponent(nextPath)}`,
     },
   });

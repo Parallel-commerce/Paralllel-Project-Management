@@ -216,7 +216,8 @@ export function HomeQuickTaskForm({
           setError("Choose a list.");
           return;
         }
-        const formData = new FormData(event.currentTarget);
+        const form = event.currentTarget;
+        const formData = new FormData(form);
         formData.set("assigned_to", currentUserId);
         formData.set("reported_by", currentUserId);
         formData.set("status", "todo");
@@ -233,7 +234,7 @@ export function HomeQuickTaskForm({
             return;
           }
           setMessage("Task created.");
-          event.currentTarget.reset();
+          form.reset();
           resetSelection();
           setFormKey((value) => value + 1);
         });

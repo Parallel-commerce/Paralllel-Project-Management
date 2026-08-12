@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import {
@@ -40,6 +41,7 @@ export function MembersPanel({
   members: MemberRow[];
   invites: InviteRow[];
 }) {
+  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -54,7 +56,9 @@ export function MembersPanel({
               key={m.user_id}
               className="flex items-center justify-between gap-2"
             >
-              <span>{personDisplayName(m.profile, m.profile?.email ?? "Someone")}</span>
+              <span>
+                {personDisplayName(m.profile, m.profile?.email ?? "Someone")}
+              </span>
               <span className="text-[var(--muted)] capitalize">{m.role}</span>
             </li>
           ))}
@@ -71,7 +75,9 @@ export function MembersPanel({
           <li key={m.user_id} className="flex flex-col gap-2">
             <div className="flex items-start justify-between gap-2">
               <div>
-                <p>{personDisplayName(m.profile, m.profile?.email ?? "Someone")}</p>
+                <p>
+                  {personDisplayName(m.profile, m.profile?.email ?? "Someone")}
+                </p>
                 <p className="text-xs text-[var(--muted)]">
                   {m.profile?.email}
                 </p>
@@ -84,6 +90,9 @@ export function MembersPanel({
                     startTransition(async () => {
                       const result = await removeMember(projectId, m.user_id);
                       setError(result?.error ?? null);
+                      if (!result?.error) {
+                        router.refresh();
+                      }
                     });
                   }}
                   className="text-xs text-[var(--danger)] hover:underline"
@@ -104,6 +113,9 @@ export function MembersPanel({
                     role,
                   );
                   setError(result?.error ?? null);
+                  if (!result?.error) {
+                    router.refresh();
+                  }
                 });
               }}
               className="rounded-md border border-[var(--border)] bg-white px-2 py-1.5 text-sm outline-none ring-[var(--accent)] focus:ring-2"
@@ -142,6 +154,9 @@ export function MembersPanel({
                     startTransition(async () => {
                       const result = await cancelInvite(projectId, invite.id);
                       setError(result?.error ?? null);
+                      if (!result?.error) {
+                        router.refresh();
+                      }
                     });
                   }}
                   className="text-xs text-[var(--danger)] hover:underline"
@@ -158,7 +173,8 @@ export function MembersPanel({
         className="mt-5 flex flex-col gap-2"
         onSubmit={(event) => {
           event.preventDefault();
-          const formData = new FormData(event.currentTarget);
+          const form = event.currentTarget;
+          const formData = new FormData(form);
           startTransition(async () => {
             const result = await inviteMember(projectId, formData);
             if (result?.error) {
@@ -167,7 +183,8 @@ export function MembersPanel({
             } else {
               setError(null);
               setInfo(result?.message ?? "Person added.");
-              event.currentTarget.reset();
+              form.reset();
+              router.refresh();
             }
           });
         }}
