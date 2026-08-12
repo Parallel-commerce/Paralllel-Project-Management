@@ -83,6 +83,14 @@ the email is opened on a different device/browser.
 Also set **Site URL** to `https://clients.parallelcommerce.co.uk` so
 `{{ .SiteURL }}` points at production.
 
+If you still receive a **“Confirm your email address”** email (no code), that is
+the Confirm signup template. Either:
+
+1. Authentication → Providers → Email → turn **Confirm email** off, or  
+2. Paste the same `{{ .Token }}` body into **Confirm signup** as well.
+
+Parallel auto-confirms new auth users so OTP emails use the Magic Link template.
+
 Auth emails are sent by **Supabase Auth → SMTP** (e.g. Resend SMTP). That is
 separate from `RESEND_API_KEY` in the app.
 

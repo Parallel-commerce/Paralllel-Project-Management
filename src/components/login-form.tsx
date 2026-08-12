@@ -62,6 +62,8 @@ export function LoginForm({ nextPath = "/home" }: { nextPath?: string }) {
     const { error } = await supabase.auth.signInWithOtp({
       email: normalized,
       options: {
+        // Only existing (invited) accounts can sign in from the login page.
+        shouldCreateUser: false,
         // Cross-device sign-in uses the emailed code, or the token_hash link
         // handled by /auth/confirm (not the PKCE ConfirmationURL).
         emailRedirectTo: `${origin}/auth/confirm?next=${encodeURIComponent(nextPath)}`,
@@ -70,6 +72,17 @@ export function LoginForm({ nextPath = "/home" }: { nextPath?: string }) {
 
     if (error) {
       const friendly = friendlyAuthError(error.message);
+      if (
+        error.message.toLowerCase().includes("signups not allowed") ||
+        error.message.toLowerCase().includes("signup is disabled") ||
+        error.message.toLowerCase().includes("user not found")
+      ) {
+        setStatus("error");
+        setMessage(
+          "No account found for that email. Ask Parallel to invite you first.",
+        );
+        return;
+      }
       // If they already requested a code, still move them to the entry step.
       if (
         error.message.toLowerCase().includes("only request this after") ||
