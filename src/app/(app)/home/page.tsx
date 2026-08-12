@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { format, parseISO } from "date-fns";
 
+import { AdminHomeInsights } from "@/components/admin-home-insights";
 import {
   HomeQuickTaskForm,
   type HomeListOption,
@@ -94,6 +95,7 @@ export default async function HomeDashboardPage() {
 
   const listShortcuts = listOptions.slice(0, 12);
   const name = firstName(profile?.full_name, profile?.email || user.email || "");
+  const isPlatformAdmin = !!profile?.is_platform_admin;
 
   return (
     <main className="app-container py-6 sm:py-10">
@@ -106,12 +108,15 @@ export default async function HomeDashboardPage() {
         </h1>
         <p className="mt-2 text-sm text-[var(--muted)]">
           Your projects, lists, and upcoming work — plus a quick way to capture
-          a new task.
+          a new task
+          {isPlatformAdmin ? ", and an operations overview" : ""}.
         </p>
       </div>
 
       <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="space-y-8 min-w-0">
+          {isPlatformAdmin ? <AdminHomeInsights /> : null}
+
           <section>
             <div className="flex items-end justify-between gap-3">
               <div>
