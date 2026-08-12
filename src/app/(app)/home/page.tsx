@@ -6,9 +6,10 @@ import {
   HomeQuickTaskForm,
   type HomeListOption,
 } from "@/components/home-quick-task-form";
+import { StatusTag } from "@/components/status-tag";
 import { getCurrentProfile, requireSessionUser } from "@/lib/auth";
 import { projectLogoPublicUrl } from "@/lib/project-logo";
-import { TASK_STATUSES, type TaskStatus } from "@/types/database";
+import type { TaskStatus } from "@/types/database";
 
 function greetingForNow(date = new Date()) {
   const hour = date.getHours();
@@ -34,10 +35,6 @@ function formatDue(value: string | null) {
   } catch {
     return value;
   }
-}
-
-function statusLabel(status: TaskStatus) {
-  return TASK_STATUSES.find((item) => item.value === status)?.label ?? status;
 }
 
 export default async function HomeDashboardPage() {
@@ -165,10 +162,8 @@ export default async function HomeDashboardPage() {
                             {(list?.name as string) ?? "List"}
                           </p>
                         </div>
-                        <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm text-[var(--muted)]">
-                          <span>
-                            {statusLabel(task.status as TaskStatus)}
-                          </span>
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm text-[var(--muted)]">
+                          <StatusTag status={task.status as TaskStatus} />
                           <span className={overdue ? "text-[var(--danger)]" : ""}>
                             {formatDue(due)}
                           </span>

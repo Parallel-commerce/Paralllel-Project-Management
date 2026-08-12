@@ -2,8 +2,9 @@ import Link from "next/link";
 import { format, parseISO } from "date-fns";
 import { redirect } from "next/navigation";
 
+import { StatusTag } from "@/components/status-tag";
 import { createClient } from "@/lib/supabase/server";
-import { TASK_STATUSES, type TaskStatus } from "@/types/database";
+import type { TaskStatus } from "@/types/database";
 
 type View = "mine" | "reported" | "overdue" | "week" | "waiting";
 
@@ -18,10 +19,6 @@ function endOfWeekIso() {
   const end = new Date(now);
   end.setDate(now.getDate() + daysUntilSunday);
   return end.toISOString().slice(0, 10);
-}
-
-function statusLabel(status: TaskStatus) {
-  return TASK_STATUSES.find((item) => item.value === status)?.label ?? status;
 }
 
 function formatDueDate(value: string) {
@@ -287,8 +284,8 @@ export default async function MyTasksPage({
                         : "No due date"}
                     </p>
                   </div>
-                  <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm text-[var(--muted)]">
-                    <span>{statusLabel(task.status)}</span>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm text-[var(--muted)]">
+                    <StatusTag status={task.status} />
                   </div>
                 </Link>
               </li>

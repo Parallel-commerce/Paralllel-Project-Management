@@ -30,6 +30,7 @@ import {
   updateTaskStatus,
 } from "@/lib/actions/projects";
 import { personDisplayName } from "@/lib/person";
+import { taskStatusColors } from "@/lib/task-status";
 import {
   TASK_STATUSES,
   type Task,
@@ -221,39 +222,6 @@ function TaskListRow({
   );
 }
 
-function statusColumnStyle(status: TaskStatus) {
-  switch (status) {
-    case "todo":
-      return {
-        bg: "bg-[var(--status-todo-bg)]",
-        border: "border-[var(--status-todo-border)]/35",
-        accent: "bg-[var(--status-todo-border)]",
-        label: "text-[var(--status-todo-label)]",
-      };
-    case "in_progress":
-      return {
-        bg: "bg-[var(--status-progress-bg)]",
-        border: "border-[var(--status-progress-border)]/35",
-        accent: "bg-[var(--status-progress-border)]",
-        label: "text-[var(--status-progress-label)]",
-      };
-    case "requiring_feedback":
-      return {
-        bg: "bg-[var(--status-feedback-bg)]",
-        border: "border-[var(--status-feedback-border)]/30",
-        accent: "bg-[var(--status-feedback-border)]",
-        label: "text-[var(--status-feedback-label)]",
-      };
-    case "done":
-      return {
-        bg: "bg-[var(--status-done-bg)]",
-        border: "border-[var(--status-done-border)]/35",
-        accent: "bg-[var(--status-done-border)]",
-        label: "text-[var(--status-done-label)]",
-      };
-  }
-}
-
 function StatusListSection({
   status,
   label,
@@ -267,7 +235,7 @@ function StatusListSection({
   onOpen: (task: TaskWithPeople) => void;
   timeSecondsByTaskId?: Record<string, number>;
 }) {
-  const colors = statusColumnStyle(status);
+  const colors = taskStatusColors(status);
 
   return (
     <section
@@ -317,7 +285,7 @@ function StatusColumn({
   timeSecondsByTaskId?: Record<string, number>;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
-  const colors = statusColumnStyle(status);
+  const colors = taskStatusColors(status);
 
   return (
     <section

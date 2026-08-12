@@ -7,7 +7,8 @@ import {
   type TaskStatusHistoryRow,
 } from "@/lib/actions/projects";
 import { personDisplayName } from "@/lib/person";
-import { TASK_STATUSES, type TaskStatus } from "@/types/database";
+import { StatusTag } from "@/components/status-tag";
+import { taskStatusLabel } from "@/lib/task-status";
 
 function formatWhen(iso: string) {
   try {
@@ -18,11 +19,6 @@ function formatWhen(iso: string) {
   } catch {
     return iso;
   }
-}
-
-function statusLabel(status: TaskStatus | null) {
-  if (!status) return "—";
-  return TASK_STATUSES.find((item) => item.value === status)?.label ?? status;
 }
 
 export function TaskStatusHistory({
@@ -67,10 +63,9 @@ export function TaskStatusHistory({
       </p>
 
       {latest?.to ? (
-        <p className="mt-3 text-sm">
-          <span className="font-medium">{statusLabel(latest.to)}</span>
+        <p className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+          <StatusTag status={latest.to} />
           <span className="text-[var(--muted)]">
-            {" "}
             since {formatWhen(latest.created_at)}
           </span>
         </p>
@@ -92,10 +87,23 @@ export function TaskStatusHistory({
               key={event.id}
               className="rounded-lg border border-[var(--border)] px-3 py-2 text-sm"
             >
-              <p className="font-medium">
-                {event.from
-                  ? `${statusLabel(event.from)} → ${statusLabel(event.to)}`
-                  : `Opened as ${statusLabel(event.to)}`}
+              <p className="flex flex-wrap items-center gap-1.5 font-medium">
+                {event.from && event.to ? (
+                  <>
+                    <StatusTag status={event.from} />
+                    <span className="text-[var(--muted)]">→</span>
+                    <StatusTag status={event.to} />
+                  </>
+                ) : event.to ? (
+                  <>
+                    <span className="text-sm font-normal text-[var(--muted)]">
+                      Opened as
+                    </span>
+                    <StatusTag status={event.to} />
+                  </>
+                ) : (
+                  taskStatusLabel(event.to)
+                )}
               </p>
               <p className="mt-0.5 text-xs text-[var(--muted)]">
                 {personDisplayName(event.actor, "Someone")} ·{" "}

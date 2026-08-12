@@ -6,6 +6,7 @@ import { ActivityFeed } from "@/components/activity-feed";
 import { CreateListForm } from "@/components/create-list-form";
 import { MembersPanel } from "@/components/members-panel";
 import { ProjectSettings } from "@/components/project-settings";
+import { StatusCountTag } from "@/components/status-tag";
 import { requireSessionUser } from "@/lib/auth";
 import { projectLogoPublicUrl } from "@/lib/project-logo";
 import {
@@ -278,7 +279,7 @@ export default async function ProjectPage({
                           {list.visibility}
                         </span>
                       </div>
-                      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--muted)]">
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-[var(--muted)]">
                         {list.stats.total === 0 ? (
                           <span>No tasks yet</span>
                         ) : (
@@ -291,9 +292,11 @@ export default async function ProjectPage({
                               const count = list.stats.byStatus[status.value];
                               if (count === 0) return null;
                               return (
-                                <span key={status.value}>
-                                  {count} {status.label.toLowerCase()}
-                                </span>
+                                <StatusCountTag
+                                  key={status.value}
+                                  status={status.value}
+                                  count={count}
+                                />
                               );
                             })}
                           </>

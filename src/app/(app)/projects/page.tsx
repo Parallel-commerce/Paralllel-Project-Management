@@ -3,6 +3,7 @@ import Image from "next/image";
 
 import { CreateProjectForm } from "@/components/create-project-form";
 import { ParallelLogo } from "@/components/parallel-logo";
+import { StatusCountTag } from "@/components/status-tag";
 import { requireSessionUser } from "@/lib/auth";
 import { projectLogoPublicUrl } from "@/lib/project-logo";
 import {
@@ -155,7 +156,7 @@ export default async function ProjectsPage() {
                             No description
                           </p>
                         )}
-                        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--muted)]">
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-[var(--muted)]">
                           {stats.total === 0 ? (
                             <span>No tasks yet</span>
                           ) : (
@@ -168,9 +169,11 @@ export default async function ProjectsPage() {
                                 const count = stats.byStatus[status.value];
                                 if (count === 0) return null;
                                 return (
-                                  <span key={status.value}>
-                                    {count} {status.label.toLowerCase()}
-                                  </span>
+                                  <StatusCountTag
+                                    key={status.value}
+                                    status={status.value}
+                                    count={count}
+                                  />
                                 );
                               })}
                             </>

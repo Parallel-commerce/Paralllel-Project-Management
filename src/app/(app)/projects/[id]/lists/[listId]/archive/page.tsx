@@ -2,13 +2,10 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { RestoreArchivedTaskButton } from "@/components/restore-archived-task-button";
+import { StatusTag } from "@/components/status-tag";
 import { personDisplayName } from "@/lib/person";
 import { createClient } from "@/lib/supabase/server";
-import { TASK_STATUSES, type TaskStatus } from "@/types/database";
-
-function statusLabel(status: TaskStatus) {
-  return TASK_STATUSES.find((item) => item.value === status)?.label ?? status;
-}
+import type { TaskStatus } from "@/types/database";
 
 function formatDate(value: string | null) {
   if (!value) return "—";
@@ -140,8 +137,8 @@ export default async function ListArchivePage({
                     </p>
                   ) : null}
                   <p className="font-medium">{task.title}</p>
-                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-sm text-[var(--muted)]">
-                    <span>{statusLabel(task.status as TaskStatus)}</span>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm text-[var(--muted)]">
+                    <StatusTag status={task.status as TaskStatus} />
                     <span>
                       Completed {formatDate(task.completed_at as string | null)}
                     </span>
