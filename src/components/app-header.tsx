@@ -39,12 +39,6 @@ export async function AppHeader({
             <ParallelLogo className="h-6 w-auto sm:h-7" />
             <nav className="hidden items-center gap-4 text-sm md:flex">
               <Link
-                href="/home"
-                className="text-[var(--muted)] hover:text-[var(--foreground)]"
-              >
-                Home
-              </Link>
-              <Link
                 href="/projects"
                 className="text-[var(--muted)] hover:text-[var(--foreground)]"
               >
