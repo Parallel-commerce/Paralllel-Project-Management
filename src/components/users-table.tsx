@@ -30,6 +30,8 @@ export type UserRow = {
   is_platform_admin: boolean;
   deleted_at?: string | null;
   previous_email?: string | null;
+  auth_status?: "never_logged_in" | "logged_in" | "logged_out";
+  last_sign_in_at?: string | null;
   memberships: UserMembership[];
 };
 
@@ -42,6 +44,65 @@ function formatRemovedAt(iso: string) {
   } catch {
     return iso;
   }
+}
+
+function formatLastSignIn(iso: string | null | undefined) {
+  if (!iso) return null;
+  try {
+    return new Intl.DateTimeFormat(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(new Date(iso));
+  } catch {
+    return iso;
+  }
+}
+
+function AuthStatusBadge({
+  status,
+  lastSignInAt,
+}: {
+  status?: UserRow["auth_status"];
+  lastSignInAt?: string | null;
+}) {
+  const value = status ?? "never_logged_in";
+  const lastSignIn = formatLastSignIn(lastSignInAt);
+
+  if (value === "logged_in") {
+    return (
+      <span className="inline-flex flex-col gap-0.5">
+        <span className="inline-flex w-fit items-center rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800">
+          Logged in
+        </span>
+        {lastSignIn ? (
+          <span className="text-[11px] text-[var(--muted)]">
+            Since {lastSignIn}
+          </span>
+        ) : null}
+      </span>
+    );
+  }
+
+  if (value === "logged_out") {
+    return (
+      <span className="inline-flex flex-col gap-0.5">
+        <span className="inline-flex w-fit items-center rounded-md bg-[var(--surface-2)] px-2 py-0.5 text-xs font-medium text-[var(--foreground)]">
+          Logged out
+        </span>
+        {lastSignIn ? (
+          <span className="text-[11px] text-[var(--muted)]">
+            Last sign-in {lastSignIn}
+          </span>
+        ) : null}
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex w-fit items-center rounded-md bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-900">
+      Never logged in
+    </span>
+  );
 }
 
 export function UsersTable({
@@ -120,6 +181,7 @@ export function UsersTable({
             <thead className="border-b border-[var(--border)] bg-[var(--surface-2)]/60 text-[var(--muted)]">
               <tr>
                 <th className="px-4 py-3 font-medium">User</th>
+                <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium">Projects</th>
                 <th className="px-4 py-3 font-medium">Platform admin</th>
                 <th className="px-4 py-3 font-medium">Actions</th>
@@ -128,7 +190,7 @@ export function UsersTable({
             <tbody className="divide-y divide-[var(--border)]">
               {users.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-4 py-8 text-[var(--muted)]">
+                  <td colSpan={5} className="px-4 py-8 text-[var(--muted)]">
                     No active users yet.
                   </td>
                 </tr>
@@ -468,6 +530,12 @@ function UserTableRows({
             ) : null}
           </div>
         </td>
+        <td className="px-4 py-3">
+          <AuthStatusBadge
+            status={user.auth_status}
+            lastSignInAt={user.last_sign_in_at}
+          />
+        </td>
         <td className="px-4 py-3 text-[var(--muted)]">
           {user.memberships.length}
         </td>
@@ -519,7 +587,7 @@ function UserTableRows({
       </tr>
       {isOpen ? (
         <tr>
-          <td colSpan={4} className="bg-[var(--background)]/50 px-4 py-3">
+          <td colSpan={5} className="bg-[var(--background)]/50 px-4 py-3">
             {user.memberships.length === 0 ? (
               <p className="text-sm text-[var(--muted)]">
                 Not on any projects.

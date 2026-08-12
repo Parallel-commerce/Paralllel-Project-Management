@@ -247,6 +247,21 @@ export async function inviteMember(projectId: string, formData: FormData) {
     return { error: "Email is required." };
   }
 
+  const { data: inviteMatch, error: inviteMatchError } = await supabase.rpc(
+    "find_profile_by_invite_email",
+    { p_email: email },
+  );
+  if (inviteMatchError) {
+    return { error: inviteMatchError.message };
+  }
+  const matched = Array.isArray(inviteMatch) ? inviteMatch[0] : inviteMatch;
+  if (matched?.is_deleted) {
+    return {
+      error:
+        "That email belongs to a removed user. Ask a platform admin to reinstate them from Users → Removed.",
+    };
+  }
+
   const { data: project } = await supabase
     .from("projects")
     .select("name")

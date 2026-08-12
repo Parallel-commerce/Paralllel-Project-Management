@@ -112,6 +112,7 @@ begin
 
   -- Best-effort auth invalidation. Never roll back the profile soft-delete
   -- if auth tables reject the update (permissions, FKs, etc.).
+  -- Note: email identities use user UUID as provider_id — do not overwrite it.
   begin
     update auth.identities
     set
@@ -121,10 +122,6 @@ begin
           'deleted', true,
           'previous_email', lower(original_email)
         ),
-      provider_id = case
-        when provider = 'email' then tombstone_email
-        else provider_id
-      end,
       email = tombstone_email
     where user_id = p_user_id;
 

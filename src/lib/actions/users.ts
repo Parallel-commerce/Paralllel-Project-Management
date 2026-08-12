@@ -85,6 +85,23 @@ export async function invitePlatformUser(formData: FormData) {
     return { error: "A valid email is required." };
   }
 
+  const { data: inviteMatch, error: inviteMatchError } = await supabase.rpc(
+    "find_profile_by_invite_email",
+    { p_email: email },
+  );
+
+  if (inviteMatchError) {
+    return { error: inviteMatchError.message };
+  }
+
+  const matched = Array.isArray(inviteMatch) ? inviteMatch[0] : inviteMatch;
+  if (matched?.is_deleted) {
+    return {
+      error:
+        "That email belongs to a removed user. Reinstate them from the Removed tab instead of inviting again.",
+    };
+  }
+
   const { data: existingProfile } = await supabase
     .from("profiles")
     .select("id, email, is_platform_admin")

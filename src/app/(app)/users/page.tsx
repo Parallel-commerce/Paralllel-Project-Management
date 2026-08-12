@@ -30,6 +30,7 @@ export default async function UsersPage() {
     { data: removedProfiles },
     { data: memberships },
     { data: projects },
+    { data: loginStatuses },
   ] = await Promise.all([
     supabase
       .from("profiles")
@@ -50,7 +51,12 @@ export default async function UsersPage() {
       .from("projects")
       .select("id, name")
       .order("name", { ascending: true }),
+    supabase.rpc("list_user_login_status"),
   ]);
+
+  const loginStatusByUser = new Map(
+    (loginStatuses ?? []).map((row) => [row.user_id, row]),
+  );
 
   const membershipsByUser = new Map<string, UserRow["memberships"]>();
 
@@ -65,16 +71,21 @@ export default async function UsersPage() {
     membershipsByUser.set(row.user_id, list);
   }
 
-  const users: UserRow[] = (profiles ?? []).map((profile) => ({
-    id: profile.id,
-    email: profile.email,
-    full_name: profile.full_name,
-    title: profile.title,
-    is_platform_admin: profile.is_platform_admin,
-    memberships: (membershipsByUser.get(profile.id) ?? []).sort((a, b) =>
-      a.project_name.localeCompare(b.project_name),
-    ),
-  }));
+  const users: UserRow[] = (profiles ?? []).map((profile) => {
+    const login = loginStatusByUser.get(profile.id);
+    return {
+      id: profile.id,
+      email: profile.email,
+      full_name: profile.full_name,
+      title: profile.title,
+      is_platform_admin: profile.is_platform_admin,
+      auth_status: login?.auth_status ?? "never_logged_in",
+      last_sign_in_at: login?.last_sign_in_at ?? null,
+      memberships: (membershipsByUser.get(profile.id) ?? []).sort((a, b) =>
+        a.project_name.localeCompare(b.project_name),
+      ),
+    };
+  });
 
   const removedUsers: UserRow[] = (removedProfiles ?? []).map((profile) => ({
     id: profile.id,
@@ -84,6 +95,8 @@ export default async function UsersPage() {
     is_platform_admin: false,
     deleted_at: profile.deleted_at,
     previous_email: profile.previous_email,
+    auth_status: "logged_out",
+    last_sign_in_at: null,
     memberships: [],
   }));
 
@@ -97,8 +110,9 @@ export default async function UsersPage() {
     <main className="app-container py-6 sm:py-10">
       <h1 className="font-display text-3xl tracking-tight">Users</h1>
       <p className="mt-2 text-sm text-[var(--muted)]">
-        Invite people, assign projects, and manage platform admins. Removed
-        users keep their history and can be reinstated.
+        Invite people, assign projects, and manage platform admins. Each email
+        can only belong to one account. Status shows whether they’ve signed in.
+        Removed users keep their history and can be reinstated.
       </p>
       <div className="mt-8">
         <AddUserForm projects={projectOptions} />

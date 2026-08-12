@@ -612,6 +612,24 @@ export type Database = {
         Args: { p_user_id: string; p_email?: string | null };
         Returns: undefined;
       };
+      find_profile_by_invite_email: {
+        Args: { p_email: string };
+        Returns: {
+          profile_id: string;
+          is_deleted: boolean;
+          email: string;
+          previous_email: string | null;
+        }[];
+      };
+      list_user_login_status: {
+        Args: { p_user_ids?: string[] | null };
+        Returns: {
+          user_id: string;
+          last_sign_in_at: string | null;
+          has_active_session: boolean;
+          auth_status: "never_logged_in" | "logged_in" | "logged_out";
+        }[];
+      };
       project_task_stats: {
         Args: { p_project_ids: string[] };
         Returns: {
