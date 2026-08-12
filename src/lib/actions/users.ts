@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { sendInviteMagicLink } from "@/lib/notify";
+import { sendInviteMagicLink, sendSignInReminderEmail } from "@/lib/notify";
 import { AVATAR_BUCKET } from "@/lib/profile-avatar";
 import { createClient } from "@/lib/supabase/server";
 import type { ProjectRole } from "@/types/database";
@@ -458,6 +458,55 @@ export async function updateUserProfile(
   revalidatePath("/users");
   revalidatePath("/projects");
   return { success: true };
+}
+
+export async function resendUserInvite(userId: string) {
+  const admin = await requirePlatformAdmin();
+  if ("error" in admin) {
+    return { error: admin.error };
+  }
+
+  const { supabase, user } = admin;
+
+  if (userId === user.id) {
+    return { error: "No need to remind yourself." };
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id, email, full_name, deleted_at")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (!profile || profile.deleted_at) {
+    return { error: "Active user not found." };
+  }
+
+  const email = profile.email?.trim().toLowerCase();
+  if (!email || !email.includes("@") || email.endsWith("@removed.invalid")) {
+    return { error: "This user does not have a valid email address." };
+  }
+
+  const result = await sendSignInReminderEmail({
+    to: email,
+    fullName: profile.full_name,
+  });
+
+  if ("skipped" in result && result.skipped) {
+    return {
+      error:
+        "Email is not configured. Set RESEND_API_KEY (and optionally RESEND_FROM_EMAIL) on the server.",
+    };
+  }
+
+  if ("error" in result && result.error) {
+    return { error: result.error };
+  }
+
+  return {
+    success: true as const,
+    message: `Reminder sent to ${email}.`,
+  };
 }
 
 export async function removeMemberFromProject(

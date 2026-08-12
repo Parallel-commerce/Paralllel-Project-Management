@@ -19,7 +19,12 @@ function appUrl() {
   );
 }
 
-async function sendEmail(to: string, subject: string, text: string) {
+async function sendEmail(
+  to: string,
+  subject: string,
+  text: string,
+  html?: string,
+) {
   const apiKey = process.env.RESEND_API_KEY;
   const from =
     process.env.RESEND_FROM_EMAIL || "Parallel <onboarding@resend.dev>";
@@ -38,6 +43,7 @@ async function sendEmail(to: string, subject: string, text: string) {
     to,
     subject,
     text: absoluteLinkHint,
+    ...(html ? { html } : {}),
   });
 
   if (error) {
@@ -50,6 +56,74 @@ async function sendEmail(to: string, subject: string, text: string) {
 
 export async function sendPlainEmail(to: string, subject: string, text: string) {
   return sendEmail(to, subject, text);
+}
+
+/** Friendly reminder: open Parallel, enter email, use the one-time code. */
+export async function sendSignInReminderEmail(input: {
+  to: string;
+  fullName?: string | null;
+}) {
+  const origin = appUrl().startsWith("http")
+    ? appUrl()
+    : `https://${appUrl()}`;
+  const loginUrl = `${origin}/login`;
+  const firstName =
+    input.fullName?.trim().split(/\s+/)[0] ||
+    input.to.split("@")[0] ||
+    "there";
+
+  const subject = "Your invite to Parallel";
+  const text = [
+    `Hi ${firstName},`,
+    "",
+    "You've been invited to Parallel — Parallel Commerce's project workspace.",
+    "",
+    "Getting started is simple:",
+    `1. Open ${loginUrl}`,
+    "2. Enter this email address",
+    "3. We'll email you a one-time code",
+    "4. Enter the code to sign in — no password needed",
+    "",
+    "If you don't see the code email, check spam or promotions, then try again from the sign-in page.",
+    "",
+    "Questions? Reply to this email or contact Parallel Commerce.",
+    "",
+    "— Parallel",
+  ].join("\n");
+
+  const html = `
+  <div style="font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;line-height:1.5;color:#0f1117;max-width:520px;margin:0 auto;padding:24px;">
+    <p style="font-size:20px;font-weight:700;margin:0 0 16px;">parallel<span style="color:#e8420a;">.</span></p>
+    <p style="margin:0 0 12px;">Hi ${escapeHtml(firstName)},</p>
+    <p style="margin:0 0 16px;">You've been invited to <strong>Parallel</strong> — Parallel Commerce's project workspace.</p>
+    <p style="margin:0 0 8px;font-weight:600;">Getting started is simple:</p>
+    <ol style="margin:0 0 20px;padding-left:20px;">
+      <li style="margin-bottom:6px;">Open the sign-in page</li>
+      <li style="margin-bottom:6px;">Enter <strong>${escapeHtml(input.to)}</strong></li>
+      <li style="margin-bottom:6px;">We'll email you a one-time code</li>
+      <li style="margin-bottom:6px;">Enter the code to sign in — no password needed</li>
+    </ol>
+    <p style="margin:0 0 24px;">
+      <a href="${loginUrl}" style="display:inline-block;background:#e8420a;color:#fff;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:600;">
+        Open Parallel
+      </a>
+    </p>
+    <p style="margin:0 0 8px;font-size:14px;color:#6b6b72;">
+      If you don't see the code email, check spam or promotions, then try again from the sign-in page.
+    </p>
+    <p style="margin:0;font-size:14px;color:#6b6b72;">— Parallel</p>
+  </div>
+  `.trim();
+
+  return sendEmail(input.to, subject, text, html);
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
 }
 
 export async function notifyUser(input: NotifyInput) {

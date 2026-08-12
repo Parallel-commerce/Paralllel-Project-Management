@@ -8,6 +8,7 @@ import {
   deleteUser,
   reinstateUser,
   removeMemberFromProject,
+  resendUserInvite,
   setPlatformAdmin,
   updateMemberRole,
   updateUserProfile,
@@ -573,14 +574,40 @@ function UserTableRows({
               {isOpen ? "Hide projects" : "Manage projects"}
             </button>
             {user.id !== currentUserId ? (
-              <button
-                type="button"
-                disabled={pending}
-                onClick={onRequestDelete}
-                className="rounded-md border border-[var(--danger)]/30 px-2.5 py-1.5 text-xs font-medium text-[var(--danger)] hover:bg-red-50 disabled:opacity-50"
-              >
-                Remove user
-              </button>
+              <>
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={() => {
+                    startTransition(async () => {
+                      const result = await resendUserInvite(user.id);
+                      if (result?.error) {
+                        onError(result.error);
+                        onInfo(null);
+                      } else {
+                        onError(null);
+                        onInfo(
+                          result.message ??
+                            `Reminder sent to ${user.email}.`,
+                        );
+                      }
+                    });
+                  }}
+                  className="rounded-md border border-[var(--border)] px-2.5 py-1.5 text-xs font-medium hover:bg-[var(--surface-2)] disabled:opacity-50"
+                >
+                  {user.auth_status === "never_logged_in"
+                    ? "Resend invite"
+                    : "Send sign-in reminder"}
+                </button>
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={onRequestDelete}
+                  className="rounded-md border border-[var(--danger)]/30 px-2.5 py-1.5 text-xs font-medium text-[var(--danger)] hover:bg-red-50 disabled:opacity-50"
+                >
+                  Remove user
+                </button>
+              </>
             ) : null}
           </div>
         </td>
