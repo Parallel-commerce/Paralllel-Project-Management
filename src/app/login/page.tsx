@@ -18,8 +18,8 @@ export default async function LoginPage({
           Sign in
         </h1>
         <p className="mt-2 text-sm text-[var(--muted)]">
-          We&apos;ll email you a one-time code. No password needed. Works on any
-          device — and the email still includes a magic link if you prefer.
+          We&apos;ll email you a one-time code. Enter it here to sign in — works
+          on any device.
         </p>
 
         {params.error === "removed" ? (

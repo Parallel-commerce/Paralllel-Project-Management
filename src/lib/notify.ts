@@ -139,7 +139,8 @@ export async function sendInviteMagicLink(
     options: {
       shouldCreateUser: true,
       data,
-      emailRedirectTo: `${origin}/auth/callback?next=${encodeURIComponent(nextPath)}`,
+      // Use /auth/confirm so invite links work across devices (token_hash flow).
+      emailRedirectTo: `${origin}/auth/confirm?next=${encodeURIComponent(nextPath)}`,
     },
   });
 

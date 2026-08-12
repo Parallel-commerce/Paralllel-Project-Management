@@ -7,6 +7,19 @@ import { createClient } from "@/lib/supabase/client";
 
 type Step = "email" | "code";
 
+const RESEND_COOLDOWN_SECONDS = 15;
+
+function friendlyAuthError(message: string) {
+  const lower = message.toLowerCase();
+  if (lower.includes("only request this after") || lower.includes("security purposes")) {
+    return "Please wait a few seconds before requesting another code.";
+  }
+  if (lower.includes("rate") || lower.includes("too many")) {
+    return "Too many attempts. Wait a moment, then try again.";
+  }
+  return message;
+}
+
 export function LoginForm({ nextPath = "/home" }: { nextPath?: string }) {
   const router = useRouter();
   const [step, setStep] = useState<Step>("email");
@@ -14,6 +27,7 @@ export function LoginForm({ nextPath = "/home" }: { nextPath?: string }) {
   const [code, setCode] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
   const [message, setMessage] = useState<string | null>(null);
+  const [cooldown, setCooldown] = useState(0);
   const codeInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -22,10 +36,23 @@ export function LoginForm({ nextPath = "/home" }: { nextPath?: string }) {
     }
   }, [step]);
 
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const id = window.setInterval(() => {
+      setCooldown((value) => Math.max(0, value - 1));
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [cooldown]);
+
   async function sendCode(event?: React.FormEvent) {
     event?.preventDefault();
     const normalized = email.trim().toLowerCase();
     if (!normalized) return;
+    if (cooldown > 0) {
+      setStatus("error");
+      setMessage(`Please wait ${cooldown}s before requesting another code.`);
+      return;
+    }
 
     setStatus("loading");
     setMessage(null);
@@ -35,20 +62,35 @@ export function LoginForm({ nextPath = "/home" }: { nextPath?: string }) {
     const { error } = await supabase.auth.signInWithOtp({
       email: normalized,
       options: {
-        // Magic link still works on the same device; OTP works across devices.
-        emailRedirectTo: `${origin}/auth/callback?next=${encodeURIComponent(nextPath)}`,
+        // Cross-device sign-in uses the emailed code, or the token_hash link
+        // handled by /auth/confirm (not the PKCE ConfirmationURL).
+        emailRedirectTo: `${origin}/auth/confirm?next=${encodeURIComponent(nextPath)}`,
       },
     });
 
     if (error) {
+      const friendly = friendlyAuthError(error.message);
+      // If they already requested a code, still move them to the entry step.
+      if (
+        error.message.toLowerCase().includes("only request this after") ||
+        error.message.toLowerCase().includes("security purposes")
+      ) {
+        setEmail(normalized);
+        setStep("code");
+        setCooldown(RESEND_COOLDOWN_SECONDS);
+        setStatus("error");
+        setMessage(friendly);
+        return;
+      }
       setStatus("error");
-      setMessage(error.message);
+      setMessage(friendly);
       return;
     }
 
     setEmail(normalized);
     setCode("");
     setStep("code");
+    setCooldown(RESEND_COOLDOWN_SECONDS);
     setStatus("idle");
     setMessage(null);
   }
@@ -56,7 +98,6 @@ export function LoginForm({ nextPath = "/home" }: { nextPath?: string }) {
   async function verifyCode(event: React.FormEvent) {
     event.preventDefault();
     const token = code.replace(/\s+/g, "");
-    // Supabase email OTPs are typically 6 or 8 digits depending on project settings.
     if (!/^\d{6,8}$/.test(token)) {
       setStatus("error");
       setMessage("Enter the code from your email.");
@@ -78,7 +119,7 @@ export function LoginForm({ nextPath = "/home" }: { nextPath?: string }) {
       setMessage(
         error.message.includes("expired") || error.message.includes("invalid")
           ? "That code is invalid or expired. Request a new one."
-          : error.message,
+          : friendlyAuthError(error.message),
       );
       return;
     }
@@ -93,8 +134,7 @@ export function LoginForm({ nextPath = "/home" }: { nextPath?: string }) {
         <p className="text-sm text-[var(--muted)]">
           We sent a sign-in code to{" "}
           <span className="font-medium text-[var(--foreground)]">{email}</span>.
-          Enter it below. You can also use the magic link in the same email on
-          this device.
+          Enter the code from that email.
         </p>
 
         <label className="flex flex-col gap-2 text-sm text-[var(--muted)]">
@@ -142,11 +182,11 @@ export function LoginForm({ nextPath = "/home" }: { nextPath?: string }) {
           </button>
           <button
             type="button"
-            disabled={status === "loading"}
+            disabled={status === "loading" || cooldown > 0}
             onClick={() => void sendCode()}
             className="text-[var(--accent)] hover:underline disabled:opacity-60"
           >
-            Resend code
+            {cooldown > 0 ? `Resend in ${cooldown}s` : "Resend code"}
           </button>
         </div>
 
@@ -176,10 +216,14 @@ export function LoginForm({ nextPath = "/home" }: { nextPath?: string }) {
 
       <button
         type="submit"
-        disabled={status === "loading"}
+        disabled={status === "loading" || cooldown > 0}
         className="rounded-md bg-[var(--accent)] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[var(--accent-hover)] disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {status === "loading" ? "Sending…" : "Email me a code"}
+        {status === "loading"
+          ? "Sending…"
+          : cooldown > 0
+            ? `Wait ${cooldown}s`
+            : "Email me a code"}
       </button>
 
       {message ? (

@@ -3,33 +3,28 @@ import { NextResponse } from "next/server";
 
 import { createClient } from "@/lib/supabase/server";
 
-function safeNext(value: string | null) {
-  if (value && value.startsWith("/") && !value.startsWith("//")) {
-    return value;
-  }
-  return "/home";
-}
-
+/**
+ * Cross-device magic-link landing page.
+ * Uses token_hash from the email (not PKCE `code`), so the link works even
+ * when the email is opened on a different browser/device than the request.
+ */
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
-  const code = searchParams.get("code");
   const tokenHash = searchParams.get("token_hash");
   const type = (searchParams.get("type") ?? "email") as EmailOtpType;
-  const next = safeNext(searchParams.get("next"));
+  const nextRaw = searchParams.get("next") ?? searchParams.get("callback");
+  const next =
+    nextRaw && nextRaw.startsWith("/") && !nextRaw.startsWith("//")
+      ? nextRaw
+      : "/home";
 
-  const supabase = await createClient();
-
-  // Prefer token_hash (works across devices). Fall back to PKCE code exchange.
   if (tokenHash) {
+    const supabase = await createClient();
     const { error } = await supabase.auth.verifyOtp({
       type,
       token_hash: tokenHash,
     });
-    if (!error) {
-      return NextResponse.redirect(`${origin}${next}`);
-    }
-  } else if (code) {
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
+
     if (!error) {
       return NextResponse.redirect(`${origin}${next}`);
     }

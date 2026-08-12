@@ -63,18 +63,28 @@ Enable **Email** provider. Magic links and email OTP both use the **Magic Link**
 
 ### 3b. Email OTP template (required for code sign-in)
 
-In **Authentication → Email Templates → Magic link**, include `{{ .Token }}` so the one-time code appears (6 or 8 digits, depending on your Auth settings). Example:
+In **Authentication → Email Templates → Magic link**, use this body so emails
+include the code and a cross-device sign-in link:
 
 ```html
 <h2>Sign in to Parallel</h2>
 <p>Your one-time code is:</p>
 <p style="font-size:24px;letter-spacing:4px;"><strong>{{ .Token }}</strong></p>
-<p>Or use this magic link on the same device:</p>
-<p><a href="{{ .ConfirmationURL }}">Sign in</a></p>
+<p>Or click this link to sign in:</p>
+<p><a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email">Sign in to Parallel</a></p>
 <p>This code expires shortly and can only be used once.</p>
 ```
 
-Auth emails (codes + magic links) are sent by **Supabase Auth → SMTP** (e.g. Resend SMTP). That is separate from `RESEND_API_KEY` in the app, which is only for in-app notifications/reports.
+Subject suggestion: `Your Parallel sign-in code: {{ .Token }}`
+
+Do **not** use `{{ .ConfirmationURL }}` for the button — that link breaks when
+the email is opened on a different device/browser.
+
+Also set **Site URL** to `https://clients.parallelcommerce.co.uk` so
+`{{ .SiteURL }}` points at production.
+
+Auth emails are sent by **Supabase Auth → SMTP** (e.g. Resend SMTP). That is
+separate from `RESEND_API_KEY` in the app.
 
 ### 4. Run locally
 
