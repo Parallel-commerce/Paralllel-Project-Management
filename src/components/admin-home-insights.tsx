@@ -1,22 +1,13 @@
 import Link from "next/link";
-import { format, parseISO } from "date-fns";
 
-import { StatusCountTag, StatusTag } from "@/components/status-tag";
+import { StatusCountTag } from "@/components/status-tag";
+import { TaskWorkLink } from "@/components/task-work-link";
 import { personDisplayName } from "@/lib/person";
 import { createClient } from "@/lib/supabase/server";
 import { TASK_STATUSES, type TaskStatus } from "@/types/database";
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
-}
-
-function formatDue(value: string | null) {
-  if (!value) return null;
-  try {
-    return format(parseISO(value.slice(0, 10)), "d MMM yyyy");
-  } catch {
-    return value;
-  }
 }
 
 function formatWhen(iso: string) {
@@ -116,26 +107,26 @@ export async function AdminHomeInsights() {
       .not("due_date", "is", null)
       .lt("due_date", today)
       .order("due_date", { ascending: true })
-      .limit(8),
+      .limit(5),
     supabase
       .from("tasks")
       .select("id, key, title, due_date, status, list_id, project_id")
       .is("archived_at", null)
       .eq("status", "requiring_feedback")
       .order("updated_at", { ascending: false })
-      .limit(8),
+      .limit(5),
     supabase
       .from("task_comments")
       .select(
         "id, body, created_at, created_by, task_id, profiles(id, full_name, email, deleted_at)",
       )
       .order("created_at", { ascending: false })
-      .limit(8),
+      .limit(5),
     supabase
       .from("activity_events")
       .select("id, summary, created_at, project_id, actor_id")
       .order("created_at", { ascending: false })
-      .limit(12),
+      .limit(6),
   ]);
 
   const byStatus = emptyStatusCounts();
@@ -252,7 +243,7 @@ export async function AdminHomeInsights() {
       if (b.due_date) return 1;
       return a.title.localeCompare(b.title);
     })
-    .slice(0, 8);
+    .slice(0, 5);
 
   const neverLoggedIn = (loginStatusResult.data ?? []).filter(
     (row) => row.auth_status === "never_logged_in",
@@ -303,11 +294,11 @@ export async function AdminHomeInsights() {
   });
 
   return (
-    <section className="space-y-6">
+    <section className="space-y-5 sm:space-y-6">
       <div className="flex items-end justify-between gap-3">
         <div>
           <h2 className="font-medium">Operations</h2>
-          <p className="mt-1 text-sm text-[var(--muted)]">
+          <p className="mt-1 hidden text-sm text-[var(--muted)] sm:block">
             Across all projects — what needs attention and what&apos;s moving.
           </p>
         </div>
@@ -319,8 +310,8 @@ export async function AdminHomeInsights() {
         </Link>
       </div>
 
-      <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)]/70 px-4 py-4 sm:px-5">
-        <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)]/70 px-4 py-3.5 sm:px-5 sm:py-4">
+        <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
           <div>
             <dt className="text-xs text-[var(--muted)]">Open work</dt>
             <dd className="mt-1 text-xl font-medium tabular-nums tracking-tight">
@@ -350,7 +341,7 @@ export async function AdminHomeInsights() {
             </dd>
           </div>
         </dl>
-        <div className="mt-4 flex flex-wrap items-center gap-1.5 border-t border-[var(--border)] pt-4">
+        <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-[var(--border)] pt-3 sm:mt-4 sm:pt-4">
           {TASK_STATUSES.filter((s) => s.value !== "done").map((status) => (
             <StatusCountTag
               key={status.value}
@@ -365,69 +356,84 @@ export async function AdminHomeInsights() {
             <span className="text-xs text-[var(--muted)]">No tasks yet</span>
           ) : null}
         </div>
+        <p className="mt-3 text-sm text-[var(--muted)]">
+          {neverLoggedIn > 0 ? (
+            <>
+              <span className="font-medium text-[var(--foreground)]">
+                {neverLoggedIn}
+              </span>{" "}
+              {neverLoggedIn === 1 ? "person has" : "people have"} never signed
+              in.{" "}
+              <Link
+                href="/users"
+                className="text-[var(--accent)] hover:underline"
+              >
+                Review on Users
+              </Link>
+            </>
+          ) : (
+            <>
+              Everyone with access has signed in at least once.{" "}
+              <Link
+                href="/users"
+                className="text-[var(--accent)] hover:underline"
+              >
+                Manage users
+              </Link>
+            </>
+          )}
+        </p>
       </div>
 
       <div>
         <h3 className="text-sm font-medium">Needs attention</h3>
-        <p className="mt-1 text-sm text-[var(--muted)]">
+        <p className="mt-1 hidden text-sm text-[var(--muted)] sm:block">
           Overdue work and tasks waiting on feedback.
         </p>
-        <ul className="mt-3 divide-y divide-[var(--border)] border-y border-[var(--border)]">
+        <ul className="mt-2.5 space-y-2 sm:mt-3">
           {attentionTasks.length === 0 ? (
-            <li className="px-1 py-6 text-sm text-[var(--muted)]">
+            <li className="rounded-xl border border-dashed border-[var(--border)] px-4 py-5 text-sm text-[var(--muted)] sm:py-6">
               No overdue or feedback tasks.
             </li>
           ) : (
-            attentionTasks.map((task) => {
-              const due = formatDue(task.due_date);
-              return (
-                <li key={task.id}>
-                  <Link
-                    href={`/projects/${task.project_id}/lists/${task.list_id}?task=${task.id}`}
-                    className="flex flex-col gap-1 px-1 py-3.5 hover:bg-[var(--surface)]/60 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
-                  >
-                    <div className="min-w-0">
-                      {task.key ? (
-                        <p className="text-xs font-medium tabular-nums tracking-wide text-[var(--muted)]">
-                          {task.key}
-                        </p>
-                      ) : null}
-                      <p className="truncate font-medium">{task.title}</p>
-                      <p className="mt-0.5 truncate text-sm text-[var(--muted)]">
-                        {task.projectName} · {task.listName}
-                        {task.reason === "overdue" ? " · Overdue" : ""}
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm text-[var(--muted)]">
-                      <StatusTag status={task.status} />
-                      {due ? (
-                        <span
-                          className={
-                            task.reason === "overdue"
-                              ? "text-[var(--danger)]"
-                              : ""
-                          }
-                        >
-                          {due}
-                        </span>
-                      ) : null}
-                    </div>
-                  </Link>
-                </li>
-              );
-            })
+            attentionTasks.map((task) => (
+              <li key={task.id}>
+                <TaskWorkLink
+                  href={`/projects/${task.project_id}/lists/${task.list_id}?task=${task.id}`}
+                  title={task.title}
+                  status={task.status}
+                  taskKey={task.key}
+                  dueDate={task.due_date}
+                  projectName={task.projectName}
+                  listName={task.listName}
+                  todayIso={today}
+                />
+              </li>
+            ))
           )}
         </ul>
       </div>
 
-      <div>
-        <h3 className="text-sm font-medium">Recent comments</h3>
-        <p className="mt-1 text-sm text-[var(--muted)]">
-          Latest discussion across projects.
-        </p>
-        <ul className="mt-3 divide-y divide-[var(--border)] border-y border-[var(--border)]">
+      <details className="group border-y border-[var(--border)]">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 py-3 text-sm font-medium marker:content-none [&::-webkit-details-marker]:hidden">
+          <span>
+            Recent comments
+            {comments.length > 0 ? (
+              <span className="ml-2 font-normal text-[var(--muted)]">
+                {comments.length}
+              </span>
+            ) : null}
+          </span>
+          <span
+            aria-hidden
+            className="text-[var(--muted)] transition group-open:rotate-180"
+          >
+            ▾
+          </span>
+        </summary>
+        <ul className="mb-3 divide-y divide-[var(--border)] border-t border-[var(--border)]">
           {comments.length === 0 ? (
-            <li className="px-1 py-6 text-sm text-[var(--muted)]">
+            <li className="px-1 py-5 text-sm text-[var(--muted)]">
               No comments yet.
             </li>
           ) : (
@@ -435,7 +441,7 @@ export async function AdminHomeInsights() {
               <li key={comment.id}>
                 <Link
                   href={`/projects/${comment.projectId}/lists/${comment.listId}?task=${comment.taskId}`}
-                  className="block px-1 py-3.5 hover:bg-[var(--surface)]/60"
+                  className="block px-1 py-3 hover:bg-[var(--surface)]/60 sm:py-3.5"
                 >
                   <p className="text-sm leading-relaxed">
                     {truncate(comment.body)}
@@ -451,53 +457,33 @@ export async function AdminHomeInsights() {
             ))
           )}
         </ul>
-      </div>
+      </details>
 
-      <div>
-        <h3 className="text-sm font-medium">People</h3>
-        <p className="mt-1 text-sm text-[var(--muted)]">
-          Sign-in health across the workspace.
-        </p>
-        <div className="mt-3 border-y border-[var(--border)] px-1 py-4 text-sm">
-          {neverLoggedIn > 0 ? (
-            <p>
-              <span className="font-medium">{neverLoggedIn}</span>{" "}
-              {neverLoggedIn === 1 ? "person has" : "people have"} been invited
-              but never signed in.{" "}
-              <Link
-                href="/users"
-                className="text-[var(--accent)] hover:underline"
-              >
-                Review on Users
-              </Link>
-            </p>
-          ) : (
-            <p className="text-[var(--muted)]">
-              Everyone with access has signed in at least once.{" "}
-              <Link
-                href="/users"
-                className="text-[var(--accent)] hover:underline"
-              >
-                Manage users
-              </Link>
-            </p>
-          )}
-        </div>
-      </div>
-
-      <div>
-        <h3 className="text-sm font-medium">Recent activity</h3>
-        <p className="mt-1 text-sm text-[var(--muted)]">
-          Creates, status moves, comments, and invites.
-        </p>
-        <ul className="mt-3 divide-y divide-[var(--border)] border-y border-[var(--border)]">
+      <details className="group border-b border-[var(--border)]">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 py-3 text-sm font-medium marker:content-none [&::-webkit-details-marker]:hidden">
+          <span>
+            Recent activity
+            {activity.length > 0 ? (
+              <span className="ml-2 font-normal text-[var(--muted)]">
+                {activity.length}
+              </span>
+            ) : null}
+          </span>
+          <span
+            aria-hidden
+            className="text-[var(--muted)] transition group-open:rotate-180"
+          >
+            ▾
+          </span>
+        </summary>
+        <ul className="mb-3 divide-y divide-[var(--border)] border-t border-[var(--border)]">
           {activity.length === 0 ? (
-            <li className="px-1 py-6 text-sm text-[var(--muted)]">
+            <li className="px-1 py-5 text-sm text-[var(--muted)]">
               No activity yet.
             </li>
           ) : (
             activity.map((event) => (
-              <li key={event.id} className="px-1 py-3.5">
+              <li key={event.id} className="px-1 py-3 sm:py-3.5">
                 <p className="text-sm">{event.summary}</p>
                 <p className="mt-1 text-xs text-[var(--muted)]">
                   {event.actorName} ·{" "}
@@ -513,7 +499,7 @@ export async function AdminHomeInsights() {
             ))
           )}
         </ul>
-      </div>
+      </details>
     </section>
   );
 }

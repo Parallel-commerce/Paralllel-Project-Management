@@ -101,6 +101,7 @@ export default async function MessagesPage() {
           ) : null}
           <MessagesInbox
             conversations={conversations}
+            canDelete={!isOnlyClient}
             emptyCopy={
               isOnlyClient
                 ? "Pick a project to message the team."

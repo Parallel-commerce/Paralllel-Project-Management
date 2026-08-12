@@ -1,8 +1,7 @@
 import Link from "next/link";
-import { format, parseISO } from "date-fns";
 import { redirect } from "next/navigation";
 
-import { StatusTag } from "@/components/status-tag";
+import { TaskWorkLink } from "@/components/task-work-link";
 import { createClient } from "@/lib/supabase/server";
 import type { TaskStatus } from "@/types/database";
 
@@ -19,14 +18,6 @@ function endOfWeekIso() {
   const end = new Date(now);
   end.setDate(now.getDate() + daysUntilSunday);
   return end.toISOString().slice(0, 10);
-}
-
-function formatDueDate(value: string) {
-  try {
-    return format(parseISO(value.slice(0, 10)), "d MMM yyyy");
-  } catch {
-    return value;
-  }
 }
 
 type TaskRow = {
@@ -214,7 +205,13 @@ export default async function MyTasksPage({
 
   return (
     <main className="app-container py-6 sm:py-10">
-        <h1 className="font-display text-2xl tracking-tight sm:text-3xl">My work</h1>
+      <div className="max-w-3xl">
+        <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
+          Tasks
+        </p>
+        <h1 className="mt-1 font-display text-2xl tracking-tight sm:text-3xl">
+          My work
+        </h1>
         <p className="mt-2 text-sm text-[var(--muted)]">
           {view === "waiting"
             ? "Tasks across your projects that need client feedback."
@@ -222,76 +219,57 @@ export default async function MyTasksPage({
               ? "Open tasks you raised or were marked as the reporter on."
               : "Tasks assigned to you across every project."}
         </p>
+      </div>
 
-        <div className="scroll-x-fade mt-6 -mx-4 flex gap-2 px-4 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
-          {tabs.map((tab) => (
+      <div className="scroll-x-fade mt-5 -mx-4 flex gap-1.5 px-4 pb-1 sm:mx-0 sm:mt-6 sm:flex-wrap sm:overflow-visible sm:px-0">
+        {tabs.map((tab) => (
+          <Link
+            key={tab.id}
+            href={`/tasks?view=${tab.id}`}
+            className={`shrink-0 rounded-lg px-3 py-1.5 text-sm transition ${
+              view === tab.id
+                ? "bg-[var(--ink)] text-white"
+                : "border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] hover:border-[var(--foreground)]/15 hover:bg-white"
+            }`}
+          >
+            {tab.label}
+          </Link>
+        ))}
+      </div>
+
+      <ul className="mt-5 max-w-3xl space-y-2 sm:mt-6">
+        {tasks.length === 0 ? (
+          <li className="rounded-xl border border-dashed border-[var(--border)] bg-[var(--surface)]/60 px-4 py-10 text-center">
+            <p className="font-medium">Nothing here</p>
+            <p className="mt-1 text-sm text-[var(--muted)]">{emptyCopy}</p>
             <Link
-              key={tab.id}
-              href={`/tasks?view=${tab.id}`}
-              className={`shrink-0 rounded-md px-3 py-2 text-sm ${
-                view === tab.id
-                  ? "bg-[var(--accent)] text-white"
-                  : "border border-[var(--border)] bg-[var(--surface)] hover:bg-[var(--surface-2)]"
-              }`}
+              href="/projects"
+              className="mt-4 inline-block text-sm text-[var(--accent)] hover:underline"
             >
-              {tab.label}
+              Browse projects
             </Link>
-          ))}
-        </div>
-
-        <ul className="mt-6 divide-y divide-[var(--border)] border-y border-[var(--border)] sm:mt-8">
-          {tasks.length === 0 ? (
-            <li className="px-1 py-12 text-center">
-              <p className="font-medium">Nothing here</p>
-              <p className="mt-1 text-sm text-[var(--muted)]">{emptyCopy}</p>
-              <Link
-                href="/projects"
-                className="mt-4 inline-block text-sm text-[var(--accent)] hover:underline"
-              >
-                Browse projects
-              </Link>
+          </li>
+        ) : (
+          tasks.map((task) => (
+            <li key={task.id}>
+              <TaskWorkLink
+                href={
+                  task.projectId
+                    ? `/projects/${task.projectId}/lists/${task.listId}?task=${task.id}`
+                    : "/projects"
+                }
+                title={task.title}
+                status={task.status}
+                taskKey={task.key}
+                dueDate={task.due_date}
+                projectName={task.projectName}
+                listName={task.listName}
+                todayIso={today}
+              />
             </li>
-          ) : (
-            tasks.map((task) => (
-              <li key={task.id}>
-                <Link
-                  href={
-                    task.projectId
-                      ? `/projects/${task.projectId}/lists/${task.listId}?task=${task.id}`
-                      : "/projects"
-                  }
-                  className="flex flex-col gap-2 px-1 py-4 active:bg-[var(--surface)]/60 sm:flex-row sm:items-center sm:justify-between sm:gap-1 sm:hover:bg-[var(--surface)]/60"
-                >
-                  <div className="min-w-0">
-                    {task.key ? (
-                      <p className="text-xs font-medium tabular-nums tracking-wide text-[var(--muted)]">
-                        {task.key}
-                      </p>
-                    ) : null}
-                    <p className="font-medium">{task.title}</p>
-                    <p className="mt-1 text-sm text-[var(--muted)]">
-                      {task.projectName} · {task.listName}
-                    </p>
-                    <p
-                      className={`mt-1 text-sm ${
-                        task.due_date && task.due_date < today
-                          ? "text-[var(--danger)]"
-                          : "text-[var(--muted)]"
-                      }`}
-                    >
-                      {task.due_date
-                        ? `Due ${formatDueDate(task.due_date)}`
-                        : "No due date"}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm text-[var(--muted)]">
-                    <StatusTag status={task.status} />
-                  </div>
-                </Link>
-              </li>
-            ))
-          )}
-        </ul>
-      </main>
+          ))
+        )}
+      </ul>
+    </main>
   );
 }

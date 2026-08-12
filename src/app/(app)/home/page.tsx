@@ -1,13 +1,12 @@
 import Image from "next/image";
 import Link from "next/link";
-import { format, parseISO } from "date-fns";
 
 import { AdminHomeInsights } from "@/components/admin-home-insights";
 import {
   HomeQuickTaskForm,
   type HomeListOption,
 } from "@/components/home-quick-task-form";
-import { StatusTag } from "@/components/status-tag";
+import { TaskWorkLink } from "@/components/task-work-link";
 import { getCurrentProfile, requireSessionUser } from "@/lib/auth";
 import { projectLogoPublicUrl } from "@/lib/project-logo";
 import type { TaskStatus } from "@/types/database";
@@ -29,15 +28,6 @@ function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function formatDue(value: string | null) {
-  if (!value) return "No due date";
-  try {
-    return format(parseISO(value.slice(0, 10)), "d MMM yyyy");
-  } catch {
-    return value;
-  }
-}
-
 export default async function HomeDashboardPage() {
   const { supabase, user } = await requireSessionUser();
   const profile = await getCurrentProfile();
@@ -52,7 +42,7 @@ export default async function HomeDashboardPage() {
       .from("projects")
       .select("id, name, description, logo_path, created_at")
       .order("updated_at", { ascending: false })
-      .limit(8),
+      .limit(4),
     supabase
       .from("lists")
       .select("id, name, project_id, created_at, projects(id, name)")
@@ -66,7 +56,7 @@ export default async function HomeDashboardPage() {
       .neq("status", "done")
       .is("archived_at", null)
       .order("due_date", { ascending: true, nullsFirst: false })
-      .limit(8),
+      .limit(5),
   ]);
 
   const lists: HomeListOption[] = (listRows ?? [])
@@ -86,14 +76,12 @@ export default async function HomeDashboardPage() {
     })
     .filter((list): list is HomeListOption => !!list);
 
-  // Prefer a stable list order for the create picker: by project then list name
   const listOptions = [...lists].sort((a, b) => {
     const byProject = a.projectName.localeCompare(b.projectName);
     if (byProject !== 0) return byProject;
     return a.name.localeCompare(b.name);
   });
 
-  const listShortcuts = listOptions.slice(0, 12);
   const name = firstName(profile?.full_name, profile?.email || user.email || "");
   const isPlatformAdmin = !!profile?.is_platform_admin;
 
@@ -106,191 +94,78 @@ export default async function HomeDashboardPage() {
         <h1 className="mt-1 font-display text-2xl tracking-tight sm:text-3xl">
           {greetingForNow()}, {name}
         </h1>
-        <p className="mt-2 text-sm text-[var(--muted)]">
-          Your projects, lists, and upcoming work — plus a quick way to capture
-          a new task
+        <p className="mt-2 hidden text-sm text-[var(--muted)] sm:block">
+          Your projects and upcoming work — plus a quick way to capture a new
+          task
           {isPlatformAdmin ? ", and an operations overview" : ""}.
         </p>
       </div>
 
-      <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_20rem]">
-        <div className="space-y-8 min-w-0">
-          {isPlatformAdmin ? <AdminHomeInsights /> : null}
+      <div className="mt-6 flex flex-col gap-6 lg:mt-8 lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-8">
+        {isPlatformAdmin ? (
+          <div className="order-4 min-w-0 lg:order-none lg:col-start-1 lg:row-start-1">
+            <AdminHomeInsights />
+          </div>
+        ) : null}
 
-          <section>
-            <div className="flex items-end justify-between gap-3">
-              <div>
-                <h2 className="font-medium">Upcoming tasks</h2>
-                <p className="mt-1 text-sm text-[var(--muted)]">
-                  Assigned to you, ordered by due date.
-                </p>
-              </div>
-              <Link
-                href="/tasks"
-                className="shrink-0 text-sm text-[var(--accent)] hover:underline"
-              >
-                My work
-              </Link>
-            </div>
-            <ul className="mt-4 divide-y divide-[var(--border)] border-y border-[var(--border)]">
-              {(upcomingRows ?? []).length === 0 ? (
-                <li className="px-1 py-8 text-sm text-[var(--muted)]">
-                  Nothing assigned right now. Create a task or check My work.
-                </li>
-              ) : (
-                (upcomingRows ?? []).map((task) => {
-                  const project = Array.isArray(task.projects)
-                    ? task.projects[0]
-                    : task.projects;
-                  const list = Array.isArray(task.lists)
-                    ? task.lists[0]
-                    : task.lists;
-                  const due = task.due_date as string | null;
-                  const overdue = !!due && due < today;
-                  return (
-                    <li key={task.id as string}>
-                      <Link
-                        href={`/projects/${task.project_id}/lists/${task.list_id}?task=${task.id}`}
-                        className="flex flex-col gap-1 px-1 py-3.5 hover:bg-[var(--surface)]/60 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
-                      >
-                        <div className="min-w-0">
-                          {task.key ? (
-                            <p className="text-xs font-medium tabular-nums tracking-wide text-[var(--muted)]">
-                              {task.key as string}
-                            </p>
-                          ) : null}
-                          <p className="truncate font-medium">
-                            {task.title as string}
-                          </p>
-                          <p className="mt-0.5 truncate text-sm text-[var(--muted)]">
-                            {(project?.name as string) ?? "Project"} ·{" "}
-                            {(list?.name as string) ?? "List"}
-                          </p>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm text-[var(--muted)]">
-                          <StatusTag status={task.status as TaskStatus} />
-                          <span className={overdue ? "text-[var(--danger)]" : ""}>
-                            {formatDue(due)}
-                          </span>
-                        </div>
-                      </Link>
-                    </li>
-                  );
-                })
-              )}
-            </ul>
-          </section>
-
-          <section>
-            <div className="flex items-end justify-between gap-3">
-              <div>
-                <h2 className="font-medium">Your projects</h2>
-                <p className="mt-1 text-sm text-[var(--muted)]">
-                  Jump back into recent projects.
-                </p>
-              </div>
-              <Link
-                href="/projects"
-                className="shrink-0 text-sm text-[var(--accent)] hover:underline"
-              >
-                All projects
-              </Link>
-            </div>
-            <ul className="mt-4 space-y-2">
-              {(projects ?? []).length === 0 ? (
-                <li className="rounded-xl border border-dashed border-[var(--border)] px-4 py-8 text-sm text-[var(--muted)]">
-                  No projects yet.{" "}
-                  <Link href="/projects" className="text-[var(--accent)] hover:underline">
-                    Open projects
-                  </Link>{" "}
-                  to get started.
-                </li>
-              ) : (
-                (projects ?? []).map((project) => {
-                  const logoUrl = projectLogoPublicUrl(project.logo_path);
-                  return (
-                    <li key={project.id}>
-                      <Link
-                        href={`/projects/${project.id}`}
-                        className="group flex min-h-[3.75rem] items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-3 transition hover:border-[var(--foreground)]/15 hover:bg-white"
-                      >
-                        {logoUrl ? (
-                          <Image
-                            src={logoUrl}
-                            alt=""
-                            width={40}
-                            height={40}
-                            className="h-10 w-10 shrink-0 rounded-lg border border-[var(--border)] bg-white object-cover"
-                          />
-                        ) : (
-                          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--accent-soft)] font-display text-sm text-[var(--accent)]">
-                            {project.name.slice(0, 1).toUpperCase()}
-                          </span>
-                        )}
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate font-medium tracking-tight">
-                            {project.name}
-                          </p>
-                          {project.description ? (
-                            <p className="mt-0.5 line-clamp-1 text-sm text-[var(--muted)]">
-                              {project.description}
-                            </p>
-                          ) : null}
-                        </div>
-                        <span
-                          aria-hidden
-                          className="shrink-0 text-[var(--muted)] transition group-hover:text-[var(--accent)]"
-                        >
-                          →
-                        </span>
-                      </Link>
-                    </li>
-                  );
-                })
-              )}
-            </ul>
-          </section>
-
-          <section>
+        <section
+          className={`order-1 min-w-0 lg:order-none lg:col-start-1 ${
+            isPlatformAdmin ? "lg:row-start-2" : "lg:row-start-1"
+          }`}
+        >
+          <div className="flex items-end justify-between gap-3">
             <div>
-              <h2 className="font-medium">Lists</h2>
-              <p className="mt-1 text-sm text-[var(--muted)]">
-                Shortcuts into boards across your projects.
+              <h2 className="font-medium">Upcoming tasks</h2>
+              <p className="mt-1 hidden text-sm text-[var(--muted)] sm:block">
+                Assigned to you, ordered by due date.
               </p>
             </div>
-            <ul className="mt-4 grid gap-2 sm:grid-cols-2">
-              {listShortcuts.length === 0 ? (
-                <li className="rounded-xl border border-dashed border-[var(--border)] px-4 py-8 text-sm text-[var(--muted)] sm:col-span-2">
-                  No lists to show yet.
-                </li>
-              ) : (
-                listShortcuts.map((list) => (
-                  <li key={list.id}>
-                    <Link
-                      href={`/projects/${list.projectId}/lists/${list.id}`}
-                      className="flex min-h-[3.5rem] flex-col justify-center rounded-xl border border-[var(--border)] bg-[var(--column)]/70 px-3 py-3 transition hover:border-[var(--foreground)]/15 hover:bg-[var(--surface)]"
-                    >
-                      <p className="truncate font-medium tracking-tight">
-                        {list.name}
-                      </p>
-                      <p className="mt-0.5 truncate text-xs text-[var(--muted)]">
-                        {list.projectName}
-                      </p>
-                    </Link>
+            <Link
+              href="/tasks"
+              className="shrink-0 text-sm text-[var(--accent)] hover:underline"
+            >
+              My work
+            </Link>
+          </div>
+          <ul className="mt-3 space-y-2 sm:mt-4">
+            {(upcomingRows ?? []).length === 0 ? (
+              <li className="rounded-xl border border-dashed border-[var(--border)] px-4 py-6 text-sm text-[var(--muted)] sm:py-8">
+                Nothing assigned right now. Create a task or check My work.
+              </li>
+            ) : (
+              (upcomingRows ?? []).map((task) => {
+                const project = Array.isArray(task.projects)
+                  ? task.projects[0]
+                  : task.projects;
+                const list = Array.isArray(task.lists)
+                  ? task.lists[0]
+                  : task.lists;
+                return (
+                  <li key={task.id as string}>
+                    <TaskWorkLink
+                      href={`/projects/${task.project_id}/lists/${task.list_id}?task=${task.id}`}
+                      title={task.title as string}
+                      status={task.status as TaskStatus}
+                      taskKey={(task.key as string | null) ?? null}
+                      dueDate={(task.due_date as string | null) ?? null}
+                      projectName={(project?.name as string) ?? "Project"}
+                      listName={(list?.name as string) ?? "List"}
+                      todayIso={today}
+                    />
                   </li>
-                ))
-              )}
-            </ul>
-          </section>
-        </div>
+                );
+              })
+            )}
+          </ul>
+        </section>
 
-        <aside className="relative z-10 lg:sticky lg:top-20 lg:self-start">
-          <section className="overflow-visible rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
+        <aside className="order-2 relative z-10 lg:order-none lg:col-start-2 lg:row-span-3 lg:row-start-1 lg:sticky lg:top-20 lg:self-start">
+          <section className="overflow-visible rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 sm:p-5">
             <h2 className="font-medium">New task</h2>
-            <p className="mt-1 text-sm text-[var(--muted)]">
+            <p className="mt-1 hidden text-sm text-[var(--muted)] sm:block">
               Capture work and put it on a list. You&apos;ll be set as assignee.
             </p>
-            <div className="mt-4">
+            <div className="mt-3 sm:mt-4">
               <HomeQuickTaskForm
                 lists={listOptions}
                 currentUserId={user.id}
@@ -298,6 +173,83 @@ export default async function HomeDashboardPage() {
             </div>
           </section>
         </aside>
+
+        <section
+          className={`order-3 min-w-0 lg:order-none lg:col-start-1 ${
+            isPlatformAdmin ? "lg:row-start-3" : "lg:row-start-2"
+          }`}
+        >
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <h2 className="font-medium">Your projects</h2>
+              <p className="mt-1 hidden text-sm text-[var(--muted)] sm:block">
+                Jump back into recent projects.
+              </p>
+            </div>
+            <Link
+              href="/projects"
+              className="shrink-0 text-sm text-[var(--accent)] hover:underline"
+            >
+              All projects
+            </Link>
+          </div>
+          <ul className="mt-3 space-y-2 sm:mt-4">
+            {(projects ?? []).length === 0 ? (
+              <li className="rounded-xl border border-dashed border-[var(--border)] px-4 py-6 text-sm text-[var(--muted)] sm:py-8">
+                No projects yet.{" "}
+                <Link
+                  href="/projects"
+                  className="text-[var(--accent)] hover:underline"
+                >
+                  Open projects
+                </Link>{" "}
+                to get started.
+              </li>
+            ) : (
+              (projects ?? []).map((project) => {
+                const logoUrl = projectLogoPublicUrl(project.logo_path);
+                return (
+                  <li key={project.id}>
+                    <Link
+                      href={`/projects/${project.id}`}
+                      className="group flex min-h-[3.25rem] items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2.5 transition hover:border-[var(--foreground)]/15 hover:bg-white sm:min-h-[3.75rem] sm:py-3"
+                    >
+                      {logoUrl ? (
+                        <Image
+                          src={logoUrl}
+                          alt=""
+                          width={40}
+                          height={40}
+                          className="h-9 w-9 shrink-0 rounded-lg border border-[var(--border)] bg-white object-cover sm:h-10 sm:w-10"
+                        />
+                      ) : (
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--accent-soft)] font-display text-sm text-[var(--accent)] sm:h-10 sm:w-10">
+                          {project.name.slice(0, 1).toUpperCase()}
+                        </span>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-medium tracking-tight">
+                          {project.name}
+                        </p>
+                        {project.description ? (
+                          <p className="mt-0.5 hidden line-clamp-1 text-sm text-[var(--muted)] sm:block">
+                            {project.description}
+                          </p>
+                        ) : null}
+                      </div>
+                      <span
+                        aria-hidden
+                        className="shrink-0 text-[var(--muted)] transition group-hover:text-[var(--accent)]"
+                      >
+                        →
+                      </span>
+                    </Link>
+                  </li>
+                );
+              })
+            )}
+          </ul>
+        </section>
       </div>
     </main>
   );

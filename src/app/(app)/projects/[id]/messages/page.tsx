@@ -83,6 +83,7 @@ export default async function ProjectMessagesPage({
             conversations={conversations}
             projectId={projectId}
             startableClients={clients}
+            canDelete
             emptyCopy="Start a conversation with a client below, or wait for them to message you."
           />
         </div>

@@ -38,9 +38,13 @@ export type UserRow = {
 
 function formatRemovedAt(iso: string) {
   try {
-    return new Intl.DateTimeFormat(undefined, {
-      dateStyle: "medium",
-      timeStyle: "short",
+    return new Intl.DateTimeFormat("en-GB", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
     }).format(new Date(iso));
   } catch {
     return iso;
@@ -50,9 +54,13 @@ function formatRemovedAt(iso: string) {
 function formatLastSignIn(iso: string | null | undefined) {
   if (!iso) return null;
   try {
-    return new Intl.DateTimeFormat(undefined, {
-      dateStyle: "medium",
-      timeStyle: "short",
+    return new Intl.DateTimeFormat("en-GB", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
     }).format(new Date(iso));
   } catch {
     return iso;

@@ -4,7 +4,7 @@ import Link from "next/link";
 export function ParallelLogo({
   href = "/home",
   className = "h-7 w-auto",
-  priority = false,
+  priority = true,
 }: {
   href?: string;
   className?: string;

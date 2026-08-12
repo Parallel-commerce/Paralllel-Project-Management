@@ -358,3 +358,32 @@ export async function listProjectClients(projectId: string) {
 
   return { clients };
 }
+
+export async function deleteConversation(conversationId: string) {
+  const { supabase } = await requireUser();
+
+  const { data: conversation } = await supabase
+    .from("conversations")
+    .select("id, project_id")
+    .eq("id", conversationId)
+    .maybeSingle();
+
+  if (!conversation) {
+    return { error: "Conversation not found." };
+  }
+
+  const { error } = await supabase
+    .from("conversations")
+    .delete()
+    .eq("id", conversationId);
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  revalidatePath("/messages");
+  revalidatePath(`/messages/${conversationId}`);
+  revalidatePath(`/projects/${conversation.project_id}`);
+  revalidatePath(`/projects/${conversation.project_id}/messages`);
+  return { success: true as const };
+}

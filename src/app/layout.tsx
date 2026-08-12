@@ -19,6 +19,10 @@ export const metadata: Metadata = {
   title: "parallel. — Project Task Tracker",
   description:
     "Track tasks across projects with shared lists for your team and clients.",
+  icons: {
+    icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
+    apple: [{ url: "/apple-icon" }],
+  },
 };
 
 export const viewport: Viewport = {
