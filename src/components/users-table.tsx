@@ -423,7 +423,7 @@ function RemovedUserRow({
           onClick={() => {
             if (
               !window.confirm(
-                `Reinstate ${user.full_name?.trim() || email}? They’ll get a magic link at ${email.trim()}.`,
+                `Reinstate ${user.full_name?.trim() || email}? They’ll get a sign-in code at ${email.trim()}.`,
               )
             ) {
               return;
@@ -436,7 +436,7 @@ function RemovedUserRow({
               } else {
                 onError(null);
                 onInfo(
-                  `${user.full_name?.trim() || result.email} was reinstated. A magic link was sent to ${result.email}.`,
+                  `${user.full_name?.trim() || result.email} was reinstated. A sign-in code was sent to ${result.email}.`,
                 );
                 onSuccess();
               }

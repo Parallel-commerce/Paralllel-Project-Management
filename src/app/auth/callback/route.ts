@@ -1,39 +1,7 @@
-import { type EmailOtpType } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
-import { createClient } from "@/lib/supabase/server";
-
-function safeNext(value: string | null) {
-  if (value && value.startsWith("/") && !value.startsWith("//")) {
-    return value;
-  }
-  return "/home";
-}
-
+/** Old magic-link emails land here. Sign-in is code-only now. */
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url);
-  const code = searchParams.get("code");
-  const tokenHash = searchParams.get("token_hash");
-  const type = (searchParams.get("type") ?? "email") as EmailOtpType;
-  const next = safeNext(searchParams.get("next"));
-
-  const supabase = await createClient();
-
-  // Prefer token_hash (works across devices). Fall back to PKCE code exchange.
-  if (tokenHash) {
-    const { error } = await supabase.auth.verifyOtp({
-      type,
-      token_hash: tokenHash,
-    });
-    if (!error) {
-      return NextResponse.redirect(`${origin}${next}`);
-    }
-  } else if (code) {
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
-    if (!error) {
-      return NextResponse.redirect(`${origin}${next}`);
-    }
-  }
-
+  const { origin } = new URL(request.url);
   return NextResponse.redirect(`${origin}/login?error=auth`);
 }

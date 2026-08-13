@@ -1,5 +1,6 @@
 import { Resend } from "resend";
 
+import { appUrl } from "@/lib/app-url";
 import { createClient } from "@/lib/supabase/server";
 
 type NotifyInput = {
@@ -11,14 +12,6 @@ type NotifyInput = {
   email?: string | null;
 };
 
-function appUrl() {
-  return (
-    process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ||
-    process.env.VERCEL_URL?.replace(/\/$/, "") ||
-    "http://localhost:3000"
-  );
-}
-
 async function sendEmail(
   to: string,
   subject: string,
@@ -27,7 +20,8 @@ async function sendEmail(
 ) {
   const apiKey = process.env.RESEND_API_KEY;
   const from =
-    process.env.RESEND_FROM_EMAIL || "Parallel <onboarding@resend.dev>";
+    process.env.RESEND_FROM_EMAIL ||
+    "Parallel Commerce <login@parallelcommerce.co.uk>";
 
   if (!apiKey) {
     return { skipped: true as const };
@@ -190,15 +184,11 @@ export async function logActivity(input: {
   }
 }
 
-export async function sendInviteMagicLink(
+export async function sendSignInCode(
   email: string,
-  nextPath = "/home",
   profile?: { fullName?: string; title?: string },
 ) {
   const supabase = await createClient();
-  const origin = appUrl().startsWith("http")
-    ? appUrl()
-    : `https://${appUrl()}`;
 
   const data: Record<string, string> = {};
   if (profile?.fullName?.trim()) {
@@ -213,17 +203,15 @@ export async function sendInviteMagicLink(
     options: {
       shouldCreateUser: true,
       data,
-      // Use /auth/confirm so invite links work across devices (token_hash flow).
-      emailRedirectTo: `${origin}/auth/confirm?next=${encodeURIComponent(nextPath)}`,
     },
   });
 
   if (error) {
-    console.error("invite magic link failed:", error.message);
+    console.error("sign-in code email failed:", error.message);
     return { error: error.message };
   }
 
   return { success: true as const };
 }
 
-export { appUrl };
+export { appUrl } from "@/lib/app-url";

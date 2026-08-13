@@ -5,15 +5,15 @@ Simple multi-project task tracking for internal teams and clients.
 ## Stack
 
 - **Next.js** (App Router) + TypeScript + Tailwind
-- **Supabase** (Auth email OTP + magic links, Postgres, Row Level Security)
+- **Supabase** (Auth email OTP, Postgres, Row Level Security)
 - Deploy on **Vercel** (recommended)
 
 ## Features
 
-- Email OTP sign-in (6–8 digit code; magic link still included in the same email)
+- Email OTP sign-in (6–8 digit code)
 - Projects with roles: **admin**, **member** (internal), **client**
 - Platform admins with a **/users** management page
-- Invite people by email (sends a Supabase magic-link sign-in email)
+- Invite people by email (sends a one-time sign-in code)
 - Lists: **public** (all project members) or **private** (creator + project admins)
 - Tasks with title, description, due date, status, creator, and assignee
 - Kanban-style board by status: To do / In progress / Requiring feedback / Done
@@ -44,7 +44,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon-or-publishable-key>
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 # Optional transactional email (assignments, comments, feedback):
 # RESEND_API_KEY=re_xxx
-# RESEND_FROM_EMAIL=Parallel <onboarding@resend.dev>
+# RESEND_FROM_EMAIL=Parallel Commerce <login@parallelcommerce.co.uk>
 ```
 
 A Supabase project named `parallel-project-management` was provisioned for this app. Schema lives in [`supabase/migrations`](supabase/migrations).
@@ -55,39 +55,32 @@ In **Authentication → URL Configuration**:
 
 - Site URL: `https://clients.parallelcommerce.co.uk` (production) or `http://localhost:3000` (local)
 - Redirect URLs allow list:
-  - `http://localhost:3000/auth/callback`
-  - `https://clients.parallelcommerce.co.uk/auth/callback`
-  - `https://<your-vercel-domain>/auth/callback`
+  - `http://localhost:3000/**`
+  - `https://clients.parallelcommerce.co.uk/**`
 
-Enable **Email** provider. Magic links and email OTP both use the **Magic Link** email template.
+Enable **Email** provider. Sign-in is code-only; do not include a link in the
+email templates.
 
 ### 3b. Email OTP template (required for code sign-in)
 
-In **Authentication → Email Templates → Magic link**, use this body so emails
-include the code and a cross-device sign-in link:
+In **Authentication → Email Templates**, paste this into **Magic link**,
+**Reset password**, and **Confirm signup**. Code-only — no sign-in link:
 
 ```html
 <h2>Sign in to Parallel</h2>
 <p>Your one-time code is:</p>
 <p style="font-size:24px;letter-spacing:4px;"><strong>{{ .Token }}</strong></p>
-<p>Or click this link to sign in:</p>
-<p><a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email">Sign in to Parallel</a></p>
-<p>This code expires shortly and can only be used once.</p>
+<p>Enter this code on the Parallel sign-in page. It expires shortly and can only be used once.</p>
 ```
 
-Subject suggestion: `Your Parallel sign-in code: {{ .Token }}`
+Subject: `Your Parallel sign-in code: {{ .Token }}`
 
-Do **not** use `{{ .ConfirmationURL }}` for the button — that link breaks when
-the email is opened on a different device/browser.
-
-Also set **Site URL** to `https://clients.parallelcommerce.co.uk` so
-`{{ .SiteURL }}` points at production.
+Do **not** include `{{ .ConfirmationURL }}` or any `/auth/confirm` link. Those
+URLs break across devices and get flagged as spam.
 
 If you still receive a **“Confirm your email address”** email (no code), that is
-the Confirm signup template. Either:
-
-1. Authentication → Providers → Email → turn **Confirm email** off, or  
-2. Paste the same `{{ .Token }}` body into **Confirm signup** as well.
+the Confirm signup template — paste the same body there, or turn **Confirm
+email** off under Authentication → Providers → Email.
 
 Parallel auto-confirms new auth users so OTP emails use the Magic Link template.
 

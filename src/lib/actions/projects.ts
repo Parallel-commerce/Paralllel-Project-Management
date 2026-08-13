@@ -8,7 +8,7 @@ import {
   removeMemberFromProject,
   updateMemberRole as updateMemberRoleAction,
 } from "@/lib/actions/users";
-import { logActivity, notifyUser, sendInviteMagicLink } from "@/lib/notify";
+import { logActivity, notifyUser, sendSignInCode } from "@/lib/notify";
 import { PROJECT_LOGO_BUCKET } from "@/lib/project-logo";
 import { projectTaskPrefix } from "@/lib/task-key";
 import { TASK_ATTACHMENT_BUCKET } from "@/lib/task-attachments";
@@ -282,10 +282,10 @@ export async function inviteMember(projectId: string, formData: FormData) {
     return { error: error.message };
   }
 
-  const magic = await sendInviteMagicLink(email, `/projects/${projectId}`);
-  if (magic.error) {
+  const otp = await sendSignInCode(email);
+  if (otp.error) {
     // Membership/invite still saved; surface soft warning
-    console.error(magic.error);
+    console.error(otp.error);
   }
 
   const { data: existingProfile } = await supabase
@@ -318,9 +318,9 @@ export async function inviteMember(projectId: string, formData: FormData) {
   revalidatePath(`/projects/${projectId}`);
   return {
     success: true,
-    message: magic.error
-      ? "Person added, but the magic-link email failed to send."
-      : "Person added and a sign-in email was sent.",
+    message: otp.error
+      ? "Person added, but the sign-in email failed to send."
+      : "Person added and a sign-in code was emailed.",
   };
 }
 

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { sendInviteMagicLink, sendSignInReminderEmail } from "@/lib/notify";
+import { sendSignInCode, sendSignInReminderEmail } from "@/lib/notify";
 import { AVATAR_BUCKET } from "@/lib/profile-avatar";
 import { createClient } from "@/lib/supabase/server";
 import type { ProjectRole } from "@/types/database";
@@ -145,12 +145,7 @@ export async function invitePlatformUser(formData: FormData) {
     invitedProjectIds.push(allocation.projectId);
   }
 
-  const nextPath =
-    invitedProjectIds.length === 1
-      ? `/projects/${invitedProjectIds[0]}`
-      : "/home";
-
-  const magic = await sendInviteMagicLink(email, nextPath, {
+  const otp = await sendSignInCode(email, {
     fullName,
     title,
   });
@@ -187,14 +182,14 @@ export async function invitePlatformUser(formData: FormData) {
   revalidatePath("/users");
   revalidatePath("/projects");
 
-  if (magic.error) {
+  if (otp.error) {
     return {
       success: true as const,
       warning:
         existingProfile || invitedProjectIds.length > 0 || createdOrExisting
           ? "User updated / invites saved, but the sign-in email failed to send."
           : "Could not send the sign-in email.",
-      message: magic.error,
+      message: otp.error,
     };
   }
 
@@ -607,9 +602,9 @@ export async function reinstateUser(userId: string, email?: string) {
 
   if (profile?.email) {
     try {
-      await sendInviteMagicLink(profile.email);
+      await sendSignInCode(profile.email);
     } catch {
-      // Account is reinstated even if the magic link email fails
+      // Account is reinstated even if the sign-in email fails
     }
   }
 

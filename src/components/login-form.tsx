@@ -58,15 +58,10 @@ export function LoginForm({ nextPath = "/home" }: { nextPath?: string }) {
     setMessage(null);
 
     const supabase = createClient();
-    const origin = window.location.origin;
     const { error } = await supabase.auth.signInWithOtp({
       email: normalized,
       options: {
-        // Only existing (invited) accounts can sign in from the login page.
         shouldCreateUser: false,
-        // Cross-device sign-in uses the emailed code, or the token_hash link
-        // handled by /auth/confirm (not the PKCE ConfirmationURL).
-        emailRedirectTo: `${origin}/auth/confirm?next=${encodeURIComponent(nextPath)}`,
       },
     });
 
