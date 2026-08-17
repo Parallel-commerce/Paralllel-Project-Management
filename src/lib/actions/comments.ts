@@ -77,7 +77,7 @@ export async function listTaskComments(
   const { data, error } = await supabase
     .from("task_comments")
     .select(
-      "id, task_id, parent_id, body, created_by, created_at, profiles(id, email, full_name, deleted_at, avatar_path, updated_at)",
+      "id, task_id, parent_id, body, created_by, created_at, profiles!task_comments_created_by_fkey(id, email, full_name, deleted_at, avatar_path, updated_at)",
     )
     .eq("task_id", taskId)
     .order("created_at", { ascending: true });

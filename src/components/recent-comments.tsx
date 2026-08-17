@@ -49,7 +49,7 @@ export async function RecentComments({
   const { data: commentRows } = await supabase
     .from("task_comments")
     .select(
-      "id, body, created_at, created_by, task_id, profiles(id, full_name, email, deleted_at)",
+      "id, body, created_at, created_by, task_id, profiles!task_comments_created_by_fkey(id, full_name, email, deleted_at)",
     )
     .order("created_at", { ascending: false })
     .limit(Math.max(limit * 3, 24));
