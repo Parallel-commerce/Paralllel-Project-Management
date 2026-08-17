@@ -565,6 +565,7 @@ function TaskModal({
               listId={listId}
               taskId={task.id}
               currentUserId={currentUserId}
+              members={members}
             />
           </>
         ) : null}

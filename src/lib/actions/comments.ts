@@ -3,9 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import {
+  resolveMentionedUserIds,
+  type MentionPerson,
+} from "@/lib/mentions";
+import { logActivity, notifyUser } from "@/lib/notify";
 import { profileAvatarPublicUrl } from "@/lib/profile-avatar";
 import { createClient } from "@/lib/supabase/server";
-import { logActivity, notifyUser } from "@/lib/notify";
 
 async function requireUser() {
   const supabase = await createClient();
@@ -109,12 +113,49 @@ export async function listTaskComments(
   return { comments };
 }
 
+function commentErrorMessage(message: string) {
+  if (message.includes("nested too deeply")) {
+    return "This thread is too nested to reply again.";
+  }
+  if (message.includes("cannot reply to itself")) {
+    return "A comment cannot reply to itself.";
+  }
+  if (message.includes("reply cycle")) {
+    return "That reply would create a loop.";
+  }
+  return message;
+}
+
+async function listProjectMentionPeople(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  projectId: string,
+): Promise<MentionPerson[]> {
+  const { data } = await supabase
+    .from("project_members")
+    .select("user_id, profiles(id, email, full_name, deleted_at)")
+    .eq("project_id", projectId);
+
+  const people: MentionPerson[] = [];
+  for (const row of data ?? []) {
+    const profile = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
+    if (!profile || profile.deleted_at) continue;
+    people.push({
+      id: (profile.id as string) ?? row.user_id,
+      email: (profile.email as string) ?? "",
+      full_name: (profile.full_name as string | null) ?? null,
+      deleted_at: (profile.deleted_at as string | null) ?? null,
+    });
+  }
+  return people;
+}
+
 export async function createTaskComment(
   projectId: string,
   listId: string,
   taskId: string,
   body: string,
   parentId?: string | null,
+  mentionedUserIds: string[] = [],
 ) {
   const { supabase, user } = await requireUser();
   const trimmed = body.trim();
@@ -129,60 +170,90 @@ export async function createTaskComment(
   if (parent) {
     const { data: parentComment } = await supabase
       .from("task_comments")
-      .select("id, task_id, parent_id, created_by")
+      .select("id, task_id, created_by")
       .eq("id", parent)
       .maybeSingle();
 
     if (!parentComment || parentComment.task_id !== taskId) {
       return { error: "Parent comment not found." };
     }
-    if (parentComment.parent_id) {
-      return { error: "You can only reply to top-level comments." };
-    }
     parentAuthorId = parentComment.created_by;
   }
 
-  const { data: task } = await supabase
-    .from("tasks")
-    .select("title, created_by, assigned_to, reported_by")
-    .eq("id", taskId)
-    .maybeSingle();
-
-  const { data: list } = await supabase
-    .from("lists")
-    .select("visibility")
-    .eq("id", listId)
-    .maybeSingle();
+  const [{ data: task }, { data: list }, mentionPeople] = await Promise.all([
+    supabase
+      .from("tasks")
+      .select("title, created_by, assigned_to, reported_by")
+      .eq("id", taskId)
+      .maybeSingle(),
+    supabase.from("lists").select("visibility").eq("id", listId).maybeSingle(),
+    listProjectMentionPeople(supabase, projectId),
+  ]);
   const clientVisible = list?.visibility === "public";
+  const mentionedIds = resolveMentionedUserIds(
+    trimmed,
+    mentionPeople,
+    mentionedUserIds,
+  ).slice(0, 20);
 
-  const { error } = await supabase.from("task_comments").insert({
-    task_id: taskId,
-    parent_id: parent,
-    body: trimmed,
-    created_by: user.id,
-  });
+  const { data: created, error } = await supabase
+    .from("task_comments")
+    .insert({
+      task_id: taskId,
+      parent_id: parent,
+      body: trimmed,
+      created_by: user.id,
+    })
+    .select("id")
+    .single();
 
   if (error) {
-    return { error: error.message };
+    return { error: commentErrorMessage(error.message) };
   }
+
+  if (created && mentionedIds.length > 0) {
+    const { error: mentionError } = await supabase
+      .from("task_comment_mentions")
+      .insert(
+        mentionedIds.map((userId) => ({
+          comment_id: created.id,
+          user_id: userId,
+        })),
+      );
+    if (mentionError) {
+      console.error("task_comment_mentions insert failed:", mentionError.message);
+    }
+  }
+
+  const mentioned = new Set(mentionedIds);
+  mentioned.delete(user.id);
 
   const recipients = new Set<string>();
   if (task?.created_by) recipients.add(task.created_by);
   if (task?.assigned_to) recipients.add(task.assigned_to);
   if (task?.reported_by) recipients.add(task.reported_by);
   if (parentAuthorId) recipients.add(parentAuthorId);
+  for (const userId of mentioned) recipients.add(userId);
   recipients.delete(user.id);
 
   const deepLink = `/projects/${projectId}/lists/${listId}?task=${taskId}`;
   const isReply = !!parent;
+  const taskTitle = task?.title ?? "task";
 
   for (const recipientId of recipients) {
+    const wasMentioned = mentioned.has(recipientId);
     await notifyUser({
       userId: recipientId,
-      type: isReply ? "task_comment_reply" : "task_comment",
-      title: isReply
-        ? `Reply on “${task?.title ?? "task"}”`
-        : `New comment on “${task?.title ?? "task"}”`,
+      type: wasMentioned
+        ? "task_comment_mention"
+        : isReply
+          ? "task_comment_reply"
+          : "task_comment",
+      title: wasMentioned
+        ? `You were mentioned on “${taskTitle}”`
+        : isReply
+          ? `Reply on “${taskTitle}”`
+          : `New comment on “${taskTitle}”`,
       body: trimmed.slice(0, 180),
       link: deepLink,
     });
@@ -195,11 +266,12 @@ export async function createTaskComment(
     entityId: taskId,
     action: isReply ? "replied" : "created",
     summary: isReply
-      ? `Replied on “${task?.title ?? "task"}”`
-      : `Commented on “${task?.title ?? "task"}”`,
+      ? `Replied on “${taskTitle}”`
+      : `Commented on “${taskTitle}”`,
     metadata: {
       list_visibility: list?.visibility ?? null,
       parent_id: parent,
+      mentioned_user_ids: mentionedIds,
     },
     clientVisible,
   });
