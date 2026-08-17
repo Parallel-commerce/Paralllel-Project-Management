@@ -5,6 +5,8 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 
 import {
+  clearAllNotifications,
+  clearNotification,
   listNotifications,
   markAllNotificationsRead,
   markNotificationRead,
@@ -49,6 +51,7 @@ export function NotificationBell({
     [notifications],
   );
   const canMarkRead = unreadCount > 0 || unreadInList > 0;
+  const canClearAll = notifications.length > 0;
 
   useEffect(() => {
     setMounted(true);
@@ -104,6 +107,21 @@ export function NotificationBell({
     });
   }
 
+  function clearOne(notificationId: string) {
+    const target = notifications.find((item) => item.id === notificationId);
+    if (!target) return;
+
+    setNotifications((current) =>
+      current.filter((item) => item.id !== notificationId),
+    );
+    if (!target.read_at) {
+      setUnreadCount((count) => Math.max(0, count - 1));
+    }
+    startTransition(async () => {
+      await clearNotification(notificationId);
+    });
+  }
+
   function markAllRead() {
     if (!canMarkRead) return;
     setNotifications((current) =>
@@ -114,6 +132,15 @@ export function NotificationBell({
     setUnreadCount(0);
     startTransition(async () => {
       await markAllNotificationsRead();
+    });
+  }
+
+  function clearAll() {
+    if (!canClearAll) return;
+    setNotifications([]);
+    setUnreadCount(0);
+    startTransition(async () => {
+      await clearAllNotifications();
     });
   }
 
@@ -180,23 +207,21 @@ export function NotificationBell({
                     details
                   )}
                 </div>
-                {unread ? (
-                  <button
-                    type="button"
-                    aria-label={`Clear ${kind.toLowerCase()} notification`}
-                    onClick={() => markOneRead(notification.id)}
-                    className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-[var(--accent)] hover:bg-[var(--accent-soft)]"
-                  >
-                    Clear
-                  </button>
-                ) : null}
+                <button
+                  type="button"
+                  aria-label={`Clear ${kind.toLowerCase()} notification`}
+                  onClick={() => clearOne(notification.id)}
+                  className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-[var(--accent)] hover:bg-[var(--accent-soft)]"
+                >
+                  Clear
+                </button>
               </li>
             );
           })
         )}
       </ul>
 
-      <div className="border-t border-[var(--border)] pt-3">
+      <div className="flex flex-col gap-2 border-t border-[var(--border)] pt-3">
         <button
           type="button"
           disabled={pending || !canMarkRead}
@@ -204,6 +229,14 @@ export function NotificationBell({
           className="min-h-10 w-full rounded-md border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-sm font-medium hover:bg-[var(--border)] disabled:opacity-50"
         >
           Mark as read
+        </button>
+        <button
+          type="button"
+          disabled={pending || !canClearAll}
+          onClick={clearAll}
+          className="min-h-10 w-full rounded-md px-3 py-2 text-sm font-medium text-[var(--danger)] hover:bg-[var(--accent-soft)] disabled:opacity-50"
+        >
+          Clear all
         </button>
       </div>
     </>

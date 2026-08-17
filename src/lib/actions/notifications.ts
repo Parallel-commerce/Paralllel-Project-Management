@@ -73,3 +73,36 @@ export async function markAllNotificationsRead() {
   revalidateAlerts();
   return { success: true };
 }
+
+export async function clearNotification(notificationId: string) {
+  const { supabase, user } = await requireUser();
+
+  const { error } = await supabase
+    .from("notifications")
+    .delete()
+    .eq("id", notificationId)
+    .eq("user_id", user.id);
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  revalidateAlerts();
+  return { success: true };
+}
+
+export async function clearAllNotifications() {
+  const { supabase, user } = await requireUser();
+
+  const { error } = await supabase
+    .from("notifications")
+    .delete()
+    .eq("user_id", user.id);
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  revalidateAlerts();
+  return { success: true };
+}
