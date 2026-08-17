@@ -655,20 +655,41 @@ export async function updateTask(
 
   const { data: before } = await supabase
     .from("tasks")
-    .select("title, status, assigned_to, reported_by, created_by")
+    .select(
+      "title, description, due_date, status, link_url, assigned_to, reported_by, created_by",
+    )
     .eq("id", taskId)
     .maybeSingle();
+
+  const nextDescription = description || null;
+  const nextDueDate = dueDate || null;
+  const nextAssignee = assignedTo || null;
+  const nextLinkUrl = linkUrl;
+
+  const unchanged =
+    before &&
+    before.title === title &&
+    (before.description ?? null) === nextDescription &&
+    (before.due_date ?? null) === nextDueDate &&
+    before.status === status &&
+    (before.link_url ?? null) === nextLinkUrl &&
+    (before.assigned_to ?? null) === nextAssignee &&
+    before.reported_by === reporter.reportedBy;
+
+  if (unchanged) {
+    return { success: true, unchanged: true as const };
+  }
 
   const { error } = await supabase
     .from("tasks")
     .update({
       title,
-      description: description || null,
-      due_date: dueDate || null,
+      description: nextDescription,
+      due_date: nextDueDate,
       status,
-      link_url: linkUrl,
+      link_url: nextLinkUrl,
       reported_by: reporter.reportedBy,
-      assigned_to: assignedTo || null,
+      assigned_to: nextAssignee,
     })
     .eq("id", taskId);
 
@@ -677,7 +698,6 @@ export async function updateTask(
   }
 
   const previousAssignee = before?.assigned_to ?? null;
-  const nextAssignee = assignedTo || null;
 
   if (nextAssignee && nextAssignee !== previousAssignee && nextAssignee !== user.id) {
     await notifyUser({

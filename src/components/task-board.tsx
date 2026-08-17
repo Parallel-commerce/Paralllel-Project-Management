@@ -12,7 +12,7 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import { DueDatePicker } from "@/components/due-date-picker";
 import { TaskAttachments } from "@/components/task-attachments";
@@ -348,16 +348,112 @@ function TaskModal({
   onClose: () => void;
 }) {
   const router = useRouter();
+  const formRef = useRef<HTMLFormElement>(null);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSavedSnapshotRef = useRef<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">(
+    "idle",
+  );
   const [pending, startTransition] = useTransition();
   const [historyKey, setHistoryKey] = useState(0);
+
+  function formSnapshot(form: HTMLFormElement) {
+    const formData = new FormData(form);
+    return JSON.stringify({
+      title: String(formData.get("title") ?? "").trim(),
+      description: String(formData.get("description") ?? "").trim(),
+      due_date: String(formData.get("due_date") ?? "").trim(),
+      status: String(formData.get("status") ?? "todo"),
+      link_url: String(formData.get("link_url") ?? "").trim(),
+      reported_by: String(formData.get("reported_by") ?? ""),
+      assigned_to: String(formData.get("assigned_to") ?? ""),
+    });
+  }
+
+  useEffect(() => {
+    if (mode !== "edit" || !formRef.current) return;
+    lastSavedSnapshotRef.current = formSnapshot(formRef.current);
+    setSaveState("idle");
+  }, [mode, task?.id]);
+
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, []);
+
+  function persistEdit(options?: { closeAfter?: boolean }) {
+    if (mode !== "edit" || !task || !formRef.current) return;
+    const form = formRef.current;
+    const snapshot = formSnapshot(form);
+    const parsed = JSON.parse(snapshot) as { title: string };
+    if (!parsed.title) {
+      setError("Title is required.");
+      setSaveState("error");
+      if (options?.closeAfter) onClose();
+      return;
+    }
+    if (snapshot === lastSavedSnapshotRef.current) {
+      if (options?.closeAfter) onClose();
+      return;
+    }
+
+    const formData = new FormData(form);
+    setSaveState("saving");
+    startTransition(async () => {
+      const result = await updateTask(projectId, listId, task.id, formData);
+      if (result?.error) {
+        setError(result.error);
+        setSaveState("error");
+        return;
+      }
+      lastSavedSnapshotRef.current = snapshot;
+      setError(null);
+      setSaveState("saved");
+      if (!("unchanged" in result && result.unchanged)) {
+        setHistoryKey((value) => value + 1);
+        router.refresh();
+      }
+      if (options?.closeAfter) onClose();
+    });
+  }
+
+  function scheduleEditSave() {
+    if (mode !== "edit") return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      saveTimerRef.current = null;
+      persistEdit();
+    }, 650);
+  }
+
+  function saveEditNow() {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    persistEdit();
+  }
+
+  function requestClose() {
+    if (mode === "edit") {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+      persistEdit({ closeAfter: true });
+      return;
+    }
+    onClose();
+  }
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4"
-      onClick={onClose}
+      onClick={requestClose}
       onKeyDown={(event) => {
-        if (event.key === "Escape") onClose();
+        if (event.key === "Escape") requestClose();
       }}
     >
       <div
@@ -381,7 +477,7 @@ function TaskModal({
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={requestClose}
             className="min-h-9 min-w-9 text-sm text-[var(--muted)] hover:text-[var(--foreground)]"
           >
             Close
@@ -389,25 +485,36 @@ function TaskModal({
         </div>
 
         <form
+          ref={formRef}
           className="mt-4 flex flex-col gap-3"
           onSubmit={(event) => {
             event.preventDefault();
+            if (mode === "edit") {
+              saveEditNow();
+              return;
+            }
             const formData = new FormData(event.currentTarget);
             startTransition(async () => {
-              const result =
-                mode === "create"
-                  ? await createTask(projectId, listId, formData)
-                  : await updateTask(projectId, listId, task!.id, formData);
+              const result = await createTask(projectId, listId, formData);
               if (result?.error) {
                 setError(result.error);
-              } else if (mode === "create") {
-                onClose();
               } else {
-                setError(null);
-                setHistoryKey((value) => value + 1);
-                router.refresh();
+                onClose();
               }
             });
+          }}
+          onInput={() => {
+            if (mode === "edit") scheduleEditSave();
+          }}
+          onChange={(event) => {
+            if (mode !== "edit") return;
+            const target = event.target as HTMLElement;
+            if (
+              target instanceof HTMLSelectElement ||
+              (target instanceof HTMLInputElement && target.type === "hidden")
+            ) {
+              saveEditNow();
+            }
           }}
         >
           <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
@@ -416,6 +523,9 @@ function TaskModal({
               name="title"
               required
               defaultValue={task?.title ?? ""}
+              onBlur={() => {
+                if (mode === "edit") saveEditNow();
+              }}
               className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
             />
           </label>
@@ -425,11 +535,23 @@ function TaskModal({
               name="description"
               rows={4}
               defaultValue={task?.description ?? ""}
+              onBlur={() => {
+                if (mode === "edit") saveEditNow();
+              }}
               className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
             />
           </label>
           <div className="grid gap-3 sm:grid-cols-2">
-            <DueDatePicker name="due_date" defaultValue={task?.due_date ?? ""} />
+            <DueDatePicker
+              name="due_date"
+              defaultValue={task?.due_date ?? ""}
+              onChange={() => {
+                if (mode === "edit") {
+                  // Let the hidden input update, then save.
+                  requestAnimationFrame(() => saveEditNow());
+                }
+              }}
+            />
             <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
               Status
               <select
@@ -452,6 +574,9 @@ function TaskModal({
               type="url"
               placeholder="https://…"
               defaultValue={task?.link_url ?? ""}
+              onBlur={() => {
+                if (mode === "edit") saveEditNow();
+              }}
               className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
             />
           </label>
@@ -501,21 +626,41 @@ function TaskModal({
           ) : null}
 
           {mode === "edit" && task ? (
-            <p className="text-xs text-[var(--muted)]">
-              Created by {displayName(task.creator)}
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-[var(--muted)]">
+                Created by {displayName(task.creator)}
+              </p>
+              <p
+                className={`text-xs ${
+                  saveState === "error"
+                    ? "text-[var(--danger)]"
+                    : "text-[var(--muted)]"
+                }`}
+                aria-live="polite"
+              >
+                {saveState === "saving"
+                  ? "Saving…"
+                  : saveState === "saved"
+                    ? "Saved"
+                    : saveState === "error"
+                      ? "Couldn’t save"
+                      : "Changes save automatically"}
+              </p>
+            </div>
           ) : null}
 
           {error ? <p className="text-sm text-[var(--danger)]">{error}</p> : null}
 
           <div className="mt-2 flex flex-wrap gap-2">
-            <button
-              type="submit"
-              disabled={pending}
-              className="rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-60"
-            >
-              {pending ? "Saving…" : "Save task"}
-            </button>
+            {mode === "create" ? (
+              <button
+                type="submit"
+                disabled={pending}
+                className="rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-60"
+              >
+                {pending ? "Saving…" : "Save task"}
+              </button>
+            ) : null}
             {mode === "edit" && task ? (
               <button
                 type="button"
