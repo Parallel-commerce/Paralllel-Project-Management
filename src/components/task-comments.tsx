@@ -190,7 +190,7 @@ function CommentComposer({
 
   return (
     <form
-      className="flex flex-col gap-2"
+      className="flex w-full flex-col gap-2"
       onSubmit={(event) => {
         event.preventDefault();
         const next = body.trim();
@@ -202,7 +202,7 @@ function CommentComposer({
         setMentionQuery("");
       }}
     >
-      <div className="relative">
+      <div className="relative w-full">
         <textarea
           ref={textareaRef}
           value={body}
@@ -253,7 +253,7 @@ function CommentComposer({
           rows={onCancel ? 2 : 3}
           autoFocus={autoFocus}
           placeholder={placeholder}
-          className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
+          className="w-full rounded-md border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
         />
         {pickerOpen ? (
           <ul
