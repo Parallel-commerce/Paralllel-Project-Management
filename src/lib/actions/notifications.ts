@@ -17,22 +17,34 @@ async function requireUser() {
   return { supabase, user };
 }
 
+function revalidateAlerts() {
+  revalidatePath("/", "layout");
+}
+
 export async function listNotifications(): Promise<{
   notifications: Notification[];
   unreadCount: number;
 }> {
   const { supabase, user } = await requireUser();
 
-  const { data } = await supabase
-    .from("notifications")
-    .select("id, user_id, type, title, body, link, read_at, created_at")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false })
-    .limit(30);
+  const [{ data }, { count }] = await Promise.all([
+    supabase
+      .from("notifications")
+      .select("id, user_id, type, title, body, link, read_at, created_at")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(40),
+    supabase
+      .from("notifications")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .is("read_at", null),
+  ]);
 
-  const notifications = (data ?? []) as Notification[];
-  const unreadCount = notifications.filter((n) => !n.read_at).length;
-  return { notifications, unreadCount };
+  return {
+    notifications: (data ?? []) as Notification[],
+    unreadCount: count ?? 0,
+  };
 }
 
 export async function markNotificationRead(notificationId: string) {
@@ -42,9 +54,10 @@ export async function markNotificationRead(notificationId: string) {
     .from("notifications")
     .update({ read_at: new Date().toISOString() })
     .eq("id", notificationId)
-    .eq("user_id", user.id);
+    .eq("user_id", user.id)
+    .is("read_at", null);
 
-  revalidatePath("/projects");
+  revalidateAlerts();
   return { success: true };
 }
 
@@ -57,6 +70,6 @@ export async function markAllNotificationsRead() {
     .eq("user_id", user.id)
     .is("read_at", null);
 
-  revalidatePath("/projects");
+  revalidateAlerts();
   return { success: true };
 }

@@ -21,12 +21,6 @@ function formatWhen(iso: string) {
   }
 }
 
-function truncate(text: string, max = 140) {
-  const trimmed = text.trim().replace(/\s+/g, " ");
-  if (trimmed.length <= max) return trimmed;
-  return `${trimmed.slice(0, max - 1)}…`;
-}
-
 function emptyStatusCounts(): Record<TaskStatus, number> {
   return {
     todo: 0,
@@ -56,11 +50,6 @@ type ProfileLite = {
   deleted_at: string | null;
 };
 
-function nestOne<T>(value: T | T[] | null | undefined): T | null {
-  if (!value) return null;
-  return Array.isArray(value) ? (value[0] ?? null) : value;
-}
-
 export async function AdminHomeInsights() {
   const supabase = await createClient();
   const today = todayIso();
@@ -80,7 +69,6 @@ export async function AdminHomeInsights() {
     overdueCountResult,
     overdueTasksResult,
     feedbackTasksResult,
-    commentsResult,
     activityResult,
   ] = await Promise.all([
     projectIds.length > 0
@@ -116,13 +104,6 @@ export async function AdminHomeInsights() {
       .order("updated_at", { ascending: false })
       .limit(5),
     supabase
-      .from("task_comments")
-      .select(
-        "id, body, created_at, created_by, task_id, profiles(id, full_name, email, deleted_at)",
-      )
-      .order("created_at", { ascending: false })
-      .limit(5),
-    supabase
       .from("activity_events")
       .select("id, summary, created_at, project_id, actor_id")
       .order("created_at", { ascending: false })
@@ -149,11 +130,6 @@ export async function AdminHomeInsights() {
   const listIds = [
     ...new Set(attentionSeed.map((row) => row.list_id as string)),
   ];
-  const commentTaskIds = [
-    ...new Set(
-      (commentsResult.data ?? []).map((row) => row.task_id as string),
-    ),
-  ];
   const actorIds = [
     ...new Set(
       (activityResult.data ?? [])
@@ -162,25 +138,11 @@ export async function AdminHomeInsights() {
     ),
   ];
 
-  const [{ data: listRows }, { data: commentTasks }, { data: actorProfiles }] =
+  const [{ data: listRows }, { data: actorProfiles }] =
     await Promise.all([
       listIds.length > 0
         ? supabase.from("lists").select("id, name").in("id", listIds)
         : Promise.resolve({ data: [] as { id: string; name: string }[] }),
-      commentTaskIds.length > 0
-        ? supabase
-            .from("tasks")
-            .select("id, key, title, list_id, project_id")
-            .in("id", commentTaskIds)
-        : Promise.resolve({
-            data: [] as {
-              id: string;
-              key: string;
-              title: string;
-              list_id: string;
-              project_id: string;
-            }[],
-          }),
       actorIds.length > 0
         ? supabase
             .from("profiles")
@@ -191,9 +153,6 @@ export async function AdminHomeInsights() {
 
   const listNameById = new Map(
     (listRows ?? []).map((row) => [row.id, row.name as string]),
-  );
-  const commentTaskById = new Map(
-    (commentTasks ?? []).map((row) => [row.id as string, row]),
   );
   const actorById = new Map(
     (actorProfiles ?? []).map((row) => [row.id as string, row as ProfileLite]),
@@ -251,33 +210,6 @@ export async function AdminHomeInsights() {
   const activeSessions = (loginStatusResult.data ?? []).filter(
     (row) => row.has_active_session,
   ).length;
-
-  const comments = (commentsResult.data ?? []).flatMap((row) => {
-    const task = commentTaskById.get(row.task_id as string);
-    if (!task) return [];
-    const author = nestOne(row.profiles);
-    return [
-      {
-        id: row.id as string,
-        body: row.body as string,
-        created_at: row.created_at as string,
-        authorName: personDisplayName(
-          {
-            full_name: author?.full_name ?? null,
-            email: author?.email ?? null,
-            deleted_at: author?.deleted_at ?? null,
-          },
-          "Someone",
-        ),
-        taskId: task.id as string,
-        taskKey: (task.key as string | null) ?? null,
-        taskTitle: task.title as string,
-        listId: task.list_id as string,
-        projectId: task.project_id as string,
-        projectName: projectNameById.get(task.project_id as string) ?? "Project",
-      },
-    ];
-  });
 
   const activity = (activityResult.data ?? []).map((row) => {
     const actor = row.actor_id
@@ -415,51 +347,6 @@ export async function AdminHomeInsights() {
       </div>
 
       <details className="group border-y border-[var(--border)]">
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 py-3 text-sm font-medium marker:content-none [&::-webkit-details-marker]:hidden">
-          <span>
-            Recent comments
-            {comments.length > 0 ? (
-              <span className="ml-2 font-normal text-[var(--muted)]">
-                {comments.length}
-              </span>
-            ) : null}
-          </span>
-          <span
-            aria-hidden
-            className="text-[var(--muted)] transition group-open:rotate-180"
-          >
-            ▾
-          </span>
-        </summary>
-        <ul className="mb-3 divide-y divide-[var(--border)] border-t border-[var(--border)]">
-          {comments.length === 0 ? (
-            <li className="px-1 py-5 text-sm text-[var(--muted)]">
-              No comments yet.
-            </li>
-          ) : (
-            comments.map((comment) => (
-              <li key={comment.id}>
-                <Link
-                  href={`/projects/${comment.projectId}/lists/${comment.listId}?task=${comment.taskId}`}
-                  className="block px-1 py-3 hover:bg-[var(--surface)]/60 sm:py-3.5"
-                >
-                  <p className="text-sm leading-relaxed">
-                    {truncate(comment.body)}
-                  </p>
-                  <p className="mt-1.5 text-xs text-[var(--muted)]">
-                    {comment.authorName}
-                    {comment.taskKey ? ` · ${comment.taskKey}` : ""} ·{" "}
-                    {comment.taskTitle} · {comment.projectName} ·{" "}
-                    {formatWhen(comment.created_at)}
-                  </p>
-                </Link>
-              </li>
-            ))
-          )}
-        </ul>
-      </details>
-
-      <details className="group border-b border-[var(--border)]">
         <summary className="flex cursor-pointer list-none items-center justify-between gap-3 py-3 text-sm font-medium marker:content-none [&::-webkit-details-marker]:hidden">
           <span>
             Recent activity

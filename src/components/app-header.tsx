@@ -33,7 +33,7 @@ export async function AppHeader({
 
   return (
     <>
-      <header className="sticky top-0 z-40 border-b border-[var(--border)] bg-[var(--surface)]/90 backdrop-blur">
+      <header className="sticky top-0 z-50 border-b border-[var(--border)] bg-[var(--surface)]/90 backdrop-blur">
         <div className="app-container flex h-14 items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-5">
             <ParallelLogo className="h-6 w-auto sm:h-7" />

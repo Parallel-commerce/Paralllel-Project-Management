@@ -6,10 +6,11 @@ import {
   HomeQuickTaskForm,
   type HomeListOption,
 } from "@/components/home-quick-task-form";
+import { RecentComments } from "@/components/recent-comments";
 import { TaskWorkLink } from "@/components/task-work-link";
 import { getCurrentProfile, requireSessionUser } from "@/lib/auth";
 import { projectLogoPublicUrl } from "@/lib/project-logo";
-import type { TaskStatus } from "@/types/database";
+import type { ProjectRole, TaskStatus } from "@/types/database";
 
 function greetingForNow(date = new Date()) {
   const hour = date.getHours();
@@ -37,6 +38,7 @@ export default async function HomeDashboardPage() {
     { data: projects },
     { data: listRows },
     { data: upcomingRows },
+    { data: memberships },
   ] = await Promise.all([
     supabase
       .from("projects")
@@ -57,6 +59,10 @@ export default async function HomeDashboardPage() {
       .is("archived_at", null)
       .order("due_date", { ascending: true, nullsFirst: false })
       .limit(5),
+    supabase
+      .from("project_members")
+      .select("role")
+      .eq("user_id", user.id),
   ]);
 
   const lists: HomeListOption[] = (listRows ?? [])
@@ -84,6 +90,12 @@ export default async function HomeDashboardPage() {
 
   const name = firstName(profile?.full_name, profile?.email || user.email || "");
   const isPlatformAdmin = !!profile?.is_platform_admin;
+  const isInternal =
+    isPlatformAdmin ||
+    (memberships ?? []).some((membership) => {
+      const role = membership.role as ProjectRole;
+      return role === "admin" || role === "member";
+    });
 
   return (
     <main className="app-container py-6 sm:py-10">
@@ -97,20 +109,35 @@ export default async function HomeDashboardPage() {
         <p className="mt-2 hidden text-sm text-[var(--muted)] sm:block">
           Your projects and upcoming work — plus a quick way to capture a new
           task
+          {isInternal ? ", recent comments" : ""}
           {isPlatformAdmin ? ", and an operations overview" : ""}.
         </p>
       </div>
 
       <div className="mt-6 flex flex-col gap-6 lg:mt-8 lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-8">
+        {isInternal ? (
+          <div className="order-1 min-w-0 lg:order-none lg:col-start-1 lg:row-start-1">
+            <RecentComments />
+          </div>
+        ) : null}
+
         {isPlatformAdmin ? (
-          <div className="order-4 min-w-0 lg:order-none lg:col-start-1 lg:row-start-1">
+          <div
+            className={`order-5 min-w-0 lg:order-none lg:col-start-1 ${
+              isInternal ? "lg:row-start-2" : "lg:row-start-1"
+            }`}
+          >
             <AdminHomeInsights />
           </div>
         ) : null}
 
         <section
-          className={`order-1 min-w-0 lg:order-none lg:col-start-1 ${
-            isPlatformAdmin ? "lg:row-start-2" : "lg:row-start-1"
+          className={`order-2 min-w-0 lg:order-none lg:col-start-1 ${
+            isPlatformAdmin && isInternal
+              ? "lg:row-start-3"
+              : isInternal || isPlatformAdmin
+                ? "lg:row-start-2"
+                : "lg:row-start-1"
           }`}
         >
           <div className="flex items-end justify-between gap-3">
@@ -159,7 +186,15 @@ export default async function HomeDashboardPage() {
           </ul>
         </section>
 
-        <aside className="order-2 relative z-10 lg:order-none lg:col-start-2 lg:row-span-3 lg:row-start-1 lg:sticky lg:top-20 lg:self-start">
+        <aside
+          className={`order-3 relative z-10 lg:order-none lg:col-start-2 lg:row-start-1 lg:sticky lg:top-20 lg:self-start ${
+            isPlatformAdmin
+              ? "lg:row-span-4"
+              : isInternal
+                ? "lg:row-span-3"
+                : "lg:row-span-2"
+          }`}
+        >
           <section className="overflow-visible rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 sm:p-5">
             <h2 className="font-medium">New task</h2>
             <p className="mt-1 hidden text-sm text-[var(--muted)] sm:block">
@@ -175,8 +210,12 @@ export default async function HomeDashboardPage() {
         </aside>
 
         <section
-          className={`order-3 min-w-0 lg:order-none lg:col-start-1 ${
-            isPlatformAdmin ? "lg:row-start-3" : "lg:row-start-2"
+          className={`order-4 min-w-0 lg:order-none lg:col-start-1 ${
+            isPlatformAdmin
+              ? "lg:row-start-4"
+              : isInternal
+                ? "lg:row-start-3"
+                : "lg:row-start-2"
           }`}
         >
           <div className="flex items-end justify-between gap-3">
