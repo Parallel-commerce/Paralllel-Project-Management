@@ -225,6 +225,16 @@ export async function createTaskComment(
     }
   }
 
+  if (parent) {
+    await supabase.from("task_comment_reads").upsert(
+      {
+        user_id: user.id,
+        comment_id: parent,
+      },
+      { onConflict: "user_id,comment_id", ignoreDuplicates: true },
+    );
+  }
+
   const mentioned = new Set(mentionedIds);
   mentioned.delete(user.id);
 
@@ -278,6 +288,7 @@ export async function createTaskComment(
 
   revalidatePath(`/projects/${projectId}/lists/${listId}`);
   revalidatePath(`/projects/${projectId}`);
+  revalidatePath("/home");
   return { success: true };
 }
 
@@ -299,4 +310,31 @@ export async function deleteTaskComment(
 
   revalidatePath(`/projects/${projectId}/lists/${listId}`);
   return { success: true };
+}
+
+export async function markTaskCommentsRead(commentIds: string[]) {
+  const { supabase, user } = await requireUser();
+  const ids = [...new Set(commentIds.map((id) => id.trim()).filter(Boolean))];
+  if (ids.length === 0) {
+    return { success: true };
+  }
+
+  const { error } = await supabase.from("task_comment_reads").upsert(
+    ids.map((commentId) => ({
+      user_id: user.id,
+      comment_id: commentId,
+    })),
+    { onConflict: "user_id,comment_id", ignoreDuplicates: true },
+  );
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  revalidatePath("/home");
+  return { success: true };
+}
+
+export async function markTaskCommentRead(commentId: string) {
+  return markTaskCommentsRead([commentId]);
 }

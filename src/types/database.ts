@@ -103,6 +103,12 @@ export type TaskCommentMention = {
   created_at: string;
 };
 
+export type TaskCommentRead = {
+  user_id: string;
+  comment_id: string;
+  read_at: string;
+};
+
 export type Conversation = {
   id: string;
   project_id: string;
@@ -415,6 +421,33 @@ export type Database = {
             columns: ["user_id"];
             isOneToOne: false;
             referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      task_comment_reads: {
+        Row: TaskCommentRead;
+        Insert: {
+          user_id: string;
+          comment_id: string;
+          read_at?: string;
+        };
+        Update: {
+          read_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "task_comment_reads_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "task_comment_reads_comment_id_fkey";
+            columns: ["comment_id"];
+            isOneToOne: false;
+            referencedRelation: "task_comments";
             referencedColumns: ["id"];
           },
         ];

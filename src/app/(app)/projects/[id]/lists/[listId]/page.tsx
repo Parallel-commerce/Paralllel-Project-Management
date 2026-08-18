@@ -12,10 +12,10 @@ export default async function ListBoardPage({
   searchParams,
 }: {
   params: Promise<{ id: string; listId: string }>;
-  searchParams: Promise<{ task?: string }>;
+  searchParams: Promise<{ task?: string; reply?: string }>;
 }) {
   const { id, listId } = await params;
-  const { task: initialTaskId } = await searchParams;
+  const { task: initialTaskId, reply: initialReplyCommentId } = await searchParams;
   const { supabase, user } = await requireSessionUser();
 
   const [
@@ -217,6 +217,7 @@ export default async function ListBoardPage({
           defaultAssigneeId={defaultAssigneeId}
           currentUserId={user.id}
           initialTaskId={initialTaskId ?? null}
+          initialReplyCommentId={initialReplyCommentId ?? null}
           canTrackTime={canTrackTime}
           isTimeAdmin={isAdmin}
           timeSecondsByTaskId={timeSecondsByTaskId}

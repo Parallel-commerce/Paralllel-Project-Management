@@ -469,17 +469,21 @@ export function TaskComments({
   taskId,
   currentUserId,
   members,
+  initialReplyToId = null,
 }: {
   projectId: string;
   listId: string;
   taskId: string;
   currentUserId: string;
   members: MentionPerson[];
+  initialReplyToId?: string | null;
 }) {
   const [comments, setComments] = useState<CommentWithAuthor[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [replyingTo, setReplyingTo] = useState<string | null>(null);
+  const [replyingTo, setReplyingTo] = useState<string | null>(
+    initialReplyToId,
+  );
   const [pending, startTransition] = useTransition();
 
   const mentionable = useMemo(
@@ -503,20 +507,26 @@ export function TaskComments({
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    setReplyingTo(null);
     listTaskComments(taskId).then((result) => {
       if (cancelled) return;
       if (result.error) {
         setError(result.error);
+        setReplyingTo(null);
       } else {
         setComments(result.comments);
+        setReplyingTo(
+          initialReplyToId &&
+            result.comments.some((comment) => comment.id === initialReplyToId)
+            ? initialReplyToId
+            : null,
+        );
       }
       setLoading(false);
     });
     return () => {
       cancelled = true;
     };
-  }, [taskId]);
+  }, [taskId, initialReplyToId]);
 
   const threads = useMemo(() => buildCommentTree(comments), [comments]);
 

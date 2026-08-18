@@ -337,6 +337,7 @@ function TaskModal({
   canTrackTime = false,
   isTimeAdmin = false,
   runningEntry = null,
+  initialReplyCommentId = null,
   onClose,
 }: {
   mode: "create" | "edit";
@@ -349,6 +350,7 @@ function TaskModal({
   canTrackTime?: boolean;
   isTimeAdmin?: boolean;
   runningEntry?: TimeEntryRow | null;
+  initialReplyCommentId?: string | null;
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -718,6 +720,7 @@ function TaskModal({
               taskId={task.id}
               currentUserId={currentUserId}
               members={members}
+              initialReplyToId={initialReplyCommentId}
             />
           </>
         ) : null}
@@ -734,6 +737,7 @@ export function TaskBoard({
   currentUserId,
   defaultAssigneeId = null,
   initialTaskId,
+  initialReplyCommentId = null,
   canTrackTime = false,
   isTimeAdmin = false,
   timeSecondsByTaskId: initialTimeSeconds = {},
@@ -746,6 +750,7 @@ export function TaskBoard({
   currentUserId: string;
   defaultAssigneeId?: string | null;
   initialTaskId?: string | null;
+  initialReplyCommentId?: string | null;
   canTrackTime?: boolean;
   isTimeAdmin?: boolean;
   timeSecondsByTaskId?: Record<string, number>;
@@ -1117,6 +1122,7 @@ export function TaskBoard({
           canTrackTime={canTrackTime}
           isTimeAdmin={isTimeAdmin}
           runningEntry={runningEntry}
+          initialReplyCommentId={initialReplyCommentId}
           onClose={() => setEditing(null)}
         />
       ) : null}
