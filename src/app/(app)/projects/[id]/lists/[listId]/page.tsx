@@ -45,7 +45,7 @@ export default async function ListBoardPage({
       .maybeSingle(),
     supabase
       .from("project_members")
-      .select("user_id, profiles(id, email, full_name, deleted_at)")
+      .select("user_id, role, profiles(id, email, full_name, deleted_at)")
       .eq("project_id", id),
   ]);
 
@@ -79,8 +79,17 @@ export default async function ListBoardPage({
         email: (profileRow?.email as string) ?? "",
         full_name: (profileRow?.full_name as string | null) ?? null,
         deleted_at: (profileRow?.deleted_at as string | null) ?? null,
+        role: row.role as ProjectRole,
       };
     }) ?? [];
+
+  const activeMembers = members.filter((member) => !member.deleted_at);
+  const defaultAssigneeId =
+    activeMembers.find(
+      (member) => member.role === "admin" && member.id === user.id,
+    )?.id ??
+    activeMembers.find((member) => member.role === "admin")?.id ??
+    null;
 
   const { data: taskRows } = await supabase
     .from("tasks")
@@ -147,8 +156,6 @@ export default async function ListBoardPage({
     ]),
   );
 
-  const activeMembers = members.filter((member) => !member.deleted_at);
-
   const tasks =
     (taskRows as Task[] | null)?.map((task) => ({
       ...task,
@@ -207,6 +214,7 @@ export default async function ListBoardPage({
           listId={listId}
           tasks={tasks}
           members={activeMembers}
+          defaultAssigneeId={defaultAssigneeId}
           currentUserId={user.id}
           initialTaskId={initialTaskId ?? null}
           canTrackTime={canTrackTime}

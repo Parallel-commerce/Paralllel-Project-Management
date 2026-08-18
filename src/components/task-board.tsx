@@ -33,6 +33,7 @@ import { personDisplayName } from "@/lib/person";
 import { taskStatusColors } from "@/lib/task-status";
 import {
   TASK_STATUSES,
+  type ProjectRole,
   type Task,
   type TaskStatus,
 } from "@/types/database";
@@ -42,6 +43,7 @@ type ProfileOption = {
   email: string;
   full_name: string | null;
   deleted_at?: string | null;
+  role?: ProjectRole;
 };
 
 export type TaskWithPeople = Task & {
@@ -330,6 +332,7 @@ function TaskModal({
   listId,
   members,
   currentUserId,
+  defaultAssigneeId = null,
   task,
   canTrackTime = false,
   isTimeAdmin = false,
@@ -341,6 +344,7 @@ function TaskModal({
   listId: string;
   members: ProfileOption[];
   currentUserId: string;
+  defaultAssigneeId?: string | null;
   task?: TaskWithPeople | null;
   canTrackTime?: boolean;
   isTimeAdmin?: boolean;
@@ -599,7 +603,10 @@ function TaskModal({
               Assignee
               <select
                 name="assigned_to"
-                defaultValue={task?.assigned_to ?? ""}
+                defaultValue={
+                  task?.assigned_to ??
+                  (mode === "create" ? (defaultAssigneeId ?? "") : "")
+                }
                 className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
               >
                 <option value="">Unassigned</option>
@@ -725,6 +732,7 @@ export function TaskBoard({
   tasks: initialTasks,
   members,
   currentUserId,
+  defaultAssigneeId = null,
   initialTaskId,
   canTrackTime = false,
   isTimeAdmin = false,
@@ -736,6 +744,7 @@ export function TaskBoard({
   tasks: TaskWithPeople[];
   members: ProfileOption[];
   currentUserId: string;
+  defaultAssigneeId?: string | null;
   initialTaskId?: string | null;
   canTrackTime?: boolean;
   isTimeAdmin?: boolean;
@@ -1092,6 +1101,7 @@ export function TaskBoard({
           listId={listId}
           members={members}
           currentUserId={currentUserId}
+          defaultAssigneeId={defaultAssigneeId}
           onClose={() => setCreating(false)}
         />
       ) : null}

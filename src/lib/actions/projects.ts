@@ -68,6 +68,34 @@ async function resolveReporterId(
   return { reportedBy };
 }
 
+/** Prefer the creating admin, otherwise the earliest project admin. */
+async function resolveDefaultAssignee(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  projectId: string,
+  currentUserId: string,
+) {
+  const { data: currentMembership } = await supabase
+    .from("project_members")
+    .select("role")
+    .eq("project_id", projectId)
+    .eq("user_id", currentUserId)
+    .maybeSingle();
+
+  if (currentMembership?.role === "admin") {
+    return currentUserId;
+  }
+
+  const { data: admins } = await supabase
+    .from("project_members")
+    .select("user_id")
+    .eq("project_id", projectId)
+    .eq("role", "admin")
+    .order("created_at", { ascending: true })
+    .limit(1);
+
+  return (admins?.[0]?.user_id as string | undefined) ?? null;
+}
+
 async function requireUser() {
   const supabase = await createClient();
   const {
@@ -486,7 +514,7 @@ export async function createTask(projectId: string, listId: string, formData: Fo
   const description = String(formData.get("description") ?? "").trim();
   const dueDate = String(formData.get("due_date") ?? "").trim();
   const status = String(formData.get("status") ?? "todo") as TaskStatus;
-  const assignedTo = String(formData.get("assigned_to") ?? "").trim();
+  const assignedToRaw = String(formData.get("assigned_to") ?? "").trim();
   const reportedByRaw = String(formData.get("reported_by") ?? "").trim();
   const linkUrl = normalizeLinkUrl(String(formData.get("link_url") ?? ""));
 
@@ -503,6 +531,11 @@ export async function createTask(projectId: string, listId: string, formData: Fo
   if ("error" in reporter) {
     return { error: reporter.error };
   }
+
+  const assignedTo =
+    assignedToRaw ||
+    (await resolveDefaultAssignee(supabase, projectId, user.id)) ||
+    "";
 
   const visibility = await getListVisibility(supabase, listId);
   const clientVisible = visibility === "public";
