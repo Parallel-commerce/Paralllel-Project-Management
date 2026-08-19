@@ -8,6 +8,7 @@ import {
   type MentionPerson,
 } from "@/lib/mentions";
 import { logActivity, notifyUser } from "@/lib/notify";
+import { personDisplayName } from "@/lib/person";
 import { profileAvatarPublicUrl } from "@/lib/profile-avatar";
 import { createClient } from "@/lib/supabase/server";
 
@@ -250,6 +251,19 @@ export async function createTaskComment(
   const isReply = !!parent;
   const taskTitle = task?.title ?? "task";
 
+  const { data: authorProfile } = await supabase
+    .from("profiles")
+    .select("full_name, email")
+    .eq("id", user.id)
+    .maybeSingle();
+  const fromName = personDisplayName(
+    {
+      full_name: authorProfile?.full_name ?? null,
+      email: authorProfile?.email ?? null,
+    },
+    "Someone",
+  );
+
   for (const recipientId of recipients) {
     const wasMentioned = mentioned.has(recipientId);
     await notifyUser({
@@ -264,7 +278,9 @@ export async function createTaskComment(
         : isReply
           ? `Reply on “${taskTitle}”`
           : `New comment on “${taskTitle}”`,
-      body: trimmed.slice(0, 180),
+      body: trimmed.slice(0, 280),
+      emailBody: trimmed.slice(0, 2000),
+      fromName,
       link: deepLink,
     });
   }

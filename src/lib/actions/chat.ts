@@ -274,6 +274,19 @@ export async function sendMessage(conversationId: string, body: string) {
   const link = `/messages/${conversationId}`;
   const preview = text.length > 120 ? `${text.slice(0, 117)}…` : text;
 
+  const { data: senderProfile } = await supabase
+    .from("profiles")
+    .select("full_name, email")
+    .eq("id", user.id)
+    .maybeSingle();
+  const fromName = personDisplayName(
+    {
+      full_name: senderProfile?.full_name ?? null,
+      email: senderProfile?.email ?? null,
+    },
+    "Someone",
+  );
+
   const senderIsClient = conversation.client_user_id === user.id;
 
   if (senderIsClient) {
@@ -303,6 +316,8 @@ export async function sendMessage(conversationId: string, body: string) {
         type: "chat_message",
         title: `Message on ${projectName}`,
         body: preview,
+        emailBody: text.slice(0, 2000),
+        fromName,
         link,
       });
     }
@@ -312,6 +327,8 @@ export async function sendMessage(conversationId: string, body: string) {
       type: "chat_message",
       title: `Message from ${projectName}`,
       body: preview,
+      emailBody: text.slice(0, 2000),
+      fromName,
       link,
     });
   }

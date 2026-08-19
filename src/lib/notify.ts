@@ -8,9 +8,26 @@ type NotifyInput = {
   type: string;
   title: string;
   body?: string;
+  /** Optional longer copy for email; falls back to body. */
+  emailBody?: string;
   link?: string;
   email?: string | null;
+  /** Display name of the person who triggered the notification. */
+  fromName?: string | null;
 };
+
+const COMMENT_TYPES = new Set([
+  "task_comment",
+  "task_comment_reply",
+  "task_comment_mention",
+  "chat_message",
+]);
+
+function absoluteAppUrl(path?: string | null) {
+  const origin = appUrl().startsWith("http") ? appUrl() : `https://${appUrl()}`;
+  if (!path) return origin;
+  return `${origin}${path.startsWith("/") ? path : `/${path}`}`;
+}
 
 async function sendEmail(
   to: string,
@@ -57,10 +74,7 @@ export async function sendSignInReminderEmail(input: {
   to: string;
   fullName?: string | null;
 }) {
-  const origin = appUrl().startsWith("http")
-    ? appUrl()
-    : `https://${appUrl()}`;
-  const loginUrl = `${origin}/login`;
+  const loginUrl = absoluteAppUrl("/login");
   const firstName =
     input.fullName?.trim().split(/\s+/)[0] ||
     input.to.split("@")[0] ||
@@ -120,14 +134,99 @@ function escapeHtml(value: string) {
     .replaceAll('"', "&quot;");
 }
 
+function formatEmailMultiline(value: string) {
+  return escapeHtml(value).replaceAll("\n", "<br />");
+}
+
+function firstNameFromProfile(
+  fullName: string | null | undefined,
+  email: string,
+) {
+  const fromName = fullName?.trim().split(/\s+/)[0];
+  if (fromName) return fromName;
+  return email.split("@")[0] || "there";
+}
+
+function notificationCtaLabel(type: string) {
+  if (COMMENT_TYPES.has(type)) {
+    return type === "chat_message" ? "Open conversation" : "View comment";
+  }
+  if (type === "project_invite") return "Open project";
+  if (type.startsWith("task_")) return "Open task";
+  return "Open in Parallel";
+}
+
+function buildNotificationEmail(input: {
+  firstName: string;
+  type: string;
+  title: string;
+  body: string;
+  fromName?: string | null;
+  linkUrl?: string | null;
+}) {
+  const cta = notificationCtaLabel(input.type);
+  const isCommentLike = COMMENT_TYPES.has(input.type);
+  const fromLabel = input.fromName?.trim() || null;
+
+  const textParts = [`Hi ${input.firstName},`, "", input.title, ""];
+  if (fromLabel && isCommentLike) {
+    textParts.push(`${fromLabel} wrote:`, "");
+  }
+  if (input.body) {
+    textParts.push(input.body, "");
+  }
+  if (input.linkUrl) {
+    textParts.push(`${cta}: ${input.linkUrl}`, "");
+  }
+  textParts.push("— Parallel");
+  const text = textParts.join("\n");
+
+  const commentCard = isCommentLike
+    ? `
+    <div style="margin:0 0 24px;border:1px solid #e8e8ec;border-radius:12px;background:#f7f6f4;overflow:hidden;">
+      ${
+        fromLabel
+          ? `<div style="padding:12px 16px 0;font-size:13px;font-weight:600;color:#0f1117;">${escapeHtml(fromLabel)}</div>`
+          : ""
+      }
+      <div style="padding:12px 16px 16px;font-size:15px;line-height:1.55;color:#0f1117;">${formatEmailMultiline(input.body || input.title)}</div>
+    </div>`
+    : input.body
+      ? `<p style="margin:0 0 24px;font-size:15px;line-height:1.55;color:#0f1117;">${formatEmailMultiline(input.body)}</p>`
+      : "";
+
+  const html = `
+  <div style="font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;line-height:1.5;color:#0f1117;background:#ffffff;max-width:520px;margin:0 auto;padding:24px;">
+    <p style="font-size:20px;font-weight:700;margin:0 0 20px;">parallel<span style="color:#e8420a;">.</span></p>
+    <p style="margin:0 0 8px;">Hi ${escapeHtml(input.firstName)},</p>
+    <p style="margin:0 0 16px;font-size:16px;font-weight:600;color:#0f1117;">${escapeHtml(input.title)}</p>
+    ${commentCard}
+    ${
+      input.linkUrl
+        ? `<p style="margin:0 0 28px;">
+      <a href="${escapeHtml(input.linkUrl)}" style="display:inline-block;background:#e8420a;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:600;">
+        ${escapeHtml(cta)}
+      </a>
+    </p>`
+        : ""
+    }
+    <p style="margin:0;font-size:13px;color:#6b6b72;">— Parallel</p>
+  </div>
+  `.trim();
+
+  return { text, html };
+}
+
 export async function notifyUser(input: NotifyInput) {
   const supabase = await createClient();
+
+  const notificationBody = (input.body ?? "").trim().slice(0, 280) || null;
 
   const { error } = await supabase.rpc("create_notification", {
     p_user_id: input.userId,
     p_type: input.type,
     p_title: input.title,
-    p_body: input.body ?? null,
+    p_body: notificationBody,
     p_link: input.link ?? null,
   });
 
@@ -136,24 +235,30 @@ export async function notifyUser(input: NotifyInput) {
   }
 
   let email = input.email;
+  let fullName: string | null = null;
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("email, full_name")
+    .eq("id", input.userId)
+    .maybeSingle();
   if (!email) {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("email")
-      .eq("id", input.userId)
-      .maybeSingle();
     email = profile?.email;
   }
+  fullName = profile?.full_name ?? null;
 
   if (email) {
-    const linkLine = input.link
-      ? `\n\nView: ${appUrl()}${input.link.startsWith("/") ? input.link : `/${input.link}`}`
-      : "";
-    await sendEmail(
-      email,
-      input.title,
-      `${input.body ?? input.title}${linkLine}`,
-    );
+    const linkUrl = input.link ? absoluteAppUrl(input.link) : null;
+    const emailBody = (input.emailBody ?? input.body ?? "").trim();
+    const firstName = firstNameFromProfile(fullName, email);
+    const { text, html } = buildNotificationEmail({
+      firstName,
+      type: input.type,
+      title: input.title,
+      body: emailBody || input.title,
+      fromName: input.fromName,
+      linkUrl,
+    });
+    await sendEmail(email, input.title, text, html);
   }
 }
 
