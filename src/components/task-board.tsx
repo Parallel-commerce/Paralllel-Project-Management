@@ -29,6 +29,7 @@ import {
   updateTask,
   updateTaskStatus,
 } from "@/lib/actions/projects";
+import { groupTasksByCompletedWeek } from "@/lib/completed-week";
 import { personDisplayName } from "@/lib/person";
 import { taskStatusColors } from "@/lib/task-status";
 import {
@@ -257,6 +258,42 @@ function StatusListSection({
       </div>
       {tasks.length === 0 ? (
         <p className="px-4 py-6 text-sm text-[var(--muted)]">No tasks</p>
+      ) : status === "done" ? (
+        <div className="bg-[var(--surface)]/70">
+          {groupTasksByCompletedWeek(tasks).map((week, index) => (
+            <div key={week.key}>
+              <div
+                className={`flex items-baseline justify-between gap-3 px-4 pb-1.5 pt-3 ${
+                  index > 0 ? "mt-1 border-t border-[var(--border)]" : ""
+                }`}
+              >
+                <div className="min-w-0">
+                  <p className={`text-xs font-medium ${colors.label}`}>
+                    {week.title}
+                  </p>
+                  {week.range ? (
+                    <p className="text-[11px] text-[var(--muted)]">
+                      {week.range}
+                    </p>
+                  ) : null}
+                </div>
+                <span className={`text-xs tabular-nums ${colors.label} opacity-70`}>
+                  {week.tasks.length}
+                </span>
+              </div>
+              <ul className="divide-y divide-[var(--border)]">
+                {week.tasks.map((task) => (
+                  <TaskListRow
+                    key={task.id}
+                    task={task}
+                    onOpen={() => onOpen(task)}
+                    trackedSeconds={timeSecondsByTaskId?.[task.id]}
+                  />
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
       ) : (
         <ul className="divide-y divide-[var(--border)] bg-[var(--surface)]/70">
           {tasks.map((task) => (
@@ -311,6 +348,29 @@ function StatusColumn({
           <p className="px-1 py-6 text-xs text-[var(--muted)]">
             Drop tasks here
           </p>
+        ) : status === "done" ? (
+          groupTasksByCompletedWeek(tasks).map((week) => (
+            <div key={week.key} className="flex flex-col gap-2">
+              <div className="px-1 pt-1">
+                <p className={`text-[11px] font-medium ${colors.label}`}>
+                  {week.title}
+                </p>
+                {week.range ? (
+                  <p className="text-[11px] leading-tight text-[var(--muted)]">
+                    {week.range}
+                  </p>
+                ) : null}
+              </div>
+              {week.tasks.map((task) => (
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  onOpen={() => onOpen(task)}
+                  trackedSeconds={timeSecondsByTaskId?.[task.id]}
+                />
+              ))}
+            </div>
+          ))
         ) : (
           tasks.map((task) => (
             <TaskCard
@@ -862,9 +922,20 @@ export function TaskBoard({
     if (!current || current.status === nextStatus) return;
 
     setTasks((prev) =>
-      prev.map((task) =>
-        task.id === taskId ? { ...task, status: nextStatus } : task,
-      ),
+      prev.map((task) => {
+        if (task.id !== taskId) return task;
+        if (nextStatus === "done") {
+          return {
+            ...task,
+            status: nextStatus,
+            completed_at: task.completed_at ?? new Date().toISOString(),
+          };
+        }
+        if (task.status === "done") {
+          return { ...task, status: nextStatus, completed_at: null };
+        }
+        return { ...task, status: nextStatus };
+      }),
     );
 
     startTransition(async () => {
