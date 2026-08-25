@@ -567,10 +567,19 @@ export function TaskComments({
   }
 
   return (
-    <section className="mt-6 border-t border-[var(--border)] pt-4">
-      <h3 className="text-sm font-medium">Comments</h3>
+    <section className="mt-6 flex min-h-0 flex-1 flex-col border-t border-[var(--border)] pt-4 lg:mt-0 lg:h-full lg:border-t-0 lg:pt-0">
+      <div className="shrink-0 px-0 lg:px-5 lg:pt-5">
+        <h3 className="text-sm font-medium">
+          Comments
+          {!loading && comments.length > 0 ? (
+            <span className="ml-2 font-normal text-[var(--muted)]">
+              {comments.length}
+            </span>
+          ) : null}
+        </h3>
+      </div>
 
-      <div className="mt-3 max-h-96 space-y-4 overflow-y-auto">
+      <div className="mt-3 min-h-0 flex-1 space-y-4 overflow-y-auto px-0 lg:mt-0 lg:px-5 lg:py-3">
         {loading ? (
           <p className="text-sm text-[var(--muted)]">Loading comments…</p>
         ) : threads.length === 0 ? (
@@ -600,7 +609,7 @@ export function TaskComments({
         )}
       </div>
 
-      <div className="mt-4">
+      <div className="mt-4 shrink-0 border-t border-[var(--border)] bg-[var(--surface)] px-0 pt-4 lg:mt-0 lg:px-5 lg:py-4">
         <p className="mb-1.5 text-sm text-[var(--muted)]">Add a comment</p>
         <CommentComposer
           placeholder="Share an update or ask a question…"

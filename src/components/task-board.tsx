@@ -514,6 +514,8 @@ function TaskModal({
     onClose();
   }
 
+  const editing = mode === "edit" && !!task;
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4"
@@ -525,31 +527,60 @@ function TaskModal({
       <div
         role="dialog"
         aria-modal="true"
-        className="max-h-[92dvh] w-full max-w-3xl overflow-y-auto rounded-t-2xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-lg sm:rounded-xl sm:p-6 md:p-7"
-        style={{ paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))" }}
+        className={`flex w-full flex-col rounded-t-2xl border border-[var(--border)] bg-[var(--surface)] shadow-lg sm:rounded-xl ${
+          editing
+            ? "max-h-[92dvh] max-w-3xl overflow-y-auto lg:h-[min(92dvh,56rem)] lg:max-w-6xl lg:overflow-hidden"
+            : "max-h-[92dvh] max-w-3xl overflow-y-auto"
+        }`}
+        style={
+          editing
+            ? undefined
+            : { paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))" }
+        }
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-[var(--border)] sm:hidden" />
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <h2 className="font-display text-xl tracking-tight">
-              {mode === "create" ? "New task" : "Edit task"}
-            </h2>
-            {mode === "edit" && task?.key ? (
-              <p className="mt-1 text-sm font-medium tabular-nums tracking-wide text-[var(--muted)]">
-                {task.key}
-              </p>
-            ) : null}
+        <div className="shrink-0 px-5 pt-5 sm:px-6 sm:pt-6 md:px-7 md:pt-7">
+          <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-[var(--border)] sm:hidden" />
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <h2 className="font-display text-xl tracking-tight">
+                {mode === "create" ? "New task" : "Edit task"}
+              </h2>
+              {mode === "edit" && task?.key ? (
+                <p className="mt-1 text-sm font-medium tabular-nums tracking-wide text-[var(--muted)]">
+                  {task.key}
+                </p>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              onClick={requestClose}
+              className="min-h-9 min-w-9 text-sm text-[var(--muted)] hover:text-[var(--foreground)]"
+            >
+              Close
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={requestClose}
-            className="min-h-9 min-w-9 text-sm text-[var(--muted)] hover:text-[var(--foreground)]"
-          >
-            Close
-          </button>
         </div>
 
+        <div
+          className={
+            editing
+              ? "flex min-h-0 flex-1 flex-col lg:flex-row lg:overflow-hidden"
+              : ""
+          }
+        >
+          <div
+            className={`px-5 pb-5 sm:px-6 sm:pb-6 md:px-7 md:pb-7 ${
+              editing
+                ? "min-h-0 lg:flex-1 lg:overflow-y-auto"
+                : ""
+            }`}
+            style={
+              editing
+                ? { paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))" }
+                : undefined
+            }
+          >
         <form
           ref={formRef}
           className="mt-4 flex flex-col gap-3"
@@ -774,16 +805,23 @@ function TaskModal({
               listId={listId}
               taskId={task.id}
             />
-            <TaskComments
-              projectId={projectId}
-              listId={listId}
-              taskId={task.id}
-              currentUserId={currentUserId}
-              members={members}
-              initialReplyToId={initialReplyCommentId}
-            />
           </>
         ) : null}
+          </div>
+
+          {editing && task ? (
+            <aside className="flex min-h-0 w-full flex-col border-t border-[var(--border)] bg-[var(--background)]/50 pb-[max(1rem,env(safe-area-inset-bottom))] lg:w-[24rem] lg:overflow-hidden lg:border-t-0 lg:border-l lg:pb-0 xl:w-[26rem]">
+              <TaskComments
+                projectId={projectId}
+                listId={listId}
+                taskId={task.id}
+                currentUserId={currentUserId}
+                members={members}
+                initialReplyToId={initialReplyCommentId}
+              />
+            </aside>
+          ) : null}
+        </div>
       </div>
     </div>
   );
