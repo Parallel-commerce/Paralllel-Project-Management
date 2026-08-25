@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { signOut } from "@/lib/actions/auth";
+import { GlobalSearch } from "@/components/global-search";
 import { MobileBottomNav } from "@/components/mobile-bottom-nav";
 import { NotificationBell } from "@/components/notification-bell";
 import { ParallelLogo } from "@/components/parallel-logo";
@@ -35,7 +36,7 @@ export async function AppHeader({
     <>
       <header className="sticky top-0 z-50 border-b border-[var(--border)] bg-[var(--surface)]/90 backdrop-blur">
         <div className="app-container flex h-14 items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-5">
+          <div className="flex shrink-0 items-center gap-5">
             <ParallelLogo className="h-6 w-auto sm:h-7" />
             <nav className="hidden items-center gap-4 text-sm md:flex">
               <Link
@@ -66,6 +67,7 @@ export async function AppHeader({
               ) : null}
             </nav>
           </div>
+          <GlobalSearch />
           <div className="flex shrink-0 items-center gap-2 text-sm sm:gap-3">
             <NotificationBell initialUnreadCount={initialUnreadCount} />
             {user ? (
