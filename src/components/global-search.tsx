@@ -21,15 +21,24 @@ const EMPTY: SearchResults = {
   projects: [],
   lists: [],
   tasks: [],
+  companies: [],
+  contacts: [],
 };
 
-type FlatHit = SearchHit & { group: "Projects" | "Lists" | "Tasks" };
+type FlatHit = SearchHit & {
+  group: "Projects" | "Lists" | "Tasks" | "Companies" | "Contacts";
+};
 
 function flatten(results: SearchResults): FlatHit[] {
   return [
     ...results.projects.map((hit) => ({ ...hit, group: "Projects" as const })),
     ...results.lists.map((hit) => ({ ...hit, group: "Lists" as const })),
     ...results.tasks.map((hit) => ({ ...hit, group: "Tasks" as const })),
+    ...results.companies.map((hit) => ({
+      ...hit,
+      group: "Companies" as const,
+    })),
+    ...results.contacts.map((hit) => ({ ...hit, group: "Contacts" as const })),
   ];
 }
 
@@ -183,7 +192,7 @@ export function GlobalSearch() {
               if (hit) goTo(hit.href);
             }
           }}
-          placeholder="Search projects, lists, and tasks"
+          placeholder="Search projects, lists, tasks, and CRM"
           className="min-h-10 w-full bg-transparent text-sm text-[var(--foreground)] outline-none placeholder:text-[var(--muted)]"
           role="combobox"
           aria-expanded={showResults}
@@ -223,7 +232,7 @@ export function GlobalSearch() {
           </p>
         ) : (
           <ul id={listId} role="listbox" className="space-y-3">
-            {(["Projects", "Lists", "Tasks"] as const).map((group) => {
+            {(["Projects", "Lists", "Tasks", "Companies", "Contacts"] as const).map((group) => {
               const groupHits = hits.filter((hit) => hit.group === group);
               if (groupHits.length === 0) return null;
               return (

@@ -5,8 +5,10 @@ import { usePathname } from "next/navigation";
 
 export function MobileBottomNav({
   isPlatformAdmin,
+  isInternal = false,
 }: {
   isPlatformAdmin: boolean;
+  isInternal?: boolean;
 }) {
   const pathname = usePathname();
 
@@ -21,6 +23,15 @@ export function MobileBottomNav({
       label: "Projects",
       match: (p: string) => p.startsWith("/projects"),
     },
+    ...(isInternal
+      ? [
+          {
+            href: "/crm",
+            label: "CRM",
+            match: (p: string) => p.startsWith("/crm"),
+          },
+        ]
+      : []),
     {
       href: "/tasks",
       label: "My work",

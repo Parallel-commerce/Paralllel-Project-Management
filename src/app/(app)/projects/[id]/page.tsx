@@ -84,7 +84,7 @@ export default async function ProjectPage({
   ] = await Promise.all([
     supabase
       .from("projects")
-      .select("id, name, description, logo_path")
+      .select("id, name, description, logo_path, company_id, companies(id, name)")
       .eq("id", id)
       .maybeSingle(),
     supabase
@@ -117,6 +117,10 @@ export default async function ProjectPage({
   const role = (membership?.role ?? "client") as ProjectRole;
   const isPlatformAdmin = !!profile?.is_platform_admin;
   const isAdmin = role === "admin" || isPlatformAdmin;
+  const isInternal = isPlatformAdmin || role === "admin" || role === "member";
+  const companyRow = Array.isArray(project.companies)
+    ? project.companies[0]
+    : project.companies;
   const canCreateLists =
     isPlatformAdmin ||
     role === "admin" ||
@@ -205,6 +209,17 @@ export default async function ProjectPage({
                 <p className="mt-2 text-xs uppercase tracking-wide text-[var(--muted)]">
                   Your role: {role}
                 </p>
+                {isInternal && companyRow ? (
+                  <p className="mt-2 text-sm text-[var(--muted)]">
+                    Company:{" "}
+                    <Link
+                      href={`/crm/${companyRow.id}`}
+                      className="text-[var(--accent)] hover:underline"
+                    >
+                      {companyRow.name}
+                    </Link>
+                  </p>
+                ) : null}
               </div>
             </div>
           </div>

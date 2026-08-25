@@ -11,10 +11,12 @@ import { profileAvatarPublicUrl } from "@/lib/profile-avatar";
 
 export async function AppHeader({
   isPlatformAdmin,
+  isInternal = false,
   initialUnreadCount = 0,
 }: {
   email?: string | null;
   isPlatformAdmin?: boolean;
+  isInternal?: boolean;
   initialUnreadCount?: number;
 } = {}) {
   const [{ user }, profile] = await Promise.all([
@@ -45,6 +47,14 @@ export async function AppHeader({
               >
                 Projects
               </Link>
+              {isInternal ? (
+                <Link
+                  href="/crm"
+                  className="text-[var(--muted)] hover:text-[var(--foreground)]"
+                >
+                  CRM
+                </Link>
+              ) : null}
               <Link
                 href="/tasks"
                 className="text-[var(--muted)] hover:text-[var(--foreground)]"
@@ -89,7 +99,10 @@ export async function AppHeader({
           </div>
         </div>
       </header>
-      <MobileBottomNav isPlatformAdmin={platformAdmin} />
+      <MobileBottomNav
+        isPlatformAdmin={platformAdmin}
+        isInternal={isInternal}
+      />
     </>
   );
 }

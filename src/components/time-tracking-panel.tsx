@@ -10,6 +10,7 @@ import {
   startTimer,
   stopTimer,
 } from "@/lib/actions/time";
+import { formatDate } from "@/lib/format-date";
 import { personDisplayName } from "@/lib/person";
 import type { TimeEntry } from "@/types/database";
 
@@ -405,7 +406,7 @@ export function TimeTrackingPanel({
                           {" · "}
                           {entry.source === "manual" ? "manual" : "timer"}
                           {" · "}
-                          {new Date(entry.started_at).toLocaleDateString()}
+                          {formatDate(entry.started_at)}
                         </p>
                       </div>
                       {canDelete ? (

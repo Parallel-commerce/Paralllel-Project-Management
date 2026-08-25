@@ -11,18 +11,8 @@ import {
   markAllNotificationsRead,
   markNotificationRead,
 } from "@/lib/actions/notifications";
+import { formatDateTime } from "@/lib/format-date";
 import type { Notification } from "@/types/database";
-
-function formatWhen(iso: string) {
-  try {
-    return new Intl.DateTimeFormat(undefined, {
-      dateStyle: "medium",
-      timeStyle: "short",
-    }).format(new Date(iso));
-  } catch {
-    return iso;
-  }
-}
 
 function notificationKind(type: string) {
   if (type.startsWith("task_comment")) return "Comment";
@@ -179,7 +169,7 @@ export function NotificationBell({
                   </p>
                 ) : null}
                 <p className="mt-1 text-[10px] text-[var(--muted)]">
-                  {kind} · {formatWhen(notification.created_at)}
+                  {kind} · {formatDateTime(notification.created_at)}
                 </p>
               </>
             );

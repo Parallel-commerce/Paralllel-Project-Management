@@ -2,19 +2,9 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { GenerateReportForm } from "@/components/generate-report-form";
+import { formatDateTime } from "@/lib/format-date";
 import { createClient } from "@/lib/supabase/server";
 import type { ProjectRole } from "@/types/database";
-
-function formatWhen(iso: string) {
-  try {
-    return new Intl.DateTimeFormat(undefined, {
-      dateStyle: "medium",
-      timeStyle: "short",
-    }).format(new Date(iso));
-  } catch {
-    return iso;
-  }
-}
 
 export default async function ProjectReportsPage({
   params,
@@ -96,9 +86,9 @@ export default async function ProjectReportsPage({
                       <div>
                         <p className="font-medium">{report.title}</p>
                         <p className="mt-1 text-xs text-[var(--muted)]">
-                          Created {formatWhen(report.created_at)}
+                          Created {formatDateTime(report.created_at)}
                           {report.sent_at
-                            ? ` · Sent ${formatWhen(report.sent_at)}`
+                            ? ` · Sent ${formatDateTime(report.sent_at)}`
                             : " · Draft"}
                         </p>
                       </div>

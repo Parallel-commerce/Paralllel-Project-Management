@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
+import { companyStatusLabel } from "@/lib/company-status";
 import type { TaskStatus } from "@/types/database";
 
 export type SearchHit = {
@@ -19,6 +20,8 @@ export type SearchResults = {
   projects: SearchHit[];
   lists: SearchHit[];
   tasks: SearchHit[];
+  companies: SearchHit[];
+  contacts: SearchHit[];
   error?: string;
 };
 
@@ -83,6 +86,8 @@ const emptyResults = (query: string): SearchResults => ({
   projects: [],
   lists: [],
   tasks: [],
+  companies: [],
+  contacts: [],
 });
 
 export async function searchApp(rawQuery: string): Promise<SearchResults> {
@@ -102,7 +107,10 @@ export async function searchApp(rawQuery: string): Promise<SearchResults> {
 
   const pattern = ilikePattern(query);
 
-  const [projectResult, listResult, taskResult] = await Promise.all([
+  const { data: isInternal } = await supabase.rpc("is_internal_user");
+
+  const [projectResult, listResult, taskResult, companyResult, contactResult] =
+    await Promise.all([
     supabase
       .from("projects")
       .select("id, name, description, updated_at")
@@ -123,14 +131,31 @@ export async function searchApp(rawQuery: string): Promise<SearchResults> {
       .or(orIlike(["title", "key", "description"], query))
       .order("updated_at", { ascending: false })
       .limit(16),
+    isInternal
+      ? supabase
+          .from("companies")
+          .select("id, name, website, status, updated_at")
+          .or(orIlike(["name", "website", "notes"], query))
+          .order("updated_at", { ascending: false })
+          .limit(8)
+      : Promise.resolve({ data: [], error: null }),
+    isInternal
+      ? supabase
+          .from("contacts")
+          .select("id, full_name, email, title, company_id, companies(name)")
+          .or(orIlike(["full_name", "email", "phone", "title"], query))
+          .limit(8)
+      : Promise.resolve({ data: [], error: null }),
   ]);
 
   const error =
     projectResult.error?.message ||
     listResult.error?.message ||
-    taskResult.error?.message;
+    taskResult.error?.message ||
+    companyResult.error?.message ||
+    contactResult.error?.message;
   if (error) {
-    console.error("searchApp failed", projectResult.error, listResult.error, taskResult.error);
+    console.error("searchApp failed", projectResult.error, listResult.error, taskResult.error, companyResult.error, contactResult.error);
     return { ...emptyResults(trimmed), error: "Search failed. Try again." };
   }
 
@@ -178,5 +203,38 @@ export async function searchApp(rawQuery: string): Promise<SearchResults> {
     }),
   ).map(toSearchHit);
 
-  return { query: trimmed, projects, lists, tasks };
+  const companies = sortHits(
+    (companyResult.data ?? []).map((company) => ({
+      id: company.id,
+      href: `/crm/${company.id}`,
+      title: company.name,
+      subtitle: [companyStatusLabel(company.status), company.website]
+        .filter(Boolean)
+        .join(" · "),
+      score: matchScore(query, company.name, company.website),
+    })),
+  ).map(toSearchHit);
+
+  const contacts = sortHits(
+    (contactResult.data ?? []).map((contact) => {
+      const companyName = nestedName(contact.companies, "Company");
+      return {
+        id: contact.id,
+        href: `/crm/${contact.company_id}`,
+        title: contact.full_name,
+        subtitle: [companyName, contact.title, contact.email]
+          .filter(Boolean)
+          .join(" · "),
+        score: matchScore(
+          query,
+          contact.full_name,
+          contact.email,
+          contact.title,
+          companyName,
+        ),
+      };
+    }),
+  ).map(toSearchHit);
+
+  return { query: trimmed, projects, lists, tasks, companies, contacts };
 }

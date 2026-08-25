@@ -2,19 +2,9 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { ReportEditor } from "@/components/report-editor";
+import { formatDateTime } from "@/lib/format-date";
 import { createClient } from "@/lib/supabase/server";
 import type { ProjectRole, ReportDigest } from "@/types/database";
-
-function formatWhen(iso: string) {
-  try {
-    return new Intl.DateTimeFormat(undefined, {
-      dateStyle: "medium",
-      timeStyle: "short",
-    }).format(new Date(iso));
-  } catch {
-    return iso;
-  }
-}
 
 export default async function ProjectReportDetailPage({
   params,
@@ -99,8 +89,8 @@ export default async function ProjectReportDetailPage({
           {report.title}
         </h1>
         <p className="mt-2 text-sm text-[var(--muted)]">
-          {project.name} · Created {formatWhen(report.created_at)}
-          {report.sent_at ? ` · Sent ${formatWhen(report.sent_at)}` : " · Draft"}
+          {project.name} · Created {formatDateTime(report.created_at)}
+          {report.sent_at ? ` · Sent ${formatDateTime(report.sent_at)}` : " · Draft"}
         </p>
 
         <section className="mt-8 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">

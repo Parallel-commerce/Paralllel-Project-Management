@@ -2,23 +2,13 @@ import Link from "next/link";
 
 import { StatusCountTag } from "@/components/status-tag";
 import { TaskWorkLink } from "@/components/task-work-link";
+import { formatDateTime } from "@/lib/format-date";
 import { personDisplayName } from "@/lib/person";
 import { createClient } from "@/lib/supabase/server";
 import { TASK_STATUSES, type TaskStatus } from "@/types/database";
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
-}
-
-function formatWhen(iso: string) {
-  try {
-    return new Intl.DateTimeFormat(undefined, {
-      dateStyle: "medium",
-      timeStyle: "short",
-    }).format(new Date(iso));
-  } catch {
-    return iso;
-  }
 }
 
 function emptyStatusCounts(): Record<TaskStatus, number> {
@@ -380,7 +370,7 @@ export async function AdminHomeInsights() {
                   >
                     {event.projectName}
                   </Link>{" "}
-                  · {formatWhen(event.created_at)}
+                  · {formatDateTime(event.created_at)}
                 </p>
               </li>
             ))

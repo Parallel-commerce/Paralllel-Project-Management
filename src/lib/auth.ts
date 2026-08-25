@@ -49,3 +49,31 @@ export async function requireSessionUser() {
   }
   return { supabase, user };
 }
+
+/** True when the current user is a platform admin or an internal project member. */
+export const getIsInternalUser = cache(async () => {
+  const { supabase, user } = await getSessionUser();
+  if (!user) return false;
+
+  const { data, error } = await supabase.rpc("is_internal_user");
+  if (!error) return !!data;
+
+  const profile = await getCurrentProfile();
+  if (profile?.is_platform_admin) return true;
+
+  const { count } = await supabase
+    .from("project_members")
+    .select("*", { count: "exact", head: true })
+    .eq("user_id", user.id)
+    .in("role", ["admin", "member"]);
+  return (count ?? 0) > 0;
+});
+
+export async function requireInternalUser() {
+  const session = await requireSessionUser();
+  const isInternal = await getIsInternalUser();
+  if (!isInternal) {
+    redirect("/home");
+  }
+  return session;
+}

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 
 import { sendMessage } from "@/lib/actions/chat";
+import { formatShortDateTime } from "@/lib/format-date";
 import { personDisplayName } from "@/lib/person";
 import { createClient } from "@/lib/supabase/client";
 
@@ -151,12 +152,7 @@ export function ChatThread({
                       mine ? "text-white/70" : "text-[var(--muted)]"
                     }`}
                   >
-                    {new Date(message.created_at).toLocaleString(undefined, {
-                      month: "short",
-                      day: "numeric",
-                      hour: "numeric",
-                      minute: "2-digit",
-                    })}
+                    {formatShortDateTime(message.created_at)}
                   </p>
                 </div>
               </div>

@@ -2,7 +2,12 @@ import { Suspense } from "react";
 
 import { AppHeader } from "@/components/app-header";
 import { NavigationProgress } from "@/components/navigation-progress";
-import { getCurrentProfile, getSessionUser, getSupabase } from "@/lib/auth";
+import {
+  getCurrentProfile,
+  getIsInternalUser,
+  getSessionUser,
+  getSupabase,
+} from "@/lib/auth";
 
 async function unreadNotificationCount(userId: string) {
   const supabase = await getSupabase();
@@ -19,9 +24,10 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const [{ user }, profile] = await Promise.all([
+  const [{ user }, profile, isInternal] = await Promise.all([
     getSessionUser(),
     getCurrentProfile(),
+    getIsInternalUser(),
   ]);
 
   const initialUnreadCount = user
@@ -35,6 +41,7 @@ export default async function AppLayout({
       </Suspense>
       <AppHeader
         isPlatformAdmin={!!profile?.is_platform_admin}
+        isInternal={isInternal}
         initialUnreadCount={initialUnreadCount}
       />
       {children}

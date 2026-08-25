@@ -7,6 +7,7 @@ import {
   markTaskCommentRead,
   markTaskCommentsRead,
 } from "@/lib/actions/comments";
+import { formatDateTime } from "@/lib/format-date";
 
 export type RecentCommentItem = {
   id: string;
@@ -21,17 +22,6 @@ export type RecentCommentItem = {
   projectId: string;
   projectName: string;
 };
-
-function formatWhen(iso: string) {
-  try {
-    return new Intl.DateTimeFormat(undefined, {
-      dateStyle: "medium",
-      timeStyle: "short",
-    }).format(new Date(iso));
-  } catch {
-    return iso;
-  }
-}
 
 function truncate(text: string, max = 160) {
   const trimmed = text.trim().replace(/\s+/g, " ");
@@ -137,7 +127,7 @@ export function RecentCommentsList({
                 <p className="mt-1.5 text-xs text-[var(--muted)]">
                   {comment.taskKey ? `${comment.taskKey} · ` : ""}
                   {comment.taskTitle} · {comment.projectName} ·{" "}
-                  {formatWhen(comment.created_at)}
+                  {formatDateTime(comment.created_at)}
                   <span className="text-[var(--accent)]"> · Reply</span>
                 </p>
               </button>

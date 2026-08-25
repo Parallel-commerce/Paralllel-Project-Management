@@ -17,21 +17,11 @@ import {
   type MentionPerson,
 } from "@/lib/mentions";
 import { personDisplayName } from "@/lib/person";
+import { formatDateTime } from "@/lib/format-date";
 
 const MAX_VISIBLE_INDENT = 5;
 
 type CommentNode = CommentWithAuthor & { children: CommentNode[] };
-
-function formatWhen(iso: string) {
-  try {
-    return new Intl.DateTimeFormat(undefined, {
-      dateStyle: "medium",
-      timeStyle: "short",
-    }).format(new Date(iso));
-  } catch {
-    return iso;
-  }
-}
 
 function authorLabel(comment: CommentWithAuthor) {
   return personDisplayName(comment.author, "Unknown");
@@ -341,7 +331,7 @@ function CommentItem({
                 {authorLabel(comment)}
               </p>
               <p className="text-xs text-[var(--muted)]">
-                {formatWhen(comment.created_at)}
+                {formatDateTime(comment.created_at)}
               </p>
             </div>
             {comment.created_by === currentUserId ? (

@@ -3,18 +3,10 @@ import { notFound, redirect } from "next/navigation";
 
 import { RestoreArchivedTaskButton } from "@/components/restore-archived-task-button";
 import { StatusTag } from "@/components/status-tag";
+import { formatDate } from "@/lib/format-date";
 import { personDisplayName } from "@/lib/person";
 import { createClient } from "@/lib/supabase/server";
 import type { TaskStatus } from "@/types/database";
-
-function formatDate(value: string | null) {
-  if (!value) return "—";
-  return new Date(value).toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
 
 export default async function ListArchivePage({
   params,

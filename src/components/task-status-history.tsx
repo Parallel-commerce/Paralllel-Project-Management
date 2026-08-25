@@ -8,18 +8,8 @@ import {
 } from "@/lib/actions/projects";
 import { personDisplayName } from "@/lib/person";
 import { StatusTag } from "@/components/status-tag";
+import { formatDateTime } from "@/lib/format-date";
 import { taskStatusLabel } from "@/lib/task-status";
-
-function formatWhen(iso: string) {
-  try {
-    return new Intl.DateTimeFormat(undefined, {
-      dateStyle: "medium",
-      timeStyle: "short",
-    }).format(new Date(iso));
-  } catch {
-    return iso;
-  }
-}
 
 export function TaskStatusHistory({
   projectId,
@@ -66,7 +56,7 @@ export function TaskStatusHistory({
         <p className="mt-3 flex flex-wrap items-center gap-2 text-sm">
           <StatusTag status={latest.to} />
           <span className="text-[var(--muted)]">
-            since {formatWhen(latest.created_at)}
+            since {formatDateTime(latest.created_at)}
           </span>
         </p>
       ) : null}
@@ -107,7 +97,7 @@ export function TaskStatusHistory({
               </p>
               <p className="mt-0.5 text-xs text-[var(--muted)]">
                 {personDisplayName(event.actor, "Someone")} ·{" "}
-                {formatWhen(event.created_at)}
+                {formatDateTime(event.created_at)}
               </p>
             </li>
           ))

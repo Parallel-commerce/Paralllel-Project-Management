@@ -5,6 +5,12 @@ export type TaskStatus =
   | "in_progress"
   | "requiring_feedback"
   | "done";
+export type CompanyStatus =
+  | "lead"
+  | "contacted"
+  | "proposal"
+  | "won"
+  | "lost";
 
 export type Profile = {
   id: string;
@@ -25,7 +31,34 @@ export type Project = {
   description: string | null;
   logo_path: string | null;
   next_task_number: number;
+  company_id: string | null;
   created_by: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Company = {
+  id: string;
+  name: string;
+  website: string | null;
+  notes: string | null;
+  status: CompanyStatus;
+  follow_up_at: string | null;
+  follow_up_note: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Contact = {
+  id: string;
+  company_id: string;
+  full_name: string;
+  email: string | null;
+  phone: string | null;
+  title: string | null;
+  notes: string | null;
+  is_primary: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -234,6 +267,7 @@ export type Database = {
           description?: string | null;
           logo_path?: string | null;
           next_task_number?: number;
+          company_id?: string | null;
           created_by: string;
           created_at?: string;
           updated_at?: string;
@@ -243,9 +277,85 @@ export type Database = {
           description?: string | null;
           logo_path?: string | null;
           next_task_number?: number;
+          company_id?: string | null;
           updated_at?: string;
         };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: "projects_company_id_fkey";
+            columns: ["company_id"];
+            isOneToOne: false;
+            referencedRelation: "companies";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      companies: {
+        Row: Company;
+        Insert: {
+          id?: string;
+          name: string;
+          website?: string | null;
+          notes?: string | null;
+          status?: CompanyStatus;
+          follow_up_at?: string | null;
+          follow_up_note?: string | null;
+          created_by: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          name?: string;
+          website?: string | null;
+          notes?: string | null;
+          status?: CompanyStatus;
+          follow_up_at?: string | null;
+          follow_up_note?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "companies_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      contacts: {
+        Row: Contact;
+        Insert: {
+          id?: string;
+          company_id: string;
+          full_name: string;
+          email?: string | null;
+          phone?: string | null;
+          title?: string | null;
+          notes?: string | null;
+          is_primary?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          company_id?: string;
+          full_name?: string;
+          email?: string | null;
+          phone?: string | null;
+          title?: string | null;
+          notes?: string | null;
+          is_primary?: boolean;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "contacts_company_id_fkey";
+            columns: ["company_id"];
+            isOneToOne: false;
+            referencedRelation: "companies";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       project_members: {
         Row: ProjectMember;
@@ -671,6 +781,10 @@ export type Database = {
         Args: Record<string, never>;
         Returns: boolean;
       };
+      is_internal_user: {
+        Args: Record<string, never>;
+        Returns: boolean;
+      };
       soft_delete_user: {
         Args: { p_user_id: string };
         Returns: undefined;
@@ -742,6 +856,7 @@ export type Database = {
       list_visibility: ListVisibility;
       task_status: TaskStatus;
       report_period: ReportPeriod;
+      company_status: CompanyStatus;
     };
     CompositeTypes: Record<string, never>;
   };
@@ -758,4 +873,12 @@ export const PROJECT_ROLES: { value: ProjectRole; label: string }[] = [
   { value: "admin", label: "Admin" },
   { value: "member", label: "Team member" },
   { value: "client", label: "Client" },
+];
+
+export const COMPANY_STATUSES: { value: CompanyStatus; label: string }[] = [
+  { value: "lead", label: "Lead" },
+  { value: "contacted", label: "Contacted" },
+  { value: "proposal", label: "Proposal" },
+  { value: "won", label: "Won" },
+  { value: "lost", label: "Lost" },
 ];

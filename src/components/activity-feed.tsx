@@ -1,17 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { personDisplayName } from "@/lib/person";
+import { formatDateTime } from "@/lib/format-date";
 import type { ProjectRole } from "@/types/database";
-
-function formatWhen(iso: string) {
-  try {
-    return new Intl.DateTimeFormat(undefined, {
-      dateStyle: "medium",
-      timeStyle: "short",
-    }).format(new Date(iso));
-  } catch {
-    return iso;
-  }
-}
 
 export async function ActivityFeed({
   projectId,
@@ -66,7 +56,7 @@ export async function ActivityFeed({
               >
                 <p className="text-sm">{event.summary}</p>
                 <p className="mt-1 text-xs text-[var(--muted)]">
-                  {actor} · {formatWhen(event.created_at)}
+                  {actor} · {formatDateTime(event.created_at)}
                 </p>
               </li>
             );

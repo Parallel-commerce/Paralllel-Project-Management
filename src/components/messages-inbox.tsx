@@ -9,19 +9,7 @@ import {
   ensureClientConversation,
   type ConversationListItem,
 } from "@/lib/actions/chat";
-
-function formatWhen(iso: string) {
-  try {
-    return new Intl.DateTimeFormat(undefined, {
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    }).format(new Date(iso));
-  } catch {
-    return iso;
-  }
-}
+import { formatShortDateTime } from "@/lib/format-date";
 
 function initials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -98,7 +86,7 @@ export function MessagesInbox({
                         </p>
                         {when ? (
                           <time className="shrink-0 text-[11px] tabular-nums text-[var(--muted)]">
-                            {formatWhen(when)}
+                            {formatShortDateTime(when)}
                           </time>
                         ) : null}
                       </div>
