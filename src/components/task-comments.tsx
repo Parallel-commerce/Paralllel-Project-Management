@@ -460,6 +460,8 @@ export function TaskComments({
   currentUserId,
   members,
   initialReplyToId = null,
+  onClose,
+  onCountChange,
 }: {
   projectId: string;
   listId: string;
@@ -467,6 +469,8 @@ export function TaskComments({
   currentUserId: string;
   members: MentionPerson[];
   initialReplyToId?: string | null;
+  onClose?: () => void;
+  onCountChange?: (count: number) => void;
 }) {
   const [comments, setComments] = useState<CommentWithAuthor[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -518,6 +522,11 @@ export function TaskComments({
     };
   }, [taskId, initialReplyToId]);
 
+  useEffect(() => {
+    if (loading) return;
+    onCountChange?.(comments.length);
+  }, [comments.length, loading, onCountChange]);
+
   const threads = useMemo(() => buildCommentTree(comments), [comments]);
 
   function postComment(
@@ -557,8 +566,8 @@ export function TaskComments({
   }
 
   return (
-    <section className="mt-6 flex min-h-0 flex-1 flex-col border-t border-[var(--border)] pt-4 lg:mt-0 lg:h-full lg:border-t-0 lg:pt-0">
-      <div className="shrink-0 px-0 lg:px-5 lg:pt-5">
+    <section className="flex min-h-0 flex-1 flex-col lg:h-full">
+      <div className="flex shrink-0 items-center justify-between gap-3 px-5 pt-4 lg:pt-5">
         <h3 className="text-sm font-medium">
           Comments
           {!loading && comments.length > 0 ? (
@@ -567,9 +576,18 @@ export function TaskComments({
             </span>
           ) : null}
         </h3>
+        {onClose ? (
+          <button
+            type="button"
+            onClick={onClose}
+            className="min-h-9 text-sm text-[var(--muted)] hover:text-[var(--foreground)] lg:hidden"
+          >
+            Back
+          </button>
+        ) : null}
       </div>
 
-      <div className="mt-3 min-h-0 flex-1 space-y-4 overflow-y-auto px-0 lg:mt-0 lg:px-5 lg:py-3">
+      <div className="mt-3 min-h-0 flex-1 space-y-4 overflow-y-auto px-5 lg:mt-0 lg:py-3">
         {loading ? (
           <p className="text-sm text-[var(--muted)]">Loading comments…</p>
         ) : threads.length === 0 ? (
@@ -599,7 +617,7 @@ export function TaskComments({
         )}
       </div>
 
-      <div className="mt-4 shrink-0 border-t border-[var(--border)] bg-[var(--surface)] px-0 pt-4 lg:mt-0 lg:px-5 lg:py-4">
+      <div className="mt-4 shrink-0 border-t border-[var(--border)] bg-[var(--surface)] px-5 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] lg:mt-0 lg:py-4 lg:pb-4">
         <p className="mb-1.5 text-sm text-[var(--muted)]">Add a comment</p>
         <CommentComposer
           placeholder="Share an update or ask a question…"
