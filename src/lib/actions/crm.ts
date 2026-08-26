@@ -5,7 +5,11 @@ import { redirect } from "next/navigation";
 
 import { requireInternalUser } from "@/lib/auth";
 import { inviteMember } from "@/lib/actions/projects";
+import { parseCompanyImportCsv, type ImportRowError } from "@/lib/crm-csv";
 import { COMPANY_STATUSES, type CompanyStatus } from "@/types/database";
+
+const IMPORT_MAX_BYTES = 512 * 1024;
+const IMPORT_MAX_ROWS = 500;
 
 const STATUS_VALUES = new Set<CompanyStatus>(
   COMPANY_STATUSES.map((item) => item.value),
@@ -316,4 +320,229 @@ export async function convertCompanyToProject(
   revalidatePath(`/crm/${companyId}`);
   revalidatePath("/projects");
   redirect(`/projects/${project.id}`);
+}
+
+export type ImportCompaniesResult = {
+  companiesCreated: number;
+  companiesMatched: number;
+  contactsCreated: number;
+  contactsSkipped: number;
+  errors: ImportRowError[];
+  error?: string;
+};
+
+export async function importCompanies(
+  formData: FormData,
+): Promise<ImportCompaniesResult> {
+  const { supabase, user } = await requireInternalUser();
+  const file = formData.get("file");
+
+  if (!(file instanceof File) || file.size === 0) {
+    return {
+      companiesCreated: 0,
+      companiesMatched: 0,
+      contactsCreated: 0,
+      contactsSkipped: 0,
+      errors: [],
+      error: "Choose a CSV file to import.",
+    };
+  }
+
+  if (file.size > IMPORT_MAX_BYTES) {
+    return {
+      companiesCreated: 0,
+      companiesMatched: 0,
+      contactsCreated: 0,
+      contactsSkipped: 0,
+      errors: [],
+      error: "CSV must be 512KB or smaller.",
+    };
+  }
+
+  const text = await file.text();
+  const lineCount = text.split(/\r?\n/).filter((line) => line.trim()).length;
+  if (lineCount - 1 > IMPORT_MAX_ROWS) {
+    return {
+      companiesCreated: 0,
+      companiesMatched: 0,
+      contactsCreated: 0,
+      contactsSkipped: 0,
+      errors: [],
+      error: `CSV can have at most ${IMPORT_MAX_ROWS} data rows.`,
+    };
+  }
+
+  const parsed = parseCompanyImportCsv(text);
+  if ("error" in parsed) {
+    return {
+      companiesCreated: 0,
+      companiesMatched: 0,
+      contactsCreated: 0,
+      contactsSkipped: 0,
+      errors: [],
+      error: parsed.error,
+    };
+  }
+
+  const { companies, errors } = parsed;
+
+  if (companies.length === 0) {
+    return {
+      companiesCreated: 0,
+      companiesMatched: 0,
+      contactsCreated: 0,
+      contactsSkipped: 0,
+      errors,
+      error: errors[0]?.message ?? "No companies found in the CSV.",
+    };
+  }
+
+  const { data: existingRows, error: existingError } = await supabase
+    .from("companies")
+    .select("id, name");
+
+  if (existingError) {
+    return {
+      companiesCreated: 0,
+      companiesMatched: 0,
+      contactsCreated: 0,
+      contactsSkipped: 0,
+      errors,
+      error: existingError.message,
+    };
+  }
+
+  const existingByName = new Map(
+    (existingRows ?? []).map((row) => [row.name.trim().toLowerCase(), row.id]),
+  );
+
+  let companiesCreated = 0;
+  let companiesMatched = 0;
+  let contactsCreated = 0;
+  let contactsSkipped = 0;
+  const companyIds = new Map<string, string>();
+
+  for (const company of companies) {
+    const key = company.name.toLowerCase();
+    const existingId = existingByName.get(key);
+    if (existingId) {
+      companyIds.set(key, existingId);
+      companiesMatched += 1;
+      continue;
+    }
+
+    const { data, error } = await supabase
+      .from("companies")
+      .insert({
+        name: company.name,
+        website: company.website,
+        notes: company.notes,
+        status: company.status,
+        follow_up_at: company.follow_up_at,
+        follow_up_note: company.follow_up_note,
+        created_by: user.id,
+      })
+      .select("id")
+      .single();
+
+    if (error || !data) {
+      errors.push({
+        row: company.contacts[0]?.row ?? 0,
+        message: error?.message ?? `Could not create ${company.name}.`,
+      });
+      continue;
+    }
+
+    companyIds.set(key, data.id);
+    existingByName.set(key, data.id);
+    companiesCreated += 1;
+  }
+
+  const importedIds = [...companyIds.values()];
+  const existingContactKeys = new Set<string>();
+  const companiesWithPrimary = new Set<string>();
+
+  if (importedIds.length > 0) {
+    const { data: existingContacts } = await supabase
+      .from("contacts")
+      .select("company_id, full_name, email, is_primary")
+      .in("company_id", importedIds);
+
+    for (const contact of existingContacts ?? []) {
+      const email = (contact.email ?? "").trim().toLowerCase();
+      if (email) {
+        existingContactKeys.add(`${contact.company_id}:email:${email}`);
+      }
+      existingContactKeys.add(
+        `${contact.company_id}:name:${contact.full_name.trim().toLowerCase()}`,
+      );
+      if (contact.is_primary) {
+        companiesWithPrimary.add(contact.company_id);
+      }
+    }
+  }
+
+  const toInsert: Array<{
+    company_id: string;
+    full_name: string;
+    email: string | null;
+    phone: string | null;
+    title: string | null;
+    notes: string | null;
+    is_primary: boolean;
+  }> = [];
+
+  for (const company of companies) {
+    const companyId = companyIds.get(company.name.toLowerCase());
+    if (!companyId) continue;
+
+    for (const contact of company.contacts) {
+      const email = contact.email;
+      const nameKey = `${companyId}:name:${contact.full_name.toLowerCase()}`;
+      const emailKey = email ? `${companyId}:email:${email}` : null;
+      if (existingContactKeys.has(nameKey) || (emailKey && existingContactKeys.has(emailKey))) {
+        contactsSkipped += 1;
+        continue;
+      }
+
+      const isPrimary =
+        contact.is_primary && !companiesWithPrimary.has(companyId);
+      toInsert.push({
+        company_id: companyId,
+        full_name: contact.full_name,
+        email,
+        phone: contact.phone,
+        title: contact.title,
+        notes: contact.notes,
+        is_primary: isPrimary,
+      });
+      existingContactKeys.add(nameKey);
+      if (emailKey) existingContactKeys.add(emailKey);
+      if (isPrimary) companiesWithPrimary.add(companyId);
+    }
+  }
+
+  if (toInsert.length > 0) {
+    const { error } = await supabase.from("contacts").insert(toInsert);
+    if (error) {
+      return {
+        companiesCreated,
+        companiesMatched,
+        contactsCreated,
+        contactsSkipped,
+        errors,
+        error: error.message,
+      };
+    }
+    contactsCreated = toInsert.length;
+  }
+
+  revalidatePath("/crm");
+  return {
+    companiesCreated,
+    companiesMatched,
+    contactsCreated,
+    contactsSkipped,
+    errors,
+  };
 }

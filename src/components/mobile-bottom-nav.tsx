@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { primaryNavItems, visibleNavItems } from "@/lib/nav";
+
 export function MobileBottomNav({
   isPlatformAdmin,
   isInternal = false,
@@ -11,47 +13,10 @@ export function MobileBottomNav({
   isInternal?: boolean;
 }) {
   const pathname = usePathname();
-
-  const items = [
-    {
-      href: "/home",
-      label: "Home",
-      match: (p: string) => p === "/home" || p.startsWith("/home/"),
-    },
-    {
-      href: "/projects",
-      label: "Projects",
-      match: (p: string) => p.startsWith("/projects"),
-    },
-    ...(isInternal
-      ? [
-          {
-            href: "/crm",
-            label: "CRM",
-            match: (p: string) => p.startsWith("/crm"),
-          },
-        ]
-      : []),
-    {
-      href: "/tasks",
-      label: "My work",
-      match: (p: string) => p.startsWith("/tasks"),
-    },
-    {
-      href: "/messages",
-      label: "Messages",
-      match: (p: string) => p.startsWith("/messages"),
-    },
-    ...(isPlatformAdmin
-      ? [
-          {
-            href: "/users",
-            label: "Users",
-            match: (p: string) => p.startsWith("/users"),
-          },
-        ]
-      : []),
-  ];
+  const items = visibleNavItems(primaryNavItems, {
+    isInternal,
+    isPlatformAdmin,
+  });
 
   return (
     <nav
@@ -66,6 +31,7 @@ export function MobileBottomNav({
             <li key={item.href} className="flex-1">
               <Link
                 href={item.href}
+                aria-current={active ? "page" : undefined}
                 className={`flex min-h-12 flex-col items-center justify-center px-2 text-xs font-medium ${
                   active
                     ? "text-[var(--accent)]"

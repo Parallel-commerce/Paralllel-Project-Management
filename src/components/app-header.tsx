@@ -1,6 +1,5 @@
-import Link from "next/link";
-
 import { signOut } from "@/lib/actions/auth";
+import { DesktopNav } from "@/components/desktop-nav";
 import { GlobalSearch } from "@/components/global-search";
 import { MobileBottomNav } from "@/components/mobile-bottom-nav";
 import { NotificationBell } from "@/components/notification-bell";
@@ -38,44 +37,12 @@ export async function AppHeader({
     <>
       <header className="sticky top-0 z-50 border-b border-[var(--border)] bg-[var(--surface)]/90 backdrop-blur">
         <div className="app-container flex h-14 items-center justify-between gap-3">
-          <div className="flex shrink-0 items-center gap-5">
+          <div className="flex shrink-0 items-center gap-5 self-stretch">
             <ParallelLogo className="h-6 w-auto sm:h-7" />
-            <nav className="hidden items-center gap-4 text-sm md:flex">
-              <Link
-                href="/projects"
-                className="text-[var(--muted)] hover:text-[var(--foreground)]"
-              >
-                Projects
-              </Link>
-              {isInternal ? (
-                <Link
-                  href="/crm"
-                  className="text-[var(--muted)] hover:text-[var(--foreground)]"
-                >
-                  CRM
-                </Link>
-              ) : null}
-              <Link
-                href="/tasks"
-                className="text-[var(--muted)] hover:text-[var(--foreground)]"
-              >
-                My work
-              </Link>
-              <Link
-                href="/messages"
-                className="text-[var(--muted)] hover:text-[var(--foreground)]"
-              >
-                Messages
-              </Link>
-              {platformAdmin ? (
-                <Link
-                  href="/users"
-                  className="text-[var(--muted)] hover:text-[var(--foreground)]"
-                >
-                  Users
-                </Link>
-              ) : null}
-            </nav>
+            <DesktopNav
+              isPlatformAdmin={platformAdmin}
+              isInternal={isInternal}
+            />
           </div>
           <GlobalSearch />
           <div className="flex shrink-0 items-center gap-2 text-sm sm:gap-3">

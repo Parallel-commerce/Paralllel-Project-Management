@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { CompanyContacts } from "@/components/company-contacts";
 import { CompanyEditor } from "@/components/company-editor";
+import { CompanyMark } from "@/components/company-mark";
 import { CompanyStatusTag } from "@/components/company-status-tag";
 import { ConvertCompanyForm } from "@/components/convert-company-form";
 import { requireInternalUser } from "@/lib/auth";
@@ -48,22 +49,31 @@ export default async function CompanyPage({
         ← Prospects
       </Link>
 
-      <div className="mt-3 flex flex-wrap items-center gap-3">
-        <h1 className="font-display text-2xl tracking-tight sm:text-3xl">
-          {companyRow.name}
-        </h1>
-        <CompanyStatusTag status={companyRow.status} />
+      <div className="mt-3 flex items-start gap-3 sm:gap-4">
+        <CompanyMark
+          name={companyRow.name}
+          website={companyRow.website}
+          size="lg"
+        />
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="font-display text-2xl tracking-tight sm:text-3xl">
+              {companyRow.name}
+            </h1>
+            <CompanyStatusTag status={companyRow.status} />
+          </div>
+          {companyRow.website ? (
+            <a
+              href={companyRow.website}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-2 inline-block text-sm text-[var(--accent)] hover:underline"
+            >
+              {companyRow.website.replace(/^https?:\/\//, "")}
+            </a>
+          ) : null}
+        </div>
       </div>
-      {companyRow.website ? (
-        <a
-          href={companyRow.website}
-          target="_blank"
-          rel="noreferrer"
-          className="mt-2 inline-block text-sm text-[var(--accent)] hover:underline"
-        >
-          {companyRow.website.replace(/^https?:\/\//, "")}
-        </a>
-      ) : null}
 
       <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
         <div className="flex flex-col gap-8">

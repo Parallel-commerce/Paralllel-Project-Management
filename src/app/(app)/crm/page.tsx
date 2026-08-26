@@ -1,7 +1,9 @@
 import Link from "next/link";
 
+import { CompanyMark } from "@/components/company-mark";
 import { CompanyStatusTag } from "@/components/company-status-tag";
 import { CreateCompanyForm } from "@/components/create-company-form";
+import { ImportCompaniesForm } from "@/components/import-companies-form";
 import { requireInternalUser } from "@/lib/auth";
 import { formatDayMonth } from "@/lib/format-date";
 import {
@@ -53,7 +55,7 @@ export default async function CrmPage({
   const today = todayIso();
 
   const select =
-    "id, name, status, follow_up_at, contacts(count)";
+    "id, name, website, status, follow_up_at, contacts(count)";
 
   const { data: companies } =
     tab === "follow_ups"
@@ -90,6 +92,10 @@ export default async function CrmPage({
             the sales process, and create a project when you win.
           </p>
           <CreateCompanyForm />
+          <div className="mt-8 border-t border-[var(--border)] pt-6">
+            <h2 className="font-medium">Import CSV</h2>
+            <ImportCompaniesForm />
+          </div>
         </div>
       ) : (
         <div className="flex flex-col gap-8 lg:flex-row lg:items-start">
@@ -141,9 +147,7 @@ export default async function CrmPage({
                         href={`/crm/${company.id}`}
                         className="group flex min-h-[4.25rem] items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-3 transition hover:border-[var(--foreground)]/15 hover:bg-white active:bg-white sm:gap-4 sm:px-4 sm:py-3.5"
                       >
-                        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-[var(--accent-soft)] font-display text-base text-[var(--accent)]">
-                          {company.name.slice(0, 1).toUpperCase()}
-                        </span>
+                        <CompanyMark name={company.name} website={company.website} />
                         <div className="min-w-0 flex-1">
                           <p className="truncate font-medium tracking-tight">
                             {company.name}
@@ -183,9 +187,15 @@ export default async function CrmPage({
             )}
           </section>
 
-          <aside className="w-full shrink-0 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6 lg:w-80">
-            <h2 className="font-medium">New company</h2>
-            <CreateCompanyForm />
+          <aside className="flex w-full shrink-0 flex-col gap-6 lg:w-80">
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6">
+              <h2 className="font-medium">New company</h2>
+              <CreateCompanyForm />
+            </div>
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6">
+              <h2 className="font-medium">Import CSV</h2>
+              <ImportCompaniesForm />
+            </div>
           </aside>
         </div>
       )}
