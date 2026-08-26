@@ -55,6 +55,38 @@ body {
   font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
 }
 
+/*
+ * iOS Safari zooms (and crops) the page when a focused field is under 16px.
+ * Base covers inherited text-sm; utilities cover text-sm/text-xs on the field.
+ * Larger sizes such as text-xl are left alone.
+ */
+@layer base {
+  @media (max-width: 767px) {
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not(
+        [type="button"]
+      ):not([type="submit"]):not([type="reset"]):not([type="file"]):not(
+        [type="hidden"]
+      ):not([type="image"]):not([type="color"]),
+    textarea,
+    select {
+      font-size: 16px;
+    }
+  }
+}
+
+@layer utilities {
+  @media (max-width: 767px) {
+    input.text-xs,
+    input.text-sm,
+    textarea.text-xs,
+    textarea.text-sm,
+    select.text-xs,
+    select.text-sm {
+      font-size: 16px;
+    }
+  }
+}
+
 /* Shared content width — matches task list / board */
 .app-container {
   margin-inline: auto;
