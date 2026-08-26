@@ -32,6 +32,7 @@ export type Project = {
   logo_path: string | null;
   next_task_number: number;
   company_id: string | null;
+  sort_order: number;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -268,6 +269,7 @@ export type Database = {
           logo_path?: string | null;
           next_task_number?: number;
           company_id?: string | null;
+          sort_order?: number;
           created_by: string;
           created_at?: string;
           updated_at?: string;
@@ -278,6 +280,7 @@ export type Database = {
           logo_path?: string | null;
           next_task_number?: number;
           company_id?: string | null;
+          sort_order?: number;
           updated_at?: string;
         };
         Relationships: [
@@ -784,6 +787,10 @@ export type Database = {
       is_internal_user: {
         Args: Record<string, never>;
         Returns: boolean;
+      };
+      reorder_projects: {
+        Args: { p_ordered_ids: string[] };
+        Returns: undefined;
       };
       soft_delete_user: {
         Args: { p_user_id: string };

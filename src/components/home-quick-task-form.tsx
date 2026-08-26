@@ -82,9 +82,13 @@ function initialListId(lists: HomeListOption[], projectId: string) {
 export function HomeQuickTaskForm({
   lists,
   currentUserId,
+  defaultDueDate = null,
+  onCreated,
 }: {
   lists: HomeListOption[];
   currentUserId: string;
+  defaultDueDate?: string | null;
+  onCreated?: (taskId: string) => void;
 }) {
   const projects = useMemo(() => {
     const map = new Map<string, ProjectOption>();
@@ -233,6 +237,10 @@ export function HomeQuickTaskForm({
             setError(result.error);
             return;
           }
+          if (result && "id" in result && result.id && onCreated) {
+            onCreated(result.id);
+            return;
+          }
           setMessage("Task created.");
           form.reset();
           resetSelection();
@@ -332,7 +340,11 @@ export function HomeQuickTaskForm({
         </OptionPicker>
       </div>
 
-      <DueDatePicker name="due_date" label="Due date (optional)" />
+      <DueDatePicker
+        name="due_date"
+        label="Due date (optional)"
+        defaultValue={defaultDueDate ?? ""}
+      />
 
       <button
         type="submit"

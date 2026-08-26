@@ -5,7 +5,8 @@ import { StatusTag } from "@/components/status-tag";
 import type { TaskStatus } from "@/types/database";
 
 export type TaskWorkLinkProps = {
-  href: string;
+  href?: string;
+  onOpen?: () => void;
   title: string;
   status: TaskStatus;
   projectName: string;
@@ -26,6 +27,7 @@ function formatDue(value: string) {
 
 export function TaskWorkLink({
   href,
+  onOpen,
   title,
   status,
   projectName,
@@ -35,16 +37,12 @@ export function TaskWorkLink({
   todayIso,
 }: TaskWorkLinkProps) {
   const overdue = !!dueDate && dueDate < todayIso && status !== "done";
+  const className = `group flex w-full items-stretch gap-0 overflow-hidden rounded-xl border bg-[var(--surface)] text-left transition hover:border-[var(--foreground)]/15 hover:bg-white active:bg-white ${
+    overdue ? "border-[var(--danger)]/25" : "border-[var(--border)]"
+  }`;
 
-  return (
-    <Link
-      href={href}
-      className={`group flex items-stretch gap-0 overflow-hidden rounded-xl border bg-[var(--surface)] transition hover:border-[var(--foreground)]/15 hover:bg-white active:bg-white ${
-        overdue
-          ? "border-[var(--danger)]/25"
-          : "border-[var(--border)]"
-      }`}
-    >
+  const inner = (
+    <>
       <span
         aria-hidden
         className={`w-1 shrink-0 ${
@@ -93,6 +91,20 @@ export function TaskWorkLink({
           </span>
         </div>
       </div>
+    </>
+  );
+
+  if (onOpen) {
+    return (
+      <button type="button" onClick={onOpen} className={className}>
+        {inner}
+      </button>
+    );
+  }
+
+  return (
+    <Link href={href ?? "/tasks"} className={className}>
+      {inner}
     </Link>
   );
 }

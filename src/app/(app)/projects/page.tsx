@@ -1,32 +1,9 @@
-import Link from "next/link";
-import Image from "next/image";
-
 import { CreateProjectForm } from "@/components/create-project-form";
 import { ParallelLogo } from "@/components/parallel-logo";
-import { StatusCountTag } from "@/components/status-tag";
+import { ProjectsGrid } from "@/components/projects-grid";
 import { requireSessionUser } from "@/lib/auth";
 import { projectLogoPublicUrl } from "@/lib/project-logo";
-import {
-  TASK_STATUSES,
-  type TaskStatus,
-} from "@/types/database";
-
-type ProjectTaskStats = {
-  total: number;
-  byStatus: Record<TaskStatus, number>;
-};
-
-function emptyStats(): ProjectTaskStats {
-  return {
-    total: 0,
-    byStatus: {
-      todo: 0,
-      in_progress: 0,
-      requiring_feedback: 0,
-      done: 0,
-    },
-  };
-}
+import type { TaskStatus } from "@/types/database";
 
 export default async function ProjectsPage() {
   const { supabase, user } = await requireSessionUser();
@@ -45,15 +22,17 @@ export default async function ProjectsPage() {
         .in("role", ["admin", "member"]),
       supabase
         .from("projects")
-        .select("id, name, description, logo_path, created_at")
+        .select("id, name, logo_path, sort_order, created_at")
+        .order("sort_order", { ascending: true })
         .order("created_at", { ascending: false }),
     ]);
 
   const canCreateProjects =
     !!profile?.is_platform_admin || (internalCount ?? 0) > 0;
+  const canReorder = canCreateProjects;
 
   const projectIds = (projects ?? []).map((project) => project.id);
-  const statsByProject: Record<string, ProjectTaskStats> = {};
+  const todoByProject: Record<string, number> = {};
 
   if (projectIds.length > 0) {
     const { data: statRows } = await supabase.rpc("project_task_stats", {
@@ -61,15 +40,8 @@ export default async function ProjectsPage() {
     });
 
     for (const row of statRows ?? []) {
-      const projectId = row.project_id as string;
-      const status = row.status as TaskStatus;
-      const count = Number(row.task_count ?? 0);
-      const stats = statsByProject[projectId] ?? emptyStats();
-      if (status in stats.byStatus) {
-        stats.byStatus[status] += count;
-        stats.total += count;
-      }
-      statsByProject[projectId] = stats;
+      if ((row.status as TaskStatus) !== "todo") continue;
+      todoByProject[row.project_id as string] = Number(row.task_count ?? 0);
     }
   }
 
@@ -111,93 +83,30 @@ export default async function ProjectsPage() {
           )}
         </div>
       ) : (
-        <div className="flex flex-col gap-8 lg:flex-row lg:items-start">
-          <section className="flex-1 min-w-0">
+        <div className="flex flex-col gap-8 xl:flex-row xl:items-start">
+          <section className="min-w-0 flex-1">
             <h1 className="font-display text-2xl tracking-tight sm:text-3xl">
               Projects
             </h1>
             <p className="mt-2 text-sm text-[var(--muted)]">
-              Open a project to manage lists, tasks, and people.
+              {canReorder
+                ? "Open a project to manage lists, tasks, and people. Drag the handle to reorder."
+                : "Open a project to manage lists, tasks, and people."}
             </p>
 
-            <ul className="mt-8 space-y-2">
-              {(projects ?? []).map((project) => {
-                const logoUrl = projectLogoPublicUrl(project.logo_path);
-                const stats = statsByProject[project.id] ?? emptyStats();
-                return (
-                  <li key={project.id}>
-                    <Link
-                      href={`/projects/${project.id}`}
-                      className="group flex min-h-[4.25rem] items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-3 transition active:bg-white sm:gap-4 sm:px-4 sm:py-3.5 hover:border-[var(--foreground)]/15 hover:bg-white"
-                    >
-                      {logoUrl ? (
-                        <Image
-                          src={logoUrl}
-                          alt=""
-                          width={44}
-                          height={44}
-                          className="h-11 w-11 shrink-0 rounded-lg border border-[var(--border)] bg-white object-cover"
-                        />
-                      ) : (
-                        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-[var(--accent-soft)] font-display text-base text-[var(--accent)]">
-                          {project.name.slice(0, 1).toUpperCase()}
-                        </span>
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate font-medium tracking-tight">
-                          {project.name}
-                        </p>
-                        {project.description ? (
-                          <p className="mt-0.5 line-clamp-1 text-sm text-[var(--muted)]">
-                            {project.description}
-                          </p>
-                        ) : (
-                          <p className="mt-0.5 text-sm text-[var(--muted)]">
-                            No description
-                          </p>
-                        )}
-                        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-[var(--muted)]">
-                          {stats.total === 0 ? (
-                            <span>No tasks yet</span>
-                          ) : (
-                            <>
-                              <span className="font-medium text-[var(--foreground)]">
-                                {stats.total} task
-                                {stats.total === 1 ? "" : "s"}
-                              </span>
-                              {TASK_STATUSES.map((status) => {
-                                const count = stats.byStatus[status.value];
-                                if (count === 0) return null;
-                                return (
-                                  <StatusCountTag
-                                    key={status.value}
-                                    status={status.value}
-                                    count={count}
-                                  />
-                                );
-                              })}
-                            </>
-                          )}
-                        </div>
-                      </div>
-                      <span className="hidden shrink-0 text-sm text-[var(--accent)] sm:inline">
-                        Open
-                      </span>
-                      <span
-                        aria-hidden
-                        className="shrink-0 text-[var(--muted)] transition group-hover:text-[var(--accent)] sm:hidden"
-                      >
-                        →
-                      </span>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
+            <ProjectsGrid
+              canReorder={canReorder}
+              projects={(projects ?? []).map((project) => ({
+                id: project.id,
+                name: project.name,
+                logoUrl: projectLogoPublicUrl(project.logo_path),
+                todoCount: todoByProject[project.id] ?? 0,
+              }))}
+            />
           </section>
 
           {canCreateProjects ? (
-            <aside className="w-full shrink-0 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6 lg:w-80">
+            <aside className="w-full shrink-0 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6 xl:w-80">
               <h2 className="font-medium">New project</h2>
               <CreateProjectForm />
             </aside>

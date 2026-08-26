@@ -172,6 +172,25 @@ export async function createProject(
   redirect(`/projects/${data.id}`);
 }
 
+export async function reorderProjects(orderedIds: string[]) {
+  const { supabase } = await requireUser();
+
+  if (orderedIds.length === 0) {
+    return { success: true as const };
+  }
+
+  const { error } = await supabase.rpc("reorder_projects", {
+    p_ordered_ids: orderedIds,
+  });
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  revalidatePath("/projects");
+  return { success: true as const };
+}
+
 export async function updateProject(projectId: string, formData: FormData) {
   const { supabase, user } = await requireUser();
   const name = String(formData.get("name") ?? "").trim();
@@ -649,7 +668,7 @@ export async function createTask(projectId: string, listId: string, formData: Fo
   revalidatePath(`/projects/${projectId}`);
   revalidatePath("/tasks");
   revalidatePath("/home");
-  return { success: true };
+  return { success: true, id: task.id as string };
 }
 
 export async function updateTask(
