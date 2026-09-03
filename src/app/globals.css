@@ -141,6 +141,21 @@ body {
   color: var(--foreground);
 }
 
+.rdp-root .rdp-scheduled:not(.rdp-selected) .rdp-day_button {
+  background-color: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+.rdp-root .rdp-selected .rdp-day_button {
+  background-color: var(--ink);
+  color: #fff;
+  font-weight: 700;
+  border: 2px solid var(--ink);
+  box-shadow: none;
+}
+
 /* Hide scrollbar on intentional horizontal carousels (board columns, tabs) */
 .scroll-x-fade {
   overflow-x: auto;

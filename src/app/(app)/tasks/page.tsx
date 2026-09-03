@@ -9,10 +9,11 @@ import type { HomeListOption } from "@/components/home-quick-task-form";
 import type { ProfileOption } from "@/components/task-modal";
 import type { TimeEntryRow } from "@/components/time-tracking-panel";
 import { getCurrentProfile, requireSessionUser } from "@/lib/auth";
+import { scheduledWeekdaysFromProject } from "@/lib/scheduled-weekdays";
 import type { ProjectRole, Task } from "@/types/database";
 
 const TASK_COLUMNS =
-  "id, list_id, project_id, title, description, due_date, status, link_url, number, key, created_by, reported_by, assigned_to, completed_at, archived_at, created_at, updated_at, lists(name), projects(name)";
+  "id, list_id, project_id, title, description, due_date, status, link_url, number, key, created_by, reported_by, assigned_to, completed_at, archived_at, created_at, updated_at, lists(name), projects(name, scheduled_weekdays)";
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -83,7 +84,7 @@ export default async function MyTasksPage({
       taskQuery,
       supabase
         .from("lists")
-        .select("id, name, project_id, projects(id, name)")
+        .select("id, name, project_id, projects(id, name, scheduled_weekdays)")
         .order("name", { ascending: true }),
       supabase
         .from("project_members")
@@ -188,6 +189,25 @@ export default async function MyTasksPage({
     membersByProject[row.project_id as string] = list;
   }
 
+  const scheduledWeekdaysByProject: Record<string, number[]> = {};
+  for (const row of listRows ?? []) {
+    const nested = Array.isArray(row.projects) ? row.projects[0] : row.projects;
+    const projectId =
+      (row.project_id as string) ||
+      ((nested as { id?: string } | null)?.id as string | undefined) ||
+      "";
+    if (!projectId || projectId in scheduledWeekdaysByProject) continue;
+    scheduledWeekdaysByProject[projectId] =
+      scheduledWeekdaysFromProject(nested);
+  }
+  for (const row of filteredRows) {
+    const projectId = row.project_id as string;
+    if (!projectId || projectId in scheduledWeekdaysByProject) continue;
+    scheduledWeekdaysByProject[projectId] = scheduledWeekdaysFromProject(
+      (row as { projects?: unknown }).projects,
+    );
+  }
+
   const projectContext: Record<string, ProjectWorkContext> = {};
   for (const projectId of projectIds) {
     const role = roleByProject[projectId];
@@ -196,6 +216,7 @@ export default async function MyTasksPage({
       canTrackTime:
         isPlatformAdmin || role === "admin" || role === "member",
       isTimeAdmin: isPlatformAdmin || role === "admin",
+      scheduledWeekdays: scheduledWeekdaysByProject[projectId] ?? [],
     };
   }
 
@@ -226,6 +247,7 @@ export default async function MyTasksPage({
         name: row.name as string,
         projectId,
         projectName: (project?.name as string) ?? "Project",
+        scheduledWeekdays: scheduledWeekdaysFromProject(project),
       };
     })
     .filter((list): list is HomeListOption => !!list)

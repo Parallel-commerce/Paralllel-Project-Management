@@ -10,6 +10,7 @@ import {
 } from "@/lib/actions/users";
 import { logActivity, notifyUser, sendSignInCode } from "@/lib/notify";
 import { PROJECT_LOGO_BUCKET } from "@/lib/project-logo";
+import { parseScheduledWeekdays } from "@/lib/scheduled-weekdays";
 import { projectTaskPrefix } from "@/lib/task-key";
 import { TASK_ATTACHMENT_BUCKET } from "@/lib/task-attachments";
 import type { ListVisibility, ProjectRole, TaskAttachment, TaskStatus } from "@/types/database";
@@ -113,6 +114,7 @@ export async function createProject(
   const { supabase, user } = await requireUser();
   const name = String(formData.get("name") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim();
+  const scheduledWeekdays = parseScheduledWeekdays(formData);
 
   if (!name) {
     return { error: "Project name is required." };
@@ -142,6 +144,7 @@ export async function createProject(
     .insert({
       name,
       description: description || null,
+      scheduled_weekdays: scheduledWeekdays,
       created_by: user.id,
     })
     .select("id")
@@ -195,6 +198,7 @@ export async function updateProject(projectId: string, formData: FormData) {
   const { supabase, user } = await requireUser();
   const name = String(formData.get("name") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim();
+  const scheduledWeekdays = parseScheduledWeekdays(formData);
   const removeLogo = String(formData.get("remove_logo") ?? "") === "1";
   const logo = formData.get("logo");
 
@@ -262,6 +266,7 @@ export async function updateProject(projectId: string, formData: FormData) {
       name,
       description: description || null,
       logo_path: logoPath,
+      scheduled_weekdays: scheduledWeekdays,
     })
     .eq("id", projectId);
 
@@ -280,7 +285,91 @@ export async function updateProject(projectId: string, formData: FormData) {
 
   revalidatePath("/projects");
   revalidatePath(`/projects/${projectId}`);
+  revalidatePath("/home");
+  revalidatePath("/tasks");
   return { success: true };
+}
+
+export async function deleteProject(
+  projectId: string,
+  confirmationName: string,
+): Promise<{ error: string } | void> {
+  const { supabase, user } = await requireUser();
+  const typedName = confirmationName.trim();
+
+  const [{ data: membership }, { data: profile }, { data: project }] =
+    await Promise.all([
+      supabase
+        .from("project_members")
+        .select("role")
+        .eq("project_id", projectId)
+        .eq("user_id", user.id)
+        .maybeSingle(),
+      supabase
+        .from("profiles")
+        .select("is_platform_admin")
+        .eq("id", user.id)
+        .maybeSingle(),
+      supabase
+        .from("projects")
+        .select("name, logo_path, company_id")
+        .eq("id", projectId)
+        .maybeSingle(),
+    ]);
+
+  if (!project) {
+    return { error: "Project not found." };
+  }
+
+  const canDelete =
+    !!profile?.is_platform_admin || membership?.role === "admin";
+  if (!canDelete) {
+    return { error: "Only admins can delete projects." };
+  }
+
+  if (!typedName || typedName !== project.name) {
+    return { error: "Type the project name exactly to confirm deletion." };
+  }
+
+  const { data: taskRows } = await supabase
+    .from("tasks")
+    .select("id")
+    .eq("project_id", projectId);
+  const taskIds = (taskRows ?? []).map((row) => row.id);
+  const attachmentPaths: string[] = [];
+  if (taskIds.length > 0) {
+    const { data: attachments } = await supabase
+      .from("task_attachments")
+      .select("file_path")
+      .in("task_id", taskIds);
+    for (const row of attachments ?? []) {
+      attachmentPaths.push(row.file_path);
+    }
+  }
+
+  if (project.logo_path) {
+    await supabase.storage.from(PROJECT_LOGO_BUCKET).remove([project.logo_path]);
+  }
+  if (attachmentPaths.length > 0) {
+    await supabase.storage.from(TASK_ATTACHMENT_BUCKET).remove(attachmentPaths);
+  }
+
+  const { error } = await supabase.from("projects").delete().eq("id", projectId);
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  revalidatePath("/projects");
+  revalidatePath(`/projects/${projectId}`);
+  revalidatePath("/home");
+  revalidatePath("/tasks");
+  revalidatePath("/messages");
+  revalidatePath("/crm");
+  if (project.company_id) {
+    revalidatePath(`/crm/${project.company_id}`);
+  }
+  redirect("/projects");
 }
 
 export async function inviteMember(projectId: string, formData: FormData) {

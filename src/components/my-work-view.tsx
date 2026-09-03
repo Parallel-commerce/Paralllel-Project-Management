@@ -29,6 +29,7 @@ export type ProjectWorkContext = {
   members: ProfileOption[];
   canTrackTime: boolean;
   isTimeAdmin: boolean;
+  scheduledWeekdays: number[];
 };
 
 const TABS: { id: WorkView; label: string }[] = [
@@ -371,6 +372,7 @@ export function MyWorkView({
           runningEntry={runningEntry}
           contextLabel={`${editing.projectName} · ${editing.listName}`}
           contextHref={`/projects/${editing.project_id}/lists/${editing.list_id}?task=${editing.id}`}
+          scheduledWeekdays={editingContext?.scheduledWeekdays ?? []}
           onClose={closeTask}
         />
       ) : null}

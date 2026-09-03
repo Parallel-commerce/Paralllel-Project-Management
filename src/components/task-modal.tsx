@@ -64,6 +64,8 @@ export function TaskModal({
   initialReplyCommentId = null,
   contextLabel = null,
   contextHref = null,
+  scheduledWeekdays = [],
+  defaultDueDate = null,
   onClose,
 }: {
   mode: "create" | "edit";
@@ -79,6 +81,8 @@ export function TaskModal({
   initialReplyCommentId?: string | null;
   contextLabel?: string | null;
   contextHref?: string | null;
+  scheduledWeekdays?: number[];
+  defaultDueDate?: string | null;
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -352,7 +356,8 @@ export function TaskModal({
               <div className="grid gap-3 sm:grid-cols-2">
                 <DueDatePicker
                   name="due_date"
-                  defaultValue={task?.due_date ?? ""}
+                  defaultValue={task?.due_date ?? defaultDueDate ?? ""}
+                  highlightedWeekdays={scheduledWeekdays}
                   onChange={() => {
                     if (mode === "edit") {
                       requestAnimationFrame(() => saveEditNow());

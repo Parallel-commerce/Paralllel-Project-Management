@@ -10,11 +10,13 @@ export type HomeListOption = {
   name: string;
   projectId: string;
   projectName: string;
+  scheduledWeekdays: number[];
 };
 
 type ProjectOption = {
   id: string;
   name: string;
+  scheduledWeekdays: number[];
 };
 
 function OptionPicker({
@@ -97,6 +99,7 @@ export function HomeQuickTaskForm({
         map.set(list.projectId, {
           id: list.projectId,
           name: list.projectName,
+          scheduledWeekdays: list.scheduledWeekdays,
         });
       }
     }
@@ -344,6 +347,7 @@ export function HomeQuickTaskForm({
         name="due_date"
         label="Due date (optional)"
         defaultValue={defaultDueDate ?? ""}
+        highlightedWeekdays={selectedProject?.scheduledWeekdays ?? []}
       />
 
       <button

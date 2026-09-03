@@ -10,6 +10,7 @@ import { RecentComments } from "@/components/recent-comments";
 import { TaskWorkLink } from "@/components/task-work-link";
 import { getCurrentProfile, requireSessionUser } from "@/lib/auth";
 import { projectLogoPublicUrl } from "@/lib/project-logo";
+import { scheduledWeekdaysFromProject } from "@/lib/scheduled-weekdays";
 import type { ProjectRole, TaskStatus } from "@/types/database";
 
 function greetingForNow(date = new Date()) {
@@ -47,7 +48,7 @@ export default async function HomeDashboardPage() {
       .limit(4),
     supabase
       .from("lists")
-      .select("id, name, project_id, created_at, projects(id, name)")
+      .select("id, name, project_id, created_at, projects(id, name, scheduled_weekdays)")
       .order("name", { ascending: true }),
     supabase
       .from("tasks")
@@ -78,6 +79,7 @@ export default async function HomeDashboardPage() {
         name: row.name as string,
         projectId,
         projectName: (project?.name as string) ?? "Project",
+        scheduledWeekdays: scheduledWeekdaysFromProject(project),
       };
     })
     .filter((list): list is HomeListOption => !!list);

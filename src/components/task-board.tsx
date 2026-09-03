@@ -13,6 +13,7 @@ import {
 } from "@dnd-kit/core";
 import { useEffect, useMemo, useState, useTransition } from "react";
 
+import { MyWorkCalendar } from "@/components/my-work-calendar";
 import {
   TaskModal,
   type ProfileOption,
@@ -25,12 +26,14 @@ import {
 import { updateTaskStatus } from "@/lib/actions/projects";
 import { groupTasksByCompletedWeek } from "@/lib/completed-week";
 import { personDisplayName } from "@/lib/person";
+import { formatScheduledWeekdays } from "@/lib/scheduled-weekdays";
 import { taskStatusColors } from "@/lib/task-status";
 import { TASK_STATUSES, type TaskStatus } from "@/types/database";
 
 export type { TaskWithPeople };
 
 type DueFilter = "all" | "overdue" | "this_week" | "none";
+type ViewMode = "list" | "board" | "calendar";
 
 function displayName(profile?: ProfileOption | null) {
   if (!profile) return "Unassigned";
@@ -376,6 +379,7 @@ export function TaskBoard({
   isTimeAdmin = false,
   timeSecondsByTaskId: initialTimeSeconds = {},
   runningEntry = null,
+  scheduledWeekdays = [],
 }: {
   projectId: string;
   listId: string;
@@ -389,12 +393,14 @@ export function TaskBoard({
   isTimeAdmin?: boolean;
   timeSecondsByTaskId?: Record<string, number>;
   runningEntry?: TimeEntryRow | null;
+  scheduledWeekdays?: number[];
 }) {
   const [tasks, setTasks] = useState(initialTasks);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<TaskWithPeople | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<"list" | "board">("list");
+  const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [assigneeFilter, setAssigneeFilter] = useState("all");
   const [reporterFilter, setReporterFilter] = useState("all");
@@ -457,6 +463,11 @@ export function TaskBoard({
   }, [filtered]);
 
   const timeSecondsByTaskId = canTrackTime ? initialTimeSeconds : undefined;
+  const undated = useMemo(
+    () => filtered.filter((task) => !task.due_date),
+    [filtered],
+  );
+  const scheduledLabel = formatScheduledWeekdays(scheduledWeekdays);
 
   const filtersActive =
     query.trim() !== "" ||
@@ -563,6 +574,17 @@ export function TaskBoard({
                 }`}
               >
                 Board
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("calendar")}
+                className={`rounded px-3 py-1.5 text-sm ${
+                  viewMode === "calendar"
+                    ? "bg-[var(--accent)] text-white"
+                    : "text-[var(--muted)] hover:text-[var(--foreground)]"
+                }`}
+              >
+                Calendar
               </button>
             </div>
             <button
@@ -680,7 +702,44 @@ export function TaskBoard({
         ) : null}
       </div>
 
-      {tasks.length === 0 ? (
+      {viewMode === "calendar" ? (
+        <div>
+          {scheduledLabel ? (
+            <p className="mb-3 text-sm text-[var(--muted)]">
+              {scheduledLabel} highlighted for this project.
+            </p>
+          ) : null}
+          <MyWorkCalendar
+            tasks={filtered}
+            todayIso={todayIso()}
+            selectedDay={selectedDay}
+            onSelectDay={setSelectedDay}
+            onOpenTask={(taskId) => {
+              const match = tasks.find((task) => task.id === taskId);
+              if (!match) return;
+              setEditing(match);
+              if (match.due_date) setSelectedDay(match.due_date.slice(0, 10));
+            }}
+            showContext={false}
+            highlightedWeekdays={scheduledWeekdays}
+          />
+          {undated.length > 0 ? (
+            <section className="mt-6">
+              <h2 className="text-sm font-medium">No due date</h2>
+              <ul className="mt-2 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]">
+                {undated.map((task) => (
+                  <TaskListRow
+                    key={task.id}
+                    task={task}
+                    onOpen={() => setEditing(task)}
+                    trackedSeconds={timeSecondsByTaskId?.[task.id]}
+                  />
+                ))}
+              </ul>
+            </section>
+          ) : null}
+        </div>
+      ) : tasks.length === 0 ? (
         <div className="rounded-xl border border-dashed border-[var(--border)] bg-[var(--surface)]/70 px-6 py-16 text-center">
           <p className="font-display text-xl tracking-tight">No tasks yet</p>
           <p className="mx-auto mt-2 max-w-md text-sm text-[var(--muted)]">
@@ -752,6 +811,10 @@ export function TaskBoard({
           members={members}
           currentUserId={currentUserId}
           defaultAssigneeId={defaultAssigneeId}
+          scheduledWeekdays={scheduledWeekdays}
+          defaultDueDate={
+            viewMode === "calendar" ? selectedDay : null
+          }
           onClose={() => setCreating(false)}
         />
       ) : null}
@@ -768,6 +831,7 @@ export function TaskBoard({
           isTimeAdmin={isTimeAdmin}
           runningEntry={runningEntry}
           initialReplyCommentId={initialReplyCommentId}
+          scheduledWeekdays={scheduledWeekdays}
           onClose={() => setEditing(null)}
         />
       ) : null}

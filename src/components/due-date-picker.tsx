@@ -1,9 +1,11 @@
 "use client";
 
 import { format, parseISO } from "date-fns";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { DayPicker } from "react-day-picker";
 import "react-day-picker/style.css";
+
+import { formatScheduledWeekdays } from "@/lib/scheduled-weekdays";
 
 type DueDatePickerProps = {
   name?: string;
@@ -14,6 +16,8 @@ type DueDatePickerProps = {
   value?: string;
   onChange?: (value: string) => void;
   placeholder?: string;
+  /** 0 = Sunday … 6 = Saturday */
+  highlightedWeekdays?: number[];
 };
 
 export function DueDatePicker({
@@ -23,6 +27,7 @@ export function DueDatePicker({
   onChange,
   label = "Due date",
   placeholder = "Pick a date",
+  highlightedWeekdays = [],
 }: DueDatePickerProps) {
   const id = useId();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -63,6 +68,14 @@ export function DueDatePicker({
   }
 
   const selected = value ? parseISO(value) : undefined;
+  const scheduledLabel = formatScheduledWeekdays(highlightedWeekdays);
+  const scheduledModifier = useMemo(
+    () =>
+      highlightedWeekdays.length > 0
+        ? { scheduled: { dayOfWeek: highlightedWeekdays } }
+        : undefined,
+    [highlightedWeekdays],
+  );
 
   return (
     <div
@@ -98,6 +111,7 @@ export function DueDatePicker({
         <div className="absolute left-0 top-full z-50 mt-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 shadow-lg">
           <DayPicker
             mode="single"
+            weekStartsOn={1}
             selected={selected}
             onSelect={(date) => {
               if (!date) {
@@ -108,7 +122,16 @@ export function DueDatePicker({
               setOpen(false);
             }}
             defaultMonth={selected ?? new Date()}
+            modifiers={scheduledModifier}
+            modifiersClassNames={
+              scheduledModifier ? { scheduled: "rdp-scheduled" } : undefined
+            }
           />
+          {scheduledLabel ? (
+            <p className="mt-2 text-xs text-[var(--muted)]">
+              {scheduledLabel} highlighted for this project.
+            </p>
+          ) : null}
         </div>
       ) : null}
     </div>

@@ -10,6 +10,10 @@ import { StatusCountTag } from "@/components/status-tag";
 import { requireSessionUser } from "@/lib/auth";
 import { projectLogoPublicUrl } from "@/lib/project-logo";
 import {
+  formatScheduledWeekdays,
+  normalizeScheduledWeekdays,
+} from "@/lib/scheduled-weekdays";
+import {
   TASK_STATUSES,
   type ProjectRole,
   type TaskStatus,
@@ -84,7 +88,7 @@ export default async function ProjectPage({
   ] = await Promise.all([
     supabase
       .from("projects")
-      .select("id, name, description, logo_path, company_id, companies(id, name)")
+      .select("id, name, description, logo_path, company_id, scheduled_weekdays, companies(id, name)")
       .eq("id", id)
       .maybeSingle(),
     supabase
@@ -114,6 +118,10 @@ export default async function ProjectPage({
   }
 
   const logoUrl = projectLogoPublicUrl(project.logo_path);
+  const scheduledWeekdays = normalizeScheduledWeekdays(
+    project.scheduled_weekdays,
+  );
+  const scheduledLabel = formatScheduledWeekdays(scheduledWeekdays);
   const role = (membership?.role ?? "client") as ProjectRole;
   const isPlatformAdmin = !!profile?.is_platform_admin;
   const isAdmin = role === "admin" || isPlatformAdmin;
@@ -220,6 +228,11 @@ export default async function ProjectPage({
                     </Link>
                   </p>
                 ) : null}
+                {scheduledLabel ? (
+                  <p className="mt-2 text-sm text-[var(--muted)]">
+                    Scheduled: {scheduledLabel}
+                  </p>
+                ) : null}
               </div>
             </div>
           </div>
@@ -241,6 +254,7 @@ export default async function ProjectPage({
               name={project.name}
               description={project.description}
               logoUrl={logoUrl}
+              scheduledWeekdays={scheduledWeekdays}
               canManage={isAdmin}
             />
           </div>

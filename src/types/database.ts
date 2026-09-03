@@ -33,6 +33,8 @@ export type Project = {
   next_task_number: number;
   company_id: string | null;
   sort_order: number;
+  /** 0 = Sunday … 6 = Saturday */
+  scheduled_weekdays: number[];
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -270,6 +272,7 @@ export type Database = {
           next_task_number?: number;
           company_id?: string | null;
           sort_order?: number;
+          scheduled_weekdays?: number[];
           created_by: string;
           created_at?: string;
           updated_at?: string;
@@ -281,6 +284,7 @@ export type Database = {
           next_task_number?: number;
           company_id?: string | null;
           sort_order?: number;
+          scheduled_weekdays?: number[];
           updated_at?: string;
         };
         Relationships: [

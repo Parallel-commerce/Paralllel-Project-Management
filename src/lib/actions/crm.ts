@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { requireInternalUser } from "@/lib/auth";
 import { inviteMember } from "@/lib/actions/projects";
 import { parseCompanyImportCsv, type ImportRowError } from "@/lib/crm-csv";
+import { parseScheduledWeekdays } from "@/lib/scheduled-weekdays";
 import { COMPANY_STATUSES, type CompanyStatus } from "@/types/database";
 
 const IMPORT_MAX_BYTES = 512 * 1024;
@@ -243,6 +244,7 @@ export async function convertCompanyToProject(
   const { supabase, user } = await requireInternalUser();
   const name = String(formData.get("name") ?? "").trim();
   const description = emptyToNull(String(formData.get("description") ?? ""));
+  const scheduledWeekdays = parseScheduledWeekdays(formData);
   const inviteIds = formData
     .getAll("invite_contact_ids")
     .map((value) => String(value).trim())
@@ -267,6 +269,7 @@ export async function convertCompanyToProject(
     .insert({
       name,
       description,
+      scheduled_weekdays: scheduledWeekdays,
       created_by: user.id,
       company_id: companyId,
     })

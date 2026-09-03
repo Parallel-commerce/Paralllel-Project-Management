@@ -5,6 +5,7 @@ import { ListSettings } from "@/components/list-settings";
 import { TaskBoard } from "@/components/task-board";
 import type { TimeEntryRow } from "@/components/time-tracking-panel";
 import { requireSessionUser } from "@/lib/auth";
+import { scheduledWeekdaysFromProject } from "@/lib/scheduled-weekdays";
 import type { ListVisibility, ProjectRole, Task } from "@/types/database";
 
 export default async function ListBoardPage({
@@ -31,7 +32,7 @@ export default async function ListBoardPage({
       .eq("id", listId)
       .eq("project_id", id)
       .maybeSingle(),
-    supabase.from("projects").select("id, name").eq("id", id).maybeSingle(),
+    supabase.from("projects").select("id, name, scheduled_weekdays").eq("id", id).maybeSingle(),
     supabase
       .from("project_members")
       .select("role")
@@ -222,6 +223,7 @@ export default async function ListBoardPage({
           isTimeAdmin={isAdmin}
           timeSecondsByTaskId={timeSecondsByTaskId}
           runningEntry={(runningResult.data as TimeEntryRow | null) ?? null}
+          scheduledWeekdays={scheduledWeekdaysFromProject(project)}
         />
       </div>
     </main>

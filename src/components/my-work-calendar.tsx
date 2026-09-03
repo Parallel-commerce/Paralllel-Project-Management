@@ -21,11 +21,12 @@ export type CalendarTask = {
   title: string;
   due_date: string | null;
   status: TaskStatus;
-  projectName: string;
-  listName: string;
+  projectName?: string;
+  listName?: string;
 };
 
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const WEEK_STARTS_ON = 1 as const;
 
 function statusDot(status: TaskStatus) {
   return taskStatusColors(status).accent;
@@ -35,18 +36,30 @@ function dayKey(date: Date) {
   return format(date, "yyyy-MM-dd");
 }
 
+function contextLabel(task: CalendarTask) {
+  if (task.projectName && task.listName) {
+    return `${task.projectName} · ${task.listName}`;
+  }
+  return task.projectName || task.listName || null;
+}
+
 export function MyWorkCalendar({
   tasks,
   todayIso,
   selectedDay,
   onSelectDay,
   onOpenTask,
+  showContext = true,
+  highlightedWeekdays = [],
 }: {
   tasks: CalendarTask[];
   todayIso: string;
   selectedDay: string | null;
   onSelectDay: (day: string) => void;
   onOpenTask: (taskId: string) => void;
+  showContext?: boolean;
+  /** 0 = Sunday … 6 = Saturday */
+  highlightedWeekdays?: number[];
 }) {
   const [month, setMonth] = useState(() => {
     const seed = selectedDay || todayIso;
@@ -58,8 +71,10 @@ export function MyWorkCalendar({
   });
 
   const days = useMemo(() => {
-    const start = startOfWeek(startOfMonth(month), { weekStartsOn: 0 });
-    const end = endOfWeek(endOfMonth(month), { weekStartsOn: 0 });
+    const start = startOfWeek(startOfMonth(month), {
+      weekStartsOn: WEEK_STARTS_ON,
+    });
+    const end = endOfWeek(endOfMonth(month), { weekStartsOn: WEEK_STARTS_ON });
     return eachDayOfInterval({ start, end });
   }, [month]);
 
@@ -76,6 +91,10 @@ export function MyWorkCalendar({
   }, [tasks]);
 
   const selectedTasks = selectedDay ? (tasksByDay.get(selectedDay) ?? []) : [];
+  const scheduledSet = useMemo(
+    () => new Set(highlightedWeekdays),
+    [highlightedWeekdays],
+  );
 
   return (
     <div className="space-y-4">
@@ -110,14 +129,22 @@ export function MyWorkCalendar({
 
       <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]">
         <div className="grid grid-cols-7 border-b border-[var(--border)] bg-[var(--surface-2)]/60">
-          {WEEKDAYS.map((day) => (
-            <div
-              key={day}
-              className="px-1 py-2 text-center text-[11px] font-medium uppercase tracking-wide text-[var(--muted)] sm:text-xs"
-            >
-              {day}
-            </div>
-          ))}
+          {WEEKDAYS.map((day, index) => {
+            const weekday = index === 6 ? 0 : index + 1;
+            const scheduled = scheduledSet.has(weekday);
+            return (
+              <div
+                key={day}
+                className={`px-1 py-2 text-center text-[11px] font-medium uppercase tracking-wide sm:text-xs ${
+                  scheduled
+                    ? "text-[var(--accent)]"
+                    : "text-[var(--muted)]"
+                }`}
+              >
+                {day}
+              </div>
+            );
+          })}
         </div>
         <div className="grid grid-cols-7">
           {days.map((date) => {
@@ -125,19 +152,27 @@ export function MyWorkCalendar({
             const inMonth = isSameMonth(date, month);
             const isToday = key === todayIso;
             const isSelected = key === selectedDay;
+            const isScheduled = scheduledSet.has(date.getDay());
             const dayTasks = tasksByDay.get(key) ?? [];
             const visible = dayTasks.slice(0, 3);
             const extra = dayTasks.length - visible.length;
             const overdueCount = dayTasks.filter(
-              (task) => task.due_date && task.due_date < todayIso && task.status !== "done",
+              (task) =>
+                task.due_date &&
+                task.due_date < todayIso &&
+                task.status !== "done",
             ).length;
 
             return (
               <div
                 key={key}
                 className={`min-h-[4.5rem] border-t border-l border-[var(--border)] p-1 sm:min-h-[7.5rem] sm:p-1.5 first:border-l-0 [&:nth-child(7n+1)]:border-l-0 ${
-                  inMonth ? "bg-[var(--surface)]" : "bg-[var(--background)]/70"
-                } ${isSelected ? "ring-2 ring-inset ring-[var(--accent)]" : ""}`}
+                  isScheduled && inMonth
+                    ? "bg-[var(--accent-soft)]/80"
+                    : inMonth
+                      ? "bg-[var(--surface)]"
+                      : "bg-[var(--background)]/70"
+                } ${isSelected ? "ring-2 ring-inset ring-[var(--ink)]" : ""}`}
               >
                 <button
                   type="button"
@@ -147,7 +182,7 @@ export function MyWorkCalendar({
                   <span
                     className={`flex h-6 w-6 items-center justify-center rounded-full text-xs tabular-nums ${
                       isToday
-                        ? "bg-[var(--accent)] font-medium text-white"
+                        ? "bg-[var(--ink)] font-medium text-white"
                         : inMonth
                           ? "text-[var(--foreground)]"
                           : "text-[var(--muted)]"
@@ -179,8 +214,10 @@ export function MyWorkCalendar({
                         key={task.id}
                         type="button"
                         onClick={() => onOpenTask(task.id)}
-                        className={`flex w-full items-center gap-1 rounded px-1 py-0.5 text-left text-[11px] leading-tight hover:bg-[var(--surface-2)] ${
-                          overdue ? "text-[var(--danger)]" : "text-[var(--foreground)]"
+                        className={`flex w-full items-center gap-1 rounded px-1 py-0.5 text-left text-[11px] leading-tight hover:bg-white/80 ${
+                          overdue
+                            ? "text-[var(--danger)]"
+                            : "text-[var(--foreground)]"
                         }`}
                         title={task.title}
                       >
@@ -229,26 +266,33 @@ export function MyWorkCalendar({
             </p>
           ) : (
             <ul className="mt-2 space-y-1.5">
-              {selectedTasks.map((task) => (
-                <li key={task.id}>
-                  <button
-                    type="button"
-                    onClick={() => onOpenTask(task.id)}
-                    className="flex w-full items-start gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-left"
-                  >
-                    <span
-                      aria-hidden
-                      className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${statusDot(task.status)}`}
-                    />
-                    <span className="min-w-0">
-                      <span className="block truncate font-medium">{task.title}</span>
-                      <span className="mt-0.5 block truncate text-xs text-[var(--muted)]">
-                        {task.projectName} · {task.listName}
+              {selectedTasks.map((task) => {
+                const context = showContext ? contextLabel(task) : null;
+                return (
+                  <li key={task.id}>
+                    <button
+                      type="button"
+                      onClick={() => onOpenTask(task.id)}
+                      className="flex w-full items-start gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-left"
+                    >
+                      <span
+                        aria-hidden
+                        className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${statusDot(task.status)}`}
+                      />
+                      <span className="min-w-0">
+                        <span className="block truncate font-medium">
+                          {task.title}
+                        </span>
+                        {context ? (
+                          <span className="mt-0.5 block truncate text-xs text-[var(--muted)]">
+                            {context}
+                          </span>
+                        ) : null}
                       </span>
-                    </span>
-                  </button>
-                </li>
-              ))}
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </section>
@@ -263,26 +307,31 @@ export function MyWorkCalendar({
             </span>
           </h3>
           <ul className="mt-2 divide-y divide-[var(--border)] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]">
-            {selectedTasks.map((task) => (
-              <li key={task.id}>
-                <button
-                  type="button"
-                  onClick={() => onOpenTask(task.id)}
-                  className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left hover:bg-[var(--surface-2)]"
-                >
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span
-                      aria-hidden
-                      className={`h-2 w-2 shrink-0 rounded-full ${statusDot(task.status)}`}
-                    />
-                    <span className="truncate font-medium">{task.title}</span>
-                  </span>
-                  <span className="shrink-0 truncate text-xs text-[var(--muted)]">
-                    {task.projectName} · {task.listName}
-                  </span>
-                </button>
-              </li>
-            ))}
+            {selectedTasks.map((task) => {
+              const context = showContext ? contextLabel(task) : null;
+              return (
+                <li key={task.id}>
+                  <button
+                    type="button"
+                    onClick={() => onOpenTask(task.id)}
+                    className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left hover:bg-[var(--surface-2)]"
+                  >
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span
+                        aria-hidden
+                        className={`h-2 w-2 shrink-0 rounded-full ${statusDot(task.status)}`}
+                      />
+                      <span className="truncate font-medium">{task.title}</span>
+                    </span>
+                    {context ? (
+                      <span className="shrink-0 truncate text-xs text-[var(--muted)]">
+                        {context}
+                      </span>
+                    ) : null}
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         </section>
       ) : null}

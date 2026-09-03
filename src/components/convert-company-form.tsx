@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 
+import { WeekdayPicker } from "@/components/weekday-picker";
 import { convertCompanyToProject } from "@/lib/actions/crm";
 import type { Contact } from "@/types/database";
 
@@ -55,6 +56,7 @@ export function ConvertCompanyForm({
             className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
           />
         </label>
+        <WeekdayPicker />
 
         {invitable.length > 0 ? (
           <fieldset className="flex flex-col gap-2">
