@@ -132,6 +132,7 @@ export async function updateCompany(
 
 export async function deleteCompany(
   companyId: string,
+  options?: { redirect?: boolean },
 ): Promise<{ error: string } | void> {
   const { supabase } = await requireInternalUser();
 
@@ -141,7 +142,9 @@ export async function deleteCompany(
   }
 
   revalidatePath("/crm");
-  redirect("/crm");
+  if (options?.redirect !== false) {
+    redirect("/crm");
+  }
 }
 
 export async function createContact(

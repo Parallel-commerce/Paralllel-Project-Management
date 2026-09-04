@@ -3,6 +3,8 @@ import Link from "next/link";
 import { CompanyMark } from "@/components/company-mark";
 import { CompanyStatusTag } from "@/components/company-status-tag";
 import { CreateCompanyForm } from "@/components/create-company-form";
+import { DeleteCompanyButton } from "@/components/delete-company-button";
+import { DeleteProjectButton } from "@/components/delete-project-button";
 import { ImportCompaniesForm } from "@/components/import-companies-form";
 import { requireInternalUser } from "@/lib/auth";
 import { formatDayMonth } from "@/lib/format-date";
@@ -10,6 +12,8 @@ import {
   COMPANY_STATUSES,
   type CompanyStatus,
 } from "@/types/database";
+
+type LinkedProject = { id: string; name: string };
 
 type Tab = CompanyStatus | "all" | "follow_ups";
 
@@ -55,7 +59,7 @@ export default async function CrmPage({
   const today = todayIso();
 
   const select =
-    "id, name, website, status, follow_up_at, contacts(count)";
+    "id, name, website, status, follow_up_at, contacts(count), projects(id, name)";
 
   const { data: companies } =
     tab === "follow_ups"
@@ -141,45 +145,80 @@ export default async function CrmPage({
                 {(companies ?? []).map((company) => {
                   const followUp = formatFollowUp(company.follow_up_at, today);
                   const count = contactCount(company.contacts);
+                  const linkedProjects = (
+                    Array.isArray(company.projects) ? company.projects : []
+                  ) as LinkedProject[];
                   return (
                     <li key={company.id}>
-                      <Link
-                        href={`/crm/${company.id}`}
-                        className="group flex min-h-[4.25rem] items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-3 transition hover:border-[var(--foreground)]/15 hover:bg-white active:bg-white sm:gap-4 sm:px-4 sm:py-3.5"
-                      >
-                        <CompanyMark name={company.name} website={company.website} />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate font-medium tracking-tight">
-                            {company.name}
-                          </p>
-                          <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-[var(--muted)]">
-                            <CompanyStatusTag status={company.status} />
-                            <span>
-                              {count} contact{count === 1 ? "" : "s"}
+                      <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] transition hover:border-[var(--foreground)]/15 hover:bg-white">
+                        <div className="flex min-h-[4.25rem] items-center gap-2 sm:gap-3">
+                          <Link
+                            href={`/crm/${company.id}`}
+                            className="group flex min-w-0 flex-1 items-center gap-3 px-3 py-3 sm:gap-4 sm:px-4 sm:py-3.5"
+                          >
+                            <CompanyMark
+                              name={company.name}
+                              website={company.website}
+                            />
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate font-medium tracking-tight">
+                                {company.name}
+                              </p>
+                              <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-[var(--muted)]">
+                                <CompanyStatusTag status={company.status} />
+                                <span>
+                                  {count} contact{count === 1 ? "" : "s"}
+                                </span>
+                                {followUp ? (
+                                  <span
+                                    className={
+                                      followUp.overdue &&
+                                      company.status !== "won"
+                                        ? "text-[var(--danger)]"
+                                        : ""
+                                    }
+                                  >
+                                    Follow up {followUp.label}
+                                  </span>
+                                ) : null}
+                              </div>
+                            </div>
+                            <span className="hidden shrink-0 text-sm text-[var(--accent)] sm:inline">
+                              Open
                             </span>
-                            {followUp ? (
-                              <span
-                                className={
-                                  followUp.overdue && company.status !== "won"
-                                    ? "text-[var(--danger)]"
-                                    : ""
-                                }
-                              >
-                                Follow up {followUp.label}
-                              </span>
-                            ) : null}
+                          </Link>
+                          <div className="pr-2 sm:pr-3">
+                            <DeleteCompanyButton
+                              companyId={company.id}
+                              companyName={company.name}
+                            />
                           </div>
                         </div>
-                        <span className="hidden shrink-0 text-sm text-[var(--accent)] sm:inline">
-                          Open
-                        </span>
-                        <span
-                          aria-hidden
-                          className="shrink-0 text-[var(--muted)] transition group-hover:text-[var(--accent)] sm:hidden"
-                        >
-                          →
-                        </span>
-                      </Link>
+                        {linkedProjects.length > 0 ? (
+                          <ul className="border-t border-[var(--border)] px-3 py-2 sm:px-4">
+                            {linkedProjects.map((project) => (
+                              <li
+                                key={project.id}
+                                className="flex items-center gap-2 py-1"
+                              >
+                                <span className="shrink-0 text-xs text-[var(--muted)]">
+                                  Project
+                                </span>
+                                <Link
+                                  href={`/projects/${project.id}`}
+                                  className="min-w-0 flex-1 truncate text-sm text-[var(--accent)] hover:underline"
+                                >
+                                  {project.name}
+                                </Link>
+                                <DeleteProjectButton
+                                  projectId={project.id}
+                                  projectName={project.name}
+                                />
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </div>
                     </li>
                   );
                 })}

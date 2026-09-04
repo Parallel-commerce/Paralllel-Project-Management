@@ -6,6 +6,7 @@ import { CompanyEditor } from "@/components/company-editor";
 import { CompanyMark } from "@/components/company-mark";
 import { CompanyStatusTag } from "@/components/company-status-tag";
 import { ConvertCompanyForm } from "@/components/convert-company-form";
+import { DeleteProjectButton } from "@/components/delete-project-button";
 import { requireInternalUser } from "@/lib/auth";
 import type { Company, Contact } from "@/types/database";
 
@@ -91,13 +92,20 @@ export default async function CompanyPage({
             {projects && projects.length > 0 ? (
               <ul className="mt-3 space-y-2">
                 {projects.map((project) => (
-                  <li key={project.id}>
+                  <li
+                    key={project.id}
+                    className="flex items-center gap-2"
+                  >
                     <Link
                       href={`/projects/${project.id}`}
-                      className="text-sm text-[var(--accent)] hover:underline"
+                      className="min-w-0 flex-1 truncate text-sm text-[var(--accent)] hover:underline"
                     >
                       {project.name}
                     </Link>
+                    <DeleteProjectButton
+                      projectId={project.id}
+                      projectName={project.name}
+                    />
                   </li>
                 ))}
               </ul>

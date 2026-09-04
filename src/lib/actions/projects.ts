@@ -290,12 +290,15 @@ export async function updateProject(projectId: string, formData: FormData) {
   return { success: true };
 }
 
-export async function deleteProject(
+async function deleteProjectRecord(
   projectId: string,
-  confirmationName: string,
+  options: {
+    confirmationName?: string;
+    redirectToProjects?: boolean;
+  } = {},
 ): Promise<{ error: string } | void> {
   const { supabase, user } = await requireUser();
-  const typedName = confirmationName.trim();
+  const typedName = options.confirmationName?.trim() ?? "";
 
   const [{ data: membership }, { data: profile }, { data: project }] =
     await Promise.all([
@@ -327,7 +330,10 @@ export async function deleteProject(
     return { error: "Only admins can delete projects." };
   }
 
-  if (!typedName || typedName !== project.name) {
+  if (
+    options.confirmationName !== undefined &&
+    (!typedName || typedName !== project.name)
+  ) {
     return { error: "Type the project name exactly to confirm deletion." };
   }
 
@@ -369,7 +375,25 @@ export async function deleteProject(
   if (project.company_id) {
     revalidatePath(`/crm/${project.company_id}`);
   }
-  redirect("/projects");
+  if (options.redirectToProjects) {
+    redirect("/projects");
+  }
+}
+
+export async function deleteProject(
+  projectId: string,
+  confirmationName: string,
+): Promise<{ error: string } | void> {
+  return deleteProjectRecord(projectId, {
+    confirmationName,
+    redirectToProjects: true,
+  });
+}
+
+export async function deleteProjectInPlace(
+  projectId: string,
+): Promise<{ error: string } | void> {
+  return deleteProjectRecord(projectId);
 }
 
 export async function inviteMember(projectId: string, formData: FormData) {
