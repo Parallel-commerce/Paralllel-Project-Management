@@ -11,6 +11,15 @@ import { logActivity, notifyUser } from "@/lib/notify";
 import { personDisplayName } from "@/lib/person";
 import { profileAvatarPublicUrl } from "@/lib/profile-avatar";
 import { createClient } from "@/lib/supabase/server";
+import {
+  COMMENT_IMAGE_MAX_BYTES,
+  COMMENT_IMAGE_MAX_FILES,
+  commentMediaPreview,
+  isAllowedCommentImage,
+  safeAttachmentFileName,
+  TASK_ATTACHMENT_BUCKET,
+} from "@/lib/task-attachments";
+import type { TaskCommentAttachment } from "@/types/database";
 
 async function requireUser() {
   const supabase = await createClient();
@@ -39,6 +48,7 @@ export type CommentWithAuthor = {
   created_by: string;
   created_at: string;
   author: CommentAuthor | null;
+  attachments: TaskCommentAttachment[];
 };
 
 function mapAuthor(
@@ -108,8 +118,30 @@ export async function listTaskComments(
             }
           : null,
       ),
+      attachments: [],
     };
   });
+
+  const commentIds = comments.map((comment) => comment.id);
+  if (commentIds.length > 0) {
+    const { data: attachmentRows } = await supabase
+      .from("task_comment_attachments")
+      .select(
+        "id, comment_id, file_path, file_name, content_type, size_bytes, uploaded_by, created_at",
+      )
+      .in("comment_id", commentIds)
+      .order("created_at", { ascending: true });
+
+    const byComment = new Map<string, TaskCommentAttachment[]>();
+    for (const row of (attachmentRows ?? []) as TaskCommentAttachment[]) {
+      const list = byComment.get(row.comment_id) ?? [];
+      list.push(row);
+      byComment.set(row.comment_id, list);
+    }
+    for (const comment of comments) {
+      comment.attachments = byComment.get(comment.id) ?? [];
+    }
+  }
 
   return { comments };
 }
@@ -150,6 +182,28 @@ async function listProjectMentionPeople(
   return people;
 }
 
+function validateCommentImages(files: File[]) {
+  if (files.length > COMMENT_IMAGE_MAX_FILES) {
+    return {
+      error: `You can attach up to ${COMMENT_IMAGE_MAX_FILES} images.`,
+    };
+  }
+
+  for (const file of files) {
+    if (!(file instanceof File) || file.size === 0) {
+      return { error: "Choose an image to attach." };
+    }
+    if (!isAllowedCommentImage(file)) {
+      return { error: `"${file.name}" is not a supported image type.` };
+    }
+    if (file.size > COMMENT_IMAGE_MAX_BYTES) {
+      return { error: `"${file.name}" must be 10MB or smaller.` };
+    }
+  }
+
+  return { files };
+}
+
 export async function createTaskComment(
   projectId: string,
   listId: string,
@@ -157,13 +211,19 @@ export async function createTaskComment(
   body: string,
   parentId?: string | null,
   mentionedUserIds: string[] = [],
+  files: File[] = [],
 ) {
   const { supabase, user } = await requireUser();
   const trimmed = body.trim();
   const parent = parentId?.trim() || null;
+  const validated = validateCommentImages(files);
 
-  if (!trimmed) {
-    return { error: "Comment cannot be empty." };
+  if ("error" in validated) {
+    return { error: validated.error };
+  }
+
+  if (!trimmed && validated.files.length === 0) {
+    return { error: "Write a comment or attach an image." };
   }
 
   let parentAuthorId: string | null = null;
@@ -208,8 +268,47 @@ export async function createTaskComment(
     .select("id")
     .single();
 
-  if (error) {
-    return { error: commentErrorMessage(error.message) };
+  if (error || !created) {
+    return { error: commentErrorMessage(error?.message ?? "Could not post comment.") };
+  }
+
+  const uploadedPaths: string[] = [];
+  for (const [index, file] of validated.files.entries()) {
+    const safeName = safeAttachmentFileName(file.name) || `image-${index + 1}`;
+    const path = `${projectId}/${taskId}/comments/${created.id}/${Date.now()}-${index}-${safeName}`;
+    const { error: uploadError } = await supabase.storage
+      .from(TASK_ATTACHMENT_BUCKET)
+      .upload(path, file, {
+        contentType: file.type || "application/octet-stream",
+        upsert: false,
+      });
+
+    if (uploadError) {
+      if (uploadedPaths.length > 0) {
+        await supabase.storage.from(TASK_ATTACHMENT_BUCKET).remove(uploadedPaths);
+      }
+      await supabase.from("task_comments").delete().eq("id", created.id);
+      return { error: uploadError.message };
+    }
+
+    uploadedPaths.push(path);
+
+    const { error: attachmentError } = await supabase
+      .from("task_comment_attachments")
+      .insert({
+        comment_id: created.id,
+        file_path: path,
+        file_name: file.name,
+        content_type: file.type || null,
+        size_bytes: file.size,
+        uploaded_by: user.id,
+      });
+
+    if (attachmentError) {
+      await supabase.storage.from(TASK_ATTACHMENT_BUCKET).remove(uploadedPaths);
+      await supabase.from("task_comments").delete().eq("id", created.id);
+      return { error: attachmentError.message };
+    }
   }
 
   if (created && mentionedIds.length > 0) {
@@ -250,6 +349,7 @@ export async function createTaskComment(
   const deepLink = `/projects/${projectId}/lists/${listId}?task=${taskId}`;
   const isReply = !!parent;
   const taskTitle = task?.title ?? "task";
+  const preview = commentMediaPreview(trimmed, validated.files.length);
 
   const { data: authorProfile } = await supabase
     .from("profiles")
@@ -278,8 +378,8 @@ export async function createTaskComment(
         : isReply
           ? `Reply on “${taskTitle}”`
           : `New comment on “${taskTitle}”`,
-      body: trimmed.slice(0, 280),
-      emailBody: trimmed.slice(0, 2000),
+      body: preview.slice(0, 280),
+      emailBody: (trimmed || preview).slice(0, 2000),
       fromName,
       link: deepLink,
     });
@@ -315,6 +415,35 @@ export async function deleteTaskComment(
 ) {
   const { supabase } = await requireUser();
 
+  const { data: target } = await supabase
+    .from("task_comments")
+    .select("id, task_id")
+    .eq("id", commentId)
+    .maybeSingle();
+
+  const commentIds = [commentId];
+  if (target?.task_id) {
+    const { data: thread } = await supabase
+      .from("task_comments")
+      .select("id, parent_id")
+      .eq("task_id", target.task_id);
+    const children = new Map<string, string[]>();
+    for (const row of thread ?? []) {
+      if (!row.parent_id) continue;
+      const list = children.get(row.parent_id) ?? [];
+      list.push(row.id);
+      children.set(row.parent_id, list);
+    }
+    for (let i = 0; i < commentIds.length; i++) {
+      commentIds.push(...(children.get(commentIds[i]) ?? []));
+    }
+  }
+
+  const { data: attachments } = await supabase
+    .from("task_comment_attachments")
+    .select("file_path")
+    .in("comment_id", commentIds);
+
   const { error } = await supabase
     .from("task_comments")
     .delete()
@@ -322,6 +451,13 @@ export async function deleteTaskComment(
 
   if (error) {
     return { error: error.message };
+  }
+
+  const paths = (attachments ?? [])
+    .map((row) => row.file_path)
+    .filter((path): path is string => !!path);
+  if (paths.length > 0) {
+    await supabase.storage.from(TASK_ATTACHMENT_BUCKET).remove(paths);
   }
 
   revalidatePath(`/projects/${projectId}/lists/${listId}`);

@@ -122,7 +122,7 @@ export function RecentCommentsList({
                   ) : null}
                 </div>
                 <p className="mt-1 text-sm leading-relaxed text-[var(--foreground)]">
-                  {truncate(comment.body)}
+                  {truncate(comment.body) || "Sent a photo"}
                 </p>
                 <p className="mt-1.5 text-xs text-[var(--muted)]">
                   {comment.taskKey ? `${comment.taskKey} · ` : ""}

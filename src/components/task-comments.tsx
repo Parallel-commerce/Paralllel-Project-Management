@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 
 import {
   createTaskComment,
@@ -18,6 +19,13 @@ import {
 } from "@/lib/mentions";
 import { personDisplayName } from "@/lib/person";
 import { formatDateTime } from "@/lib/format-date";
+import {
+  COMMENT_IMAGE_MAX_BYTES,
+  COMMENT_IMAGE_MAX_FILES,
+  isAllowedCommentImage,
+  isPreviewableImage,
+  taskAttachmentPublicUrl,
+} from "@/lib/task-attachments";
 
 const MAX_VISIBLE_INDENT = 5;
 
@@ -81,6 +89,117 @@ function AuthorAvatar({ comment }: { comment: CommentWithAuthor }) {
   );
 }
 
+function PaperclipIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      aria-hidden
+    >
+      <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+    </svg>
+  );
+}
+
+function CommentImages({
+  attachments,
+}: {
+  attachments: CommentWithAuthor["attachments"];
+}) {
+  const [openId, setOpenId] = useState<string | null>(null);
+  const open = attachments.find((file) => file.id === openId) ?? null;
+  const openUrl = open ? taskAttachmentPublicUrl(open.file_path) : null;
+
+  useEffect(() => {
+    if (!open) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpenId(null);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open]);
+
+  if (attachments.length === 0) return null;
+
+  return (
+    <>
+      <ul
+        className={`mt-2 grid gap-2 ${
+          attachments.length > 1 ? "grid-cols-2" : "grid-cols-1"
+        }`}
+      >
+        {attachments.map((file) => {
+          const url = taskAttachmentPublicUrl(file.file_path);
+          const preview = isPreviewableImage(file.content_type);
+          return (
+            <li key={file.id}>
+              {url && preview ? (
+                <button
+                  type="button"
+                  onClick={() => setOpenId(file.id)}
+                  className="block w-full overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-2)] text-left"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={url}
+                    alt={file.file_name}
+                    className="max-h-64 w-full object-cover"
+                  />
+                </button>
+              ) : url ? (
+                <a
+                  href={url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="block truncate rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-sm text-[var(--accent)] hover:underline"
+                >
+                  {file.file_name}
+                </a>
+              ) : (
+                <span className="block truncate text-sm">{file.file_name}</span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      {open && openUrl
+        ? createPortal(
+            <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
+              <button
+                type="button"
+                className="absolute inset-0 bg-black/70"
+                aria-label="Close image"
+                onClick={() => setOpenId(null)}
+              />
+              <figure className="relative z-10 max-h-[90vh] max-w-[min(96vw,56rem)]">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={openUrl}
+                  alt={open.file_name}
+                  className="max-h-[90vh] w-auto max-w-full rounded-lg object-contain"
+                />
+                <figcaption className="mt-2 text-center text-xs text-white/80">
+                  <a
+                    href={openUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline"
+                  >
+                    {open.file_name}
+                  </a>
+                </figcaption>
+              </figure>
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
+  );
+}
+
 function CommentBody({
   body,
   people,
@@ -105,6 +224,8 @@ function CommentBody({
   );
 }
 
+type PendingImage = { file: File; previewUrl: string };
+
 function CommentComposer({
   placeholder,
   submitLabel,
@@ -122,16 +243,21 @@ function CommentComposer({
   members: MentionPerson[];
   initialBody?: string;
   initialMentionIds?: string[];
-  onSubmit: (body: string, mentionedUserIds: string[]) => void;
+  onSubmit: (body: string, mentionedUserIds: string[], files: File[]) => void;
   onCancel?: () => void;
   autoFocus?: boolean;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const pendingImagesRef = useRef<PendingImage[]>([]);
   const [body, setBody] = useState(initialBody);
   const [selectedIds, setSelectedIds] = useState<string[]>(initialMentionIds);
   const [mentionStart, setMentionStart] = useState<number | null>(null);
   const [mentionQuery, setMentionQuery] = useState("");
   const [highlight, setHighlight] = useState(0);
+  const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
+  const [dragging, setDragging] = useState(false);
+  const [fileError, setFileError] = useState<string | null>(null);
 
   const matches = useMemo(() => {
     if (mentionStart === null) return [];
@@ -143,6 +269,57 @@ function CommentComposer({
   useEffect(() => {
     setHighlight(0);
   }, [mentionQuery, mentionStart]);
+
+  useEffect(() => {
+    return () => {
+      pendingImagesRef.current.forEach((item) =>
+        URL.revokeObjectURL(item.previewUrl),
+      );
+    };
+  }, []);
+
+  function addFiles(incoming: File[]) {
+    const next = [...pendingImagesRef.current];
+    let error: string | null = null;
+    for (const file of incoming) {
+      if (next.length >= COMMENT_IMAGE_MAX_FILES) {
+        error = `You can attach up to ${COMMENT_IMAGE_MAX_FILES} images.`;
+        break;
+      }
+      if (!isAllowedCommentImage(file)) {
+        error = "Use a JPEG, PNG, WebP, GIF, or HEIC image.";
+        continue;
+      }
+      if (file.size > COMMENT_IMAGE_MAX_BYTES) {
+        error = "Each image must be 10MB or smaller.";
+        continue;
+      }
+      if (file.size === 0) continue;
+      next.push({ file, previewUrl: URL.createObjectURL(file) });
+    }
+    setFileError(error);
+    pendingImagesRef.current = next;
+    setPendingImages(next);
+  }
+
+  function removePendingImage(index: number) {
+    setPendingImages((current) => {
+      const item = current[index];
+      if (item) URL.revokeObjectURL(item.previewUrl);
+      const next = current.filter((_, i) => i !== index);
+      pendingImagesRef.current = next;
+      return next;
+    });
+    setFileError(null);
+  }
+
+  function clearPendingImages() {
+    pendingImagesRef.current.forEach((item) =>
+      URL.revokeObjectURL(item.previewUrl),
+    );
+    pendingImagesRef.current = [];
+    setPendingImages([]);
+  }
 
   function updateMentionState(nextBody: string, cursor: number) {
     const active = findActiveMention(nextBody, cursor);
@@ -177,6 +354,7 @@ function CommentComposer({
   }
 
   const pickerOpen = mentionStart !== null && matches.length > 0;
+  const canSubmit = Boolean(body.trim() || pendingImages.length > 0);
 
   return (
     <form
@@ -184,15 +362,47 @@ function CommentComposer({
       onSubmit={(event) => {
         event.preventDefault();
         const next = body.trim();
-        if (!next) return;
-        onSubmit(next, selectedIds);
+        const files = pendingImages.map((item) => item.file);
+        if (!next && files.length === 0) return;
+        onSubmit(next, selectedIds, files);
         setBody("");
         setSelectedIds([]);
         setMentionStart(null);
         setMentionQuery("");
+        setFileError(null);
+        clearPendingImages();
+        if (fileInputRef.current) fileInputRef.current.value = "";
       }}
     >
-      <div className="relative w-full">
+      <div
+        className={`relative w-full rounded-md ${
+          dragging ? "ring-2 ring-[var(--accent)]" : ""
+        }`}
+        onDragEnter={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          setDragging(true);
+        }}
+        onDragOver={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          setDragging(true);
+        }}
+        onDragLeave={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          if (event.currentTarget.contains(event.relatedTarget as Node)) return;
+          setDragging(false);
+        }}
+        onDrop={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          setDragging(false);
+          if (event.dataTransfer.files?.length) {
+            addFiles(Array.from(event.dataTransfer.files));
+          }
+        }}
+      >
         <textarea
           ref={textareaRef}
           value={body}
@@ -200,6 +410,15 @@ function CommentComposer({
             const next = event.target.value;
             setBody(next);
             updateMentionState(next, event.target.selectionStart ?? next.length);
+          }}
+          onPaste={(event) => {
+            const images = Array.from(event.clipboardData.files).filter(
+              (file) => isAllowedCommentImage(file) && file.size > 0,
+            );
+            if (images.length > 0) {
+              event.preventDefault();
+              addFiles(images);
+            }
           }}
           onKeyUp={(event) => {
             if (
@@ -276,15 +495,69 @@ function CommentComposer({
           </ul>
         ) : null}
       </div>
-      <p className="text-xs text-[var(--muted)]">Type @ to mention someone.</p>
-      <div className="flex flex-wrap gap-2">
+      {pendingImages.length > 0 ? (
+        <ul className="flex flex-wrap gap-2">
+          {pendingImages.map((item, index) => (
+            <li
+              key={`${item.file.name}-${item.previewUrl}`}
+              className="relative h-16 w-16 overflow-hidden rounded-md border border-[var(--border)]"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={item.previewUrl}
+                alt={item.file.name}
+                className="h-full w-full object-cover"
+              />
+              <button
+                type="button"
+                onClick={() => removePendingImage(index)}
+                className="absolute right-0.5 top-0.5 rounded bg-black/70 px-1 text-[10px] leading-4 text-white"
+                aria-label={`Remove ${item.file.name}`}
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <p className="text-xs text-[var(--muted)]">
+        Type @ to mention someone. Paste or attach a screenshot.
+      </p>
+      {fileError ? (
+        <p className="text-sm text-[var(--danger)]" role="alert">
+          {fileError}
+        </p>
+      ) : null}
+      <div className="flex flex-wrap items-center gap-2">
         <button
           type="submit"
-          disabled={pending || !body.trim()}
+          disabled={pending || !canSubmit}
           className="rounded-md bg-[var(--accent)] px-3 py-1.5 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-60"
         >
           {pending ? "Posting…" : submitLabel}
         </button>
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => fileInputRef.current?.click()}
+          className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] px-3 py-1.5 text-sm hover:bg-[var(--surface-2)] disabled:opacity-60"
+        >
+          <PaperclipIcon className="h-4 w-4" />
+          Attach image
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.gif,.heic,.heif"
+          multiple
+          className="sr-only"
+          onChange={(event) => {
+            if (event.target.files?.length) {
+              addFiles(Array.from(event.target.files));
+              event.target.value = "";
+            }
+          }}
+        />
         {onCancel ? (
           <button
             type="button"
@@ -317,7 +590,11 @@ function CommentItem({
   replyOpen?: boolean;
   onReply?: () => void;
   onCloseReply?: () => void;
-  onSubmitReply?: (body: string, mentionedUserIds: string[]) => void;
+  onSubmitReply?: (
+    body: string,
+    mentionedUserIds: string[],
+    files: File[],
+  ) => void;
   onDelete: () => void;
 }) {
   return (
@@ -345,7 +622,10 @@ function CommentItem({
               </button>
             ) : null}
           </div>
-          <CommentBody body={comment.body} people={members} />
+          {comment.body.trim() ? (
+            <CommentBody body={comment.body} people={members} />
+          ) : null}
+          <CommentImages attachments={comment.attachments ?? []} />
           {onReply ? (
             <button
               type="button"
@@ -408,6 +688,7 @@ function CommentThread({
     parentId: string,
     body: string,
     mentionedUserIds: string[],
+    files: File[],
   ) => void;
   onDelete: (commentId: string) => void;
 }) {
@@ -429,8 +710,8 @@ function CommentThread({
         replyOpen={replyingTo === node.id}
         onReply={() => onToggleReply(node.id)}
         onCloseReply={onCloseReply}
-        onSubmitReply={(body, mentionedUserIds) =>
-          onSubmitReply(node.id, body, mentionedUserIds)
+        onSubmitReply={(body, mentionedUserIds, files) =>
+          onSubmitReply(node.id, body, mentionedUserIds, files)
         }
         onDelete={() => onDelete(node.id)}
       />
@@ -533,6 +814,7 @@ export function TaskComments({
     body: string,
     parentId?: string | null,
     mentionedUserIds: string[] = [],
+    files: File[] = [],
   ) {
     startTransition(async () => {
       const result = await createTaskComment(
@@ -542,6 +824,7 @@ export function TaskComments({
         body,
         parentId,
         mentionedUserIds,
+        files,
       );
       if (result?.error) {
         setError(result.error);
@@ -608,8 +891,8 @@ export function TaskComments({
                 )
               }
               onCloseReply={() => setReplyingTo(null)}
-              onSubmitReply={(parentId, body, mentionedUserIds) =>
-                postComment(body, parentId, mentionedUserIds)
+              onSubmitReply={(parentId, body, mentionedUserIds, files) =>
+                postComment(body, parentId, mentionedUserIds, files)
               }
               onDelete={removeComment}
             />
@@ -624,8 +907,8 @@ export function TaskComments({
           submitLabel="Post comment"
           pending={pending}
           members={mentionable}
-          onSubmit={(body, mentionedUserIds) =>
-            postComment(body, null, mentionedUserIds)
+          onSubmit={(body, mentionedUserIds, files) =>
+            postComment(body, null, mentionedUserIds, files)
           }
         />
         {error ? (

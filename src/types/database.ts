@@ -139,6 +139,17 @@ export type TaskComment = {
   updated_at: string;
 };
 
+export type TaskCommentAttachment = {
+  id: string;
+  comment_id: string;
+  file_path: string;
+  file_name: string;
+  content_type: string | null;
+  size_bytes: number | null;
+  uploaded_by: string;
+  created_at: string;
+};
+
 export type TaskCommentMention = {
   comment_id: string;
   user_id: string;
@@ -518,6 +529,38 @@ export type Database = {
             columns: ["parent_id"];
             isOneToOne: false;
             referencedRelation: "task_comments";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      task_comment_attachments: {
+        Row: TaskCommentAttachment;
+        Insert: {
+          id?: string;
+          comment_id: string;
+          file_path: string;
+          file_name: string;
+          content_type?: string | null;
+          size_bytes?: number | null;
+          uploaded_by: string;
+          created_at?: string;
+        };
+        Update: {
+          file_name?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "task_comment_attachments_comment_id_fkey";
+            columns: ["comment_id"];
+            isOneToOne: false;
+            referencedRelation: "task_comments";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "task_comment_attachments_uploaded_by_fkey";
+            columns: ["uploaded_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
             referencedColumns: ["id"];
           },
         ];

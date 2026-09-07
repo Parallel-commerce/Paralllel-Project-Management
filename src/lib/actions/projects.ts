@@ -351,6 +351,21 @@ async function deleteProjectRecord(
     for (const row of attachments ?? []) {
       attachmentPaths.push(row.file_path);
     }
+
+    const { data: comments } = await supabase
+      .from("task_comments")
+      .select("id")
+      .in("task_id", taskIds);
+    const commentIds = (comments ?? []).map((row) => row.id);
+    if (commentIds.length > 0) {
+      const { data: commentAttachments } = await supabase
+        .from("task_comment_attachments")
+        .select("file_path")
+        .in("comment_id", commentIds);
+      for (const row of commentAttachments ?? []) {
+        attachmentPaths.push(row.file_path);
+      }
+    }
   }
 
   if (project.logo_path) {
@@ -1033,10 +1048,32 @@ export async function deleteTask(
     .eq("id", taskId)
     .maybeSingle();
 
+  const { data: comments } = await supabase
+    .from("task_comments")
+    .select("id")
+    .eq("task_id", taskId);
+  const commentIds = (comments ?? []).map((row) => row.id);
+  const commentAttachmentPaths: string[] = [];
+  if (commentIds.length > 0) {
+    const { data: commentAttachments } = await supabase
+      .from("task_comment_attachments")
+      .select("file_path")
+      .in("comment_id", commentIds);
+    for (const row of commentAttachments ?? []) {
+      commentAttachmentPaths.push(row.file_path);
+    }
+  }
+
   const { error } = await supabase.from("tasks").delete().eq("id", taskId);
 
   if (error) {
     return { error: error.message };
+  }
+
+  if (commentAttachmentPaths.length > 0) {
+    await supabase.storage
+      .from(TASK_ATTACHMENT_BUCKET)
+      .remove(commentAttachmentPaths);
   }
 
   await logActivity({
