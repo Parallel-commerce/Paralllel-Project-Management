@@ -7,13 +7,22 @@ import { requireInternalUser } from "@/lib/auth";
 import { inviteMember } from "@/lib/actions/projects";
 import { parseCompanyImportCsv, type ImportRowError } from "@/lib/crm-csv";
 import { parseScheduledWeekdays } from "@/lib/scheduled-weekdays";
-import { COMPANY_STATUSES, type CompanyStatus } from "@/types/database";
+import {
+  COMPANY_KINDS,
+  COMPANY_STATUSES,
+  type CompanyKind,
+  type CompanyStatus,
+} from "@/types/database";
 
 const IMPORT_MAX_BYTES = 512 * 1024;
 const IMPORT_MAX_ROWS = 500;
 
 const STATUS_VALUES = new Set<CompanyStatus>(
   COMPANY_STATUSES.map((item) => item.value),
+);
+
+const KIND_VALUES = new Set<CompanyKind>(
+  COMPANY_KINDS.map((item) => item.value),
 );
 
 function emptyToNull(value: string) {
@@ -33,6 +42,13 @@ function parseStatus(raw: string): CompanyStatus | { error: string } {
     return { error: "Choose a valid status." };
   }
   return raw as CompanyStatus;
+}
+
+function parseKind(raw: string): CompanyKind | { error: string } {
+  if (!KIND_VALUES.has(raw as CompanyKind)) {
+    return { error: "Choose a valid type." };
+  }
+  return raw as CompanyKind;
 }
 
 function parseDate(raw: string) {
@@ -62,6 +78,8 @@ export async function createCompany(
   const notes = emptyToNull(String(formData.get("notes") ?? ""));
   const statusResult = parseStatus(String(formData.get("status") ?? "lead"));
   if (typeof statusResult === "object") return statusResult;
+  const kindResult = parseKind(String(formData.get("kind") ?? "prospect"));
+  if (typeof kindResult === "object") return kindResult;
   const followUp = parseDate(String(formData.get("follow_up_at") ?? ""));
   if (followUp && typeof followUp === "object") return followUp;
   const followUpNote = emptyToNull(String(formData.get("follow_up_note") ?? ""));
@@ -77,6 +95,7 @@ export async function createCompany(
       website,
       notes,
       status: statusResult,
+      kind: kindResult,
       follow_up_at: followUp,
       follow_up_note: followUpNote,
       created_by: user.id,
@@ -102,6 +121,8 @@ export async function updateCompany(
   const notes = emptyToNull(String(formData.get("notes") ?? ""));
   const statusResult = parseStatus(String(formData.get("status") ?? "lead"));
   if (typeof statusResult === "object") return statusResult;
+  const kindResult = parseKind(String(formData.get("kind") ?? "prospect"));
+  if (typeof kindResult === "object") return kindResult;
   const followUp = parseDate(String(formData.get("follow_up_at") ?? ""));
   if (followUp && typeof followUp === "object") return followUp;
   const followUpNote = emptyToNull(String(formData.get("follow_up_note") ?? ""));
@@ -117,6 +138,7 @@ export async function updateCompany(
       website,
       notes,
       status: statusResult,
+      kind: kindResult,
       follow_up_at: followUp,
       follow_up_note: followUpNote,
     })
@@ -259,7 +281,7 @@ export async function convertCompanyToProject(
 
   const { data: company, error: companyError } = await supabase
     .from("companies")
-    .select("id, name, status")
+    .select("id, name, status, kind")
     .eq("id", companyId)
     .maybeSingle();
 
@@ -298,10 +320,10 @@ export async function convertCompanyToProject(
     };
   }
 
-  if (company.status !== "won") {
+  if (company.status !== "won" || company.kind !== "customer") {
     await supabase
       .from("companies")
-      .update({ status: "won" })
+      .update({ status: "won", kind: "customer" })
       .eq("id", companyId);
   }
 
@@ -444,6 +466,7 @@ export async function importCompanies(
         website: company.website,
         notes: company.notes,
         status: company.status,
+        kind: company.kind,
         follow_up_at: company.follow_up_at,
         follow_up_note: company.follow_up_note,
         created_by: user.id,

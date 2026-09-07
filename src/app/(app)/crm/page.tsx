@@ -1,30 +1,23 @@
 import Link from "next/link";
 
+import { CompanyKindTag } from "@/components/company-kind-tag";
 import { CompanyMark } from "@/components/company-mark";
 import { CompanyStatusTag } from "@/components/company-status-tag";
 import { CreateCompanyForm } from "@/components/create-company-form";
+import { CrmFilters } from "@/components/crm-filters";
 import { DeleteCompanyButton } from "@/components/delete-company-button";
 import { DeleteProjectButton } from "@/components/delete-project-button";
 import { ImportCompaniesForm } from "@/components/import-companies-form";
 import { requireInternalUser } from "@/lib/auth";
-import { formatDayMonth } from "@/lib/format-date";
 import {
-  COMPANY_STATUSES,
-  type CompanyStatus,
-} from "@/types/database";
+  KIND_TABS,
+  STATUS_TABS,
+  type KindTab,
+  type StatusTab,
+} from "@/lib/crm-filters";
+import { formatDayMonth } from "@/lib/format-date";
 
 type LinkedProject = { id: string; name: string };
-
-type Tab = CompanyStatus | "all" | "follow_ups";
-
-const TABS: { id: Tab; label: string }[] = [
-  { id: "all", label: "All" },
-  ...COMPANY_STATUSES.map((status) => ({
-    id: status.value,
-    label: status.label,
-  })),
-  { id: "follow_ups", label: "Follow-ups" },
-];
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -49,37 +42,41 @@ function contactCount(
 export default async function CrmPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string }>;
+  searchParams: Promise<{ status?: string; kind?: string }>;
 }) {
   const { supabase } = await requireInternalUser();
   const params = await searchParams;
   const tab = (
-    TABS.some((item) => item.id === params.status) ? params.status : "all"
-  ) as Tab;
+    STATUS_TABS.some((item) => item.id === params.status)
+      ? params.status
+      : "all"
+  ) as StatusTab;
+  const kind = (
+    KIND_TABS.some((item) => item.id === params.kind) ? params.kind : "all"
+  ) as KindTab;
   const today = todayIso();
 
   const select =
-    "id, name, website, status, follow_up_at, contacts(count), projects(id, name)";
+    "id, name, website, status, kind, follow_up_at, contacts(count), projects(id, name)";
 
-  const { data: companies } =
-    tab === "follow_ups"
-      ? await supabase
-          .from("companies")
-          .select(select)
-          .lte("follow_up_at", today)
-          .neq("status", "won")
-          .order("follow_up_at", { ascending: true })
-      : await (tab === "all"
-          ? supabase.from("companies").select(select).order("name", {
-              ascending: true,
-            })
-          : supabase
-              .from("companies")
-              .select(select)
-              .eq("status", tab)
-              .order("name", { ascending: true }));
+  let query = supabase.from("companies").select(select);
+  if (kind !== "all") {
+    query = query.eq("kind", kind);
+  }
+  if (tab === "follow_ups") {
+    query = query
+      .lte("follow_up_at", today)
+      .neq("status", "won")
+      .order("follow_up_at", { ascending: true });
+  } else if (tab === "all") {
+    query = query.order("name", { ascending: true });
+  } else {
+    query = query.eq("status", tab).order("name", { ascending: true });
+  }
+
+  const { data: companies } = await query;
   const isEmpty = (companies ?? []).length === 0;
-  const noCompaniesAtAll = tab === "all" && isEmpty;
+  const noCompaniesAtAll = tab === "all" && kind === "all" && isEmpty;
 
   return (
     <main className="app-container py-6 sm:py-10">
@@ -111,25 +108,12 @@ export default async function CrmPage({
               Prospects
             </h1>
             <p className="mt-2 text-sm text-[var(--muted)]">
-              Track companies through the sales process. Lost prospects can be
-              marked for a follow-up.
+              Record whether a company is a prospect, customer, lost
+              opportunity, or another agency, then move them through the sales
+              process.
             </p>
 
-            <div className="scroll-x-fade mt-5 -mx-4 flex gap-1.5 px-4 pb-1 sm:mx-0 sm:mt-6 sm:flex-wrap sm:overflow-visible sm:px-0">
-              {TABS.map((item) => (
-                <Link
-                  key={item.id}
-                  href={item.id === "all" ? "/crm" : `/crm?status=${item.id}`}
-                  className={`shrink-0 rounded-lg px-3 py-1.5 text-sm transition ${
-                    tab === item.id
-                      ? "bg-[var(--ink)] text-white"
-                      : "border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] hover:border-[var(--foreground)]/15 hover:bg-white"
-                  }`}
-                >
-                  {item.label}
-                </Link>
-              ))}
-            </div>
+            <CrmFilters status={tab} kind={kind} />
 
             {isEmpty ? (
               <div className="mt-6 rounded-xl border border-dashed border-[var(--border)] bg-[var(--surface)]/60 px-4 py-10 text-center">
@@ -137,7 +121,9 @@ export default async function CrmPage({
                 <p className="mt-1 text-sm text-[var(--muted)]">
                   {tab === "follow_ups"
                     ? "No follow-ups are due."
-                    : "No companies in this stage yet."}
+                    : kind !== "all" && tab === "all"
+                      ? "No companies of this type yet."
+                      : "No companies in this stage yet."}
                 </p>
               </div>
             ) : (
@@ -165,6 +151,7 @@ export default async function CrmPage({
                                 {company.name}
                               </p>
                               <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-[var(--muted)]">
+                                <CompanyKindTag kind={company.kind} />
                                 <CompanyStatusTag status={company.status} />
                                 <span>
                                   {count} contact{count === 1 ? "" : "s"}

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { CompanyContacts } from "@/components/company-contacts";
 import { CompanyEditor } from "@/components/company-editor";
+import { CompanyKindTag } from "@/components/company-kind-tag";
 import { CompanyMark } from "@/components/company-mark";
 import { CompanyStatusTag } from "@/components/company-status-tag";
 import { ConvertCompanyForm } from "@/components/convert-company-form";
@@ -61,6 +62,7 @@ export default async function CompanyPage({
             <h1 className="font-display text-2xl tracking-tight sm:text-3xl">
               {companyRow.name}
             </h1>
+            <CompanyKindTag kind={companyRow.kind} />
             <CompanyStatusTag status={companyRow.status} />
           </div>
           {companyRow.website ? (

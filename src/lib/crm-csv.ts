@@ -1,9 +1,15 @@
-import { COMPANY_STATUSES, type CompanyStatus } from "@/types/database";
+import {
+  COMPANY_KINDS,
+  COMPANY_STATUSES,
+  type CompanyKind,
+  type CompanyStatus,
+} from "@/types/database";
 
 export const COMPANY_IMPORT_HEADERS = [
   "company_name",
   "website",
   "status",
+  "kind",
   "notes",
   "follow_up_at",
   "follow_up_note",
@@ -16,14 +22,32 @@ export const COMPANY_IMPORT_HEADERS = [
 ] as const;
 
 export const COMPANY_IMPORT_TEMPLATE = `${COMPANY_IMPORT_HEADERS.join(",")}
-Acme Ltd,https://acme.com,lead,Met at a trade show,2026-09-15,Follow up after summer,Jane Smith,jane@acme.com,+44 20 0000 0000,Buying manager,,true
+Acme Ltd,https://acme.com,lead,prospect,Met at a trade show,2026-09-15,Follow up after summer,Jane Smith,jane@acme.com,+44 20 0000 0000,Buying manager,,true
 Acme Ltd,,,,,,,Bob Jones,bob@acme.com,+44 20 0000 0001,Finance,,
-Northwind,https://northwind.example,contacted,,,,,Priya Patel,priya@northwind.example,,,
+Northwind,https://northwind.example,contacted,prospect,,,,Priya Patel,priya@northwind.example,,,
 `;
 
 const STATUS_VALUES = new Set<CompanyStatus>(
   COMPANY_STATUSES.map((item) => item.value),
 );
+
+const KIND_VALUES = new Set<CompanyKind>(
+  COMPANY_KINDS.map((item) => item.value),
+);
+
+const KIND_ALIASES: Record<string, CompanyKind> = {
+  prospect: "prospect",
+  lost_opportunity: "lost_opportunity",
+  lostopportunity: "lost_opportunity",
+  lost: "lost_opportunity",
+  customer: "customer",
+  client: "customer",
+  agency: "agency",
+  evangelist: "agency",
+  agency_evangelist: "agency",
+  another_agency: "agency",
+  another_agency_evangelist: "agency",
+};
 
 const HEADER_ALIASES: Record<string, (typeof COMPANY_IMPORT_HEADERS)[number]> = {
   company_name: "company_name",
@@ -31,6 +55,10 @@ const HEADER_ALIASES: Record<string, (typeof COMPANY_IMPORT_HEADERS)[number]> = 
   website: "website",
   url: "website",
   status: "status",
+  kind: "kind",
+  type: "kind",
+  company_type: "kind",
+  company_kind: "kind",
   notes: "notes",
   company_notes: "notes",
   follow_up_at: "follow_up_at",
@@ -69,6 +97,7 @@ export type ParsedImportCompany = {
   name: string;
   website: string | null;
   status: CompanyStatus;
+  kind: CompanyKind;
   notes: string | null;
   follow_up_at: string | null;
   follow_up_note: string | null;
@@ -105,6 +134,27 @@ function parseStatus(raw: string): CompanyStatus | { error: string } {
   if (byLabel) return byLabel.value;
   return {
     error: `Status must be ${COMPANY_STATUSES.map((item) => item.value).join(", ")}.`,
+  };
+}
+
+function parseKind(raw: string): CompanyKind | { error: string } {
+  const trimmed = raw.trim();
+  if (!trimmed) return "prospect";
+  const slug = trimmed
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "");
+  const aliased = KIND_ALIASES[slug];
+  if (aliased) return aliased;
+  if (KIND_VALUES.has(slug as CompanyKind)) {
+    return slug as CompanyKind;
+  }
+  const byLabel = COMPANY_KINDS.find(
+    (item) => item.label.toLowerCase() === trimmed.toLowerCase(),
+  );
+  if (byLabel) return byLabel.value;
+  return {
+    error: `Type must be ${COMPANY_KINDS.map((item) => item.value).join(", ")}.`,
   };
 }
 
@@ -217,6 +267,11 @@ export function parseCompanyImportCsv(text: string): ParsedImport | { error: str
       errors.push({ row, message: statusResult.error });
       return;
     }
+    const kindResult = parseKind(cell(record, "kind"));
+    if (typeof kindResult === "object") {
+      errors.push({ row, message: kindResult.error });
+      return;
+    }
     const followUp = parseDate(cell(record, "follow_up_at"));
     if (followUp && typeof followUp === "object") {
       errors.push({ row, message: followUp.error });
@@ -235,6 +290,7 @@ export function parseCompanyImportCsv(text: string): ParsedImport | { error: str
         name,
         website: normalizeWebsite(cell(record, "website")),
         status: statusResult,
+        kind: kindResult,
         notes: emptyToNull(cell(record, "notes")),
         follow_up_at: followUp,
         follow_up_note: emptyToNull(cell(record, "follow_up_note")),

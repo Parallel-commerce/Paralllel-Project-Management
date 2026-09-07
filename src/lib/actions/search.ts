@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
+import { companyKindLabel } from "@/lib/company-kind";
 import { companyStatusLabel } from "@/lib/company-status";
 import type { TaskStatus } from "@/types/database";
 
@@ -134,7 +135,7 @@ export async function searchApp(rawQuery: string): Promise<SearchResults> {
     isInternal
       ? supabase
           .from("companies")
-          .select("id, name, website, status, updated_at")
+          .select("id, name, website, status, kind, updated_at")
           .or(orIlike(["name", "website", "notes"], query))
           .order("updated_at", { ascending: false })
           .limit(8)
@@ -208,7 +209,11 @@ export async function searchApp(rawQuery: string): Promise<SearchResults> {
       id: company.id,
       href: `/crm/${company.id}`,
       title: company.name,
-      subtitle: [companyStatusLabel(company.status), company.website]
+      subtitle: [
+        companyKindLabel(company.kind),
+        companyStatusLabel(company.status),
+        company.website,
+      ]
         .filter(Boolean)
         .join(" · "),
       score: matchScore(query, company.name, company.website),

@@ -11,6 +11,11 @@ export type CompanyStatus =
   | "proposal"
   | "won"
   | "lost";
+export type CompanyKind =
+  | "prospect"
+  | "lost_opportunity"
+  | "customer"
+  | "agency";
 
 export type Profile = {
   id: string;
@@ -46,6 +51,7 @@ export type Company = {
   website: string | null;
   notes: string | null;
   status: CompanyStatus;
+  kind: CompanyKind;
   follow_up_at: string | null;
   follow_up_note: string | null;
   created_by: string;
@@ -305,6 +311,7 @@ export type Database = {
           website?: string | null;
           notes?: string | null;
           status?: CompanyStatus;
+          kind?: CompanyKind;
           follow_up_at?: string | null;
           follow_up_note?: string | null;
           created_by: string;
@@ -316,6 +323,7 @@ export type Database = {
           website?: string | null;
           notes?: string | null;
           status?: CompanyStatus;
+          kind?: CompanyKind;
           follow_up_at?: string | null;
           follow_up_note?: string | null;
           updated_at?: string;
@@ -868,6 +876,7 @@ export type Database = {
       task_status: TaskStatus;
       report_period: ReportPeriod;
       company_status: CompanyStatus;
+      company_kind: CompanyKind;
     };
     CompositeTypes: Record<string, never>;
   };
@@ -892,4 +901,11 @@ export const COMPANY_STATUSES: { value: CompanyStatus; label: string }[] = [
   { value: "proposal", label: "Proposal" },
   { value: "won", label: "Won" },
   { value: "lost", label: "Lost" },
+];
+
+export const COMPANY_KINDS: { value: CompanyKind; label: string }[] = [
+  { value: "prospect", label: "Prospect" },
+  { value: "lost_opportunity", label: "Lost opportunity" },
+  { value: "customer", label: "Customer" },
+  { value: "agency", label: "Agency / evangelist" },
 ];

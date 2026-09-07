@@ -5,7 +5,7 @@ import { useState, useTransition } from "react";
 
 import { deleteCompany, updateCompany } from "@/lib/actions/crm";
 import { dateInputValue } from "@/lib/format-date";
-import { COMPANY_STATUSES, type Company } from "@/types/database";
+import { COMPANY_KINDS, COMPANY_STATUSES, type Company } from "@/types/database";
 
 export function CompanyEditor({ company }: { company: Company }) {
   const router = useRouter();
@@ -17,7 +17,8 @@ export function CompanyEditor({ company }: { company: Company }) {
     <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 sm:p-5">
       <h2 className="font-medium">Company</h2>
       <p className="mt-1 text-sm text-[var(--muted)]">
-        Status, notes, and a follow-up date if this prospect needs another pass.
+        Type, sales status, notes, and a follow-up date if they need another
+        pass.
       </p>
 
       <form
@@ -58,6 +59,20 @@ export function CompanyEditor({ company }: { company: Company }) {
         </label>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
+            Type
+            <select
+              name="kind"
+              defaultValue={company.kind}
+              className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
+            >
+              {COMPANY_KINDS.map((kind) => (
+                <option key={kind.value} value={kind.value}>
+                  {kind.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
             Status
             <select
               name="status"
@@ -71,16 +86,16 @@ export function CompanyEditor({ company }: { company: Company }) {
               ))}
             </select>
           </label>
-          <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
-            Follow up on
-            <input
-              type="date"
-              name="follow_up_at"
-              defaultValue={dateInputValue(company.follow_up_at)}
-              className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
-            />
-          </label>
         </div>
+        <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
+          Follow up on
+          <input
+            type="date"
+            name="follow_up_at"
+            defaultValue={dateInputValue(company.follow_up_at)}
+            className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
+          />
+        </label>
         <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
           Follow-up note
           <input

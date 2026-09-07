@@ -1,5 +1,6 @@
 "use client";
 
+import { addDays, format, parseISO } from "date-fns";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
@@ -39,6 +40,53 @@ const TABS: { id: WorkView; label: string }[] = [
   { id: "overdue", label: "Overdue" },
   { id: "week", label: "Due this week" },
 ];
+
+const DUE_SECTIONS = [
+  { id: "overdue", label: "Overdue" },
+  { id: "today", label: "Due today" },
+  { id: "tomorrow", label: "Due tomorrow" },
+  { id: "later", label: "Later" },
+] as const;
+
+type DueSectionId = (typeof DUE_SECTIONS)[number]["id"];
+
+function tomorrowIso(today: string) {
+  try {
+    return format(addDays(parseISO(today), 1), "yyyy-MM-dd");
+  } catch {
+    return today;
+  }
+}
+
+function dueSectionId(
+  dueDate: string | null,
+  today: string,
+  tomorrow: string,
+): DueSectionId {
+  if (!dueDate) return "later";
+  const day = dueDate.slice(0, 10);
+  if (day < today) return "overdue";
+  if (day === today) return "today";
+  if (day === tomorrow) return "tomorrow";
+  return "later";
+}
+
+function groupTasksByDue(tasks: MyWorkTask[], today: string) {
+  const tomorrow = tomorrowIso(today);
+  const groups: Record<DueSectionId, MyWorkTask[]> = {
+    overdue: [],
+    today: [],
+    tomorrow: [],
+    later: [],
+  };
+  for (const task of tasks) {
+    groups[dueSectionId(task.due_date, today, tomorrow)].push(task);
+  }
+  return DUE_SECTIONS.map((section) => ({
+    ...section,
+    tasks: groups[section.id],
+  })).filter((section) => section.tasks.length > 0);
+}
 
 export function myWorkHref({
   view,
@@ -132,6 +180,11 @@ export function MyWorkView({
   const undated = useMemo(
     () => tasks.filter((task) => !task.due_date),
     [tasks],
+  );
+
+  const dueGroups = useMemo(
+    () => groupTasksByDue(tasks, todayIso),
+    [tasks, todayIso],
   );
 
   const editingContext = editing
@@ -271,28 +324,47 @@ export function MyWorkView({
           ) : null}
         </div>
       ) : (
-        <ul className="mt-5 max-w-3xl space-y-2 sm:mt-6">
+        <div className="mt-5 max-w-3xl sm:mt-6">
           {tasks.length === 0 ? (
-            <li>
-              <EmptyState view={view} />
-            </li>
+            <EmptyState view={view} />
           ) : (
-            tasks.map((task) => (
-              <li key={task.id}>
-                <TaskWorkLink
-                  title={task.title}
-                  status={task.status}
-                  taskKey={task.key}
-                  dueDate={task.due_date}
-                  projectName={task.projectName}
-                  listName={task.listName}
-                  todayIso={todayIso}
-                  onOpen={() => openTask(task)}
-                />
-              </li>
-            ))
+            <div className="space-y-6">
+              {dueGroups.map((section) => (
+                <section key={section.id} aria-labelledby={`due-${section.id}`}>
+                  <h2
+                    id={`due-${section.id}`}
+                    className={`text-sm font-medium ${
+                      section.id === "overdue"
+                        ? "text-[var(--danger)]"
+                        : ""
+                    }`}
+                  >
+                    {section.label}
+                    <span className="ml-1.5 font-normal text-[var(--muted)]">
+                      {section.tasks.length}
+                    </span>
+                  </h2>
+                  <ul className="mt-2 space-y-2">
+                    {section.tasks.map((task) => (
+                      <li key={task.id}>
+                        <TaskWorkLink
+                          title={task.title}
+                          status={task.status}
+                          taskKey={task.key}
+                          dueDate={task.due_date}
+                          projectName={task.projectName}
+                          listName={task.listName}
+                          todayIso={todayIso}
+                          onOpen={() => openTask(task)}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ))}
+            </div>
           )}
-        </ul>
+        </div>
       )}
 
       {creating ? (
