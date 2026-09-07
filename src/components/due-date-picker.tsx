@@ -1,6 +1,6 @@
 "use client";
 
-import { format, parseISO } from "date-fns";
+import { format, parseISO, startOfDay } from "date-fns";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { DayPicker } from "react-day-picker";
 import "react-day-picker/style.css";
@@ -69,13 +69,17 @@ export function DueDatePicker({
 
   const selected = value ? parseISO(value) : undefined;
   const scheduledLabel = formatScheduledWeekdays(highlightedWeekdays);
-  const scheduledModifier = useMemo(
-    () =>
-      highlightedWeekdays.length > 0
-        ? { scheduled: { dayOfWeek: highlightedWeekdays } }
-        : undefined,
-    [highlightedWeekdays],
-  );
+  const today = useMemo(() => startOfDay(new Date()), []);
+  const modifiers = useMemo(() => {
+    const next: {
+      past: { before: Date };
+      scheduled?: { dayOfWeek: number[] };
+    } = { past: { before: today } };
+    if (highlightedWeekdays.length > 0) {
+      next.scheduled = { dayOfWeek: highlightedWeekdays };
+    }
+    return next;
+  }, [highlightedWeekdays, today]);
 
   return (
     <div
@@ -122,10 +126,11 @@ export function DueDatePicker({
               setOpen(false);
             }}
             defaultMonth={selected ?? new Date()}
-            modifiers={scheduledModifier}
-            modifiersClassNames={
-              scheduledModifier ? { scheduled: "rdp-scheduled" } : undefined
-            }
+            modifiers={modifiers}
+            modifiersClassNames={{
+              past: "rdp-past",
+              scheduled: "rdp-scheduled",
+            }}
           />
           {scheduledLabel ? (
             <p className="mt-2 text-xs text-[var(--muted)]">
