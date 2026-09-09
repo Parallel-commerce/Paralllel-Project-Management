@@ -10,6 +10,7 @@ export type CurrentProfile = {
   title: string | null;
   avatar_path: string | null;
   is_platform_admin: boolean;
+  can_access_crm: boolean;
   updated_at: string;
   deleted_at: string | null;
 };
@@ -34,7 +35,7 @@ export const getCurrentProfile = cache(async (): Promise<CurrentProfile | null> 
   const { data } = await supabase
     .from("profiles")
     .select(
-      "id, email, full_name, title, avatar_path, is_platform_admin, updated_at, deleted_at",
+      "id, email, full_name, title, avatar_path, is_platform_admin, can_access_crm, updated_at, deleted_at",
     )
     .eq("id", user.id)
     .maybeSingle();
@@ -73,6 +74,27 @@ export async function requireInternalUser() {
   const session = await requireSessionUser();
   const isInternal = await getIsInternalUser();
   if (!isInternal) {
+    redirect("/home");
+  }
+  return session;
+}
+
+/** True when the current user is a platform admin or has CRM access granted. */
+export const getIsCrmUser = cache(async () => {
+  const { supabase, user } = await getSessionUser();
+  if (!user) return false;
+
+  const { data, error } = await supabase.rpc("is_crm_user");
+  if (!error) return !!data;
+
+  const profile = await getCurrentProfile();
+  return !!profile?.is_platform_admin || !!profile?.can_access_crm;
+});
+
+export async function requireCrmUser() {
+  const session = await requireSessionUser();
+  const isCrm = await getIsCrmUser();
+  if (!isCrm) {
     redirect("/home");
   }
   return session;

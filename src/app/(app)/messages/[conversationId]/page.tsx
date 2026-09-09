@@ -75,6 +75,7 @@ export default async function ConversationPage({
           conversationId={conversation.id}
           currentUserId={user.id}
           initialMessages={messages}
+          members={result.members ?? []}
           heading={
             isClient ? conversation.project_name : conversation.client_name
           }

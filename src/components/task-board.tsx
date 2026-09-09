@@ -108,9 +108,6 @@ function TaskCard({
             </p>
           ) : null}
           <h3 className="font-medium leading-snug">{task.title}</h3>
-          {task.link_url ? (
-            <p className="mt-1 truncate text-xs text-[var(--accent)]">Link</p>
-          ) : null}
           {task.due_date ? (
             <p
               className={`mt-1 text-xs ${
@@ -196,9 +193,6 @@ function TaskListRow({
           <span className={overdue ? "text-[var(--danger)]" : ""}>
             {task.due_date ? `Due ${task.due_date}` : "No due date"}
           </span>
-          {task.link_url ? (
-            <span className="text-[var(--accent)]">Link</span>
-          ) : null}
         </div>
       </button>
     </li>

@@ -21,6 +21,8 @@ const COMMENT_TYPES = new Set([
   "task_comment_reply",
   "task_comment_mention",
   "chat_message",
+  "chat_message_reply",
+  "chat_message_mention",
 ]);
 
 function absoluteAppUrl(path?: string | null) {
@@ -149,7 +151,9 @@ function firstNameFromProfile(
 
 function notificationCtaLabel(type: string) {
   if (COMMENT_TYPES.has(type)) {
-    return type === "chat_message" ? "Open conversation" : "View comment";
+    return type.startsWith("chat_message")
+      ? "Open conversation"
+      : "View comment";
   }
   if (type === "project_invite") return "Open project";
   if (type.startsWith("task_")) return "Open task";

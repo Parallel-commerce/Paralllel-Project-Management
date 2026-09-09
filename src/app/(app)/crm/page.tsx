@@ -8,7 +8,7 @@ import { CrmFilters } from "@/components/crm-filters";
 import { DeleteCompanyButton } from "@/components/delete-company-button";
 import { DeleteProjectButton } from "@/components/delete-project-button";
 import { ImportCompaniesForm } from "@/components/import-companies-form";
-import { requireInternalUser } from "@/lib/auth";
+import { requireCrmUser } from "@/lib/auth";
 import {
   KIND_TABS,
   STATUS_TABS,
@@ -44,7 +44,7 @@ export default async function CrmPage({
 }: {
   searchParams: Promise<{ status?: string; kind?: string }>;
 }) {
-  const { supabase } = await requireInternalUser();
+  const { supabase } = await requireCrmUser();
   const params = await searchParams;
   const tab = (
     STATUS_TABS.some((item) => item.id === params.status)

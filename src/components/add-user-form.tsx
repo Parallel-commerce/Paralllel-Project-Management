@@ -34,7 +34,8 @@ export function AddUserForm({ projects }: { projects: ProjectOption[] }) {
       <h2 className="font-medium">Add user</h2>
       <p className="mt-1 text-sm text-[var(--muted)]">
         Send a sign-in invite. Name and title are saved with the account.
-        Optionally assign projects now.
+        Grant CRM and project access independently — they can have either,
+        both, or neither.
       </p>
 
       <form
@@ -64,6 +65,10 @@ export function AddUserForm({ projects }: { projects: ProjectOption[] }) {
             ) {
               message +=
                 " Platform admin can be enabled after they appear in this list.";
+            }
+            if ("crmAccessPending" in result && result.crmAccessPending) {
+              message +=
+                " CRM access can be enabled after they appear in this list.";
             }
             setInfo(message);
             form.reset();
@@ -104,16 +109,35 @@ export function AddUserForm({ projects }: { projects: ProjectOption[] }) {
               className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
             />
           </label>
-          <label className="flex items-end gap-2 pb-2 text-sm text-[var(--foreground)]">
-            <input
-              type="checkbox"
-              name="is_platform_admin"
-              value="1"
-              disabled={pending}
-              className="mt-0.5"
-            />
-            Platform admin
-          </label>
+          <fieldset className="flex flex-col gap-2 border-0 p-0 sm:col-span-2">
+            <legend className="text-sm font-medium text-[var(--foreground)]">
+              Access
+            </legend>
+            <p className="text-xs text-[var(--muted)]">
+              CRM is granted here. Project access comes from the allocations
+              below.
+            </p>
+            <label className="flex items-center gap-2 text-sm text-[var(--foreground)]">
+              <input
+                type="checkbox"
+                name="can_access_crm"
+                value="1"
+                disabled={pending}
+                className="mt-0.5"
+              />
+              CRM
+            </label>
+            <label className="flex items-center gap-2 text-sm text-[var(--foreground)]">
+              <input
+                type="checkbox"
+                name="is_platform_admin"
+                value="1"
+                disabled={pending}
+                className="mt-0.5"
+              />
+              Platform admin
+            </label>
+          </fieldset>
         </div>
 
         <div className="mt-1">

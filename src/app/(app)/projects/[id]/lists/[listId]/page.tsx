@@ -95,7 +95,7 @@ export default async function ListBoardPage({
   const { data: taskRows } = await supabase
     .from("tasks")
     .select(
-      "id, list_id, project_id, title, description, due_date, status, link_url, number, key, created_by, reported_by, assigned_to, completed_at, archived_at, created_at, updated_at",
+      "id, list_id, project_id, title, description, due_date, status, number, key, created_by, reported_by, assigned_to, completed_at, archived_at, created_at, updated_at",
     )
     .eq("list_id", listId)
     .is("archived_at", null)

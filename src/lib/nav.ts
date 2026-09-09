@@ -4,6 +4,7 @@ export type PrimaryNavItem = {
   match: (pathname: string) => boolean;
   showOnDesktop?: boolean;
   requiresInternal?: boolean;
+  requiresCrm?: boolean;
   requiresPlatformAdmin?: boolean;
 };
 
@@ -23,7 +24,7 @@ export const primaryNavItems: PrimaryNavItem[] = [
     href: "/crm",
     label: "CRM",
     match: (pathname) => pathname.startsWith("/crm"),
-    requiresInternal: true,
+    requiresCrm: true,
   },
   {
     href: "/tasks",
@@ -47,10 +48,12 @@ export function visibleNavItems(
   items: PrimaryNavItem[],
   {
     isInternal,
+    isCrm = false,
     isPlatformAdmin,
     desktop = false,
   }: {
     isInternal: boolean;
+    isCrm?: boolean;
     isPlatformAdmin: boolean;
     desktop?: boolean;
   },
@@ -58,6 +61,7 @@ export function visibleNavItems(
   return items.filter((item) => {
     if (desktop && item.showOnDesktop === false) return false;
     if (item.requiresInternal && !isInternal) return false;
+    if (item.requiresCrm && !isCrm) return false;
     if (item.requiresPlatformAdmin && !isPlatformAdmin) return false;
     return true;
   });

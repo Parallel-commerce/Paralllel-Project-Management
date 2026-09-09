@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { parseDurationToSeconds } from "@/lib/parse-duration";
 import { createClient } from "@/lib/supabase/server";
 import type { TimeEntry } from "@/types/database";
 
@@ -251,25 +252,15 @@ export async function addManualTimeEntry(
 
   const description = String(formData.get("description") ?? "").trim();
   const date = String(formData.get("date") ?? "").trim();
-  const hours = Number(formData.get("hours") ?? 0);
-  const minutes = Number(formData.get("minutes") ?? 0);
+  const durationSeconds = parseDurationToSeconds(
+    String(formData.get("duration") ?? ""),
+  );
 
   if (!date) {
     return { error: "Date is required." };
   }
-  if (
-    !Number.isFinite(hours) ||
-    !Number.isFinite(minutes) ||
-    hours < 0 ||
-    minutes < 0 ||
-    minutes >= 60
-  ) {
-    return { error: "Enter valid hours and minutes." };
-  }
-
-  const durationSeconds = Math.round(hours * 3600 + minutes * 60);
-  if (durationSeconds <= 0) {
-    return { error: "Duration must be greater than zero." };
+  if (durationSeconds == null) {
+    return { error: "Enter time like 45m or 1h 15." };
   }
 
   const startedAt = new Date(`${date}T09:00:00`);

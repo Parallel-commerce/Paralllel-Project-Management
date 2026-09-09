@@ -8,13 +8,16 @@ import { primaryNavItems, visibleNavItems } from "@/lib/nav";
 export function DesktopNav({
   isPlatformAdmin,
   isInternal = false,
+  isCrm = false,
 }: {
   isPlatformAdmin: boolean;
   isInternal?: boolean;
+  isCrm?: boolean;
 }) {
   const pathname = usePathname();
   const items = visibleNavItems(primaryNavItems, {
     isInternal,
+    isCrm,
     isPlatformAdmin,
     desktop: true,
   });

@@ -8,7 +8,7 @@ import { CompanyMark } from "@/components/company-mark";
 import { CompanyStatusTag } from "@/components/company-status-tag";
 import { ConvertCompanyForm } from "@/components/convert-company-form";
 import { DeleteProjectButton } from "@/components/delete-project-button";
-import { requireInternalUser } from "@/lib/auth";
+import { getIsInternalUser, requireCrmUser } from "@/lib/auth";
 import type { Company, Contact } from "@/types/database";
 
 export default async function CompanyPage({
@@ -17,7 +17,8 @@ export default async function CompanyPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const { supabase } = await requireInternalUser();
+  const { supabase } = await requireCrmUser();
+  const canCreateProjects = await getIsInternalUser();
 
   const [{ data: company }, { data: contacts }, { data: projects }] =
     await Promise.all([
@@ -84,11 +85,13 @@ export default async function CompanyPage({
           <CompanyContacts companyId={id} contacts={contactRows} />
         </div>
         <div className="flex flex-col gap-6">
-          <ConvertCompanyForm
-            companyId={id}
-            companyName={companyRow.name}
-            contacts={contactRows}
-          />
+          {canCreateProjects ? (
+            <ConvertCompanyForm
+              companyId={id}
+              companyName={companyRow.name}
+              contacts={contactRows}
+            />
+          ) : null}
           <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 sm:p-5">
             <h2 className="font-medium">Projects</h2>
             {projects && projects.length > 0 ? (

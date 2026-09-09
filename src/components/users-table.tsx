@@ -9,6 +9,7 @@ import {
   reinstateUser,
   removeMemberFromProject,
   resendUserInvite,
+  setCrmAccess,
   setPlatformAdmin,
   updateMemberRole,
   updateUserProfile,
@@ -29,6 +30,7 @@ export type UserRow = {
   full_name: string | null;
   title: string | null;
   is_platform_admin: boolean;
+  can_access_crm: boolean;
   deleted_at?: string | null;
   previous_email?: string | null;
   auth_status?: "never_logged_in" | "logged_in" | "logged_out";
@@ -186,12 +188,13 @@ export function UsersTable({
 
       {tab === "active" ? (
         <div className="overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--surface)]">
-          <table className="w-full min-w-[720px] text-left text-sm">
+          <table className="w-full min-w-[800px] text-left text-sm">
             <thead className="border-b border-[var(--border)] bg-[var(--surface-2)]/60 text-[var(--muted)]">
               <tr>
                 <th className="px-4 py-3 font-medium">User</th>
                 <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium">Projects</th>
+                <th className="px-4 py-3 font-medium">CRM</th>
                 <th className="px-4 py-3 font-medium">Platform admin</th>
                 <th className="px-4 py-3 font-medium">Actions</th>
               </tr>
@@ -199,7 +202,7 @@ export function UsersTable({
             <tbody className="divide-y divide-[var(--border)]">
               {users.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-[var(--muted)]">
+                  <td colSpan={6} className="px-4 py-8 text-[var(--muted)]">
                     No active users yet.
                   </td>
                 </tr>
@@ -552,6 +555,32 @@ function UserTableRows({
           <label className="inline-flex items-center gap-2 text-sm">
             <input
               type="checkbox"
+              checked={user.is_platform_admin || user.can_access_crm}
+              disabled={pending || user.is_platform_admin}
+              onChange={(event) => {
+                const enabled = event.target.checked;
+                startTransition(async () => {
+                  const result = await setCrmAccess(user.id, enabled);
+                  onError(result?.error ?? null);
+                  onInfo(null);
+                  if (!result?.error) {
+                    onSuccess();
+                  }
+                });
+              }}
+            />
+            {user.is_platform_admin || user.can_access_crm ? "Yes" : "No"}
+          </label>
+          {user.is_platform_admin ? (
+            <p className="mt-1 text-xs text-[var(--muted)]">
+              Included with admin
+            </p>
+          ) : null}
+        </td>
+        <td className="px-4 py-3">
+          <label className="inline-flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
               checked={user.is_platform_admin}
               disabled={pending || user.id === currentUserId}
               onChange={(event) => {
@@ -622,7 +651,11 @@ function UserTableRows({
       </tr>
       {isOpen ? (
         <tr>
-          <td colSpan={5} className="bg-[var(--background)]/50 px-4 py-3">
+          <td colSpan={6} className="bg-[var(--background)]/50 px-4 py-3">
+            <p className="mb-3 text-xs text-[var(--muted)]">
+              Project access is per project below. CRM is granted separately, so
+              someone can be on projects, in CRM, both, or neither.
+            </p>
             {user.memberships.length === 0 ? (
               <p className="text-sm text-[var(--muted)]">
                 Not on any projects.

@@ -18,6 +18,11 @@ const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
 
 const VALID_ROLES = new Set<ProjectRole>(["admin", "member", "client"]);
 
+function parseCheckbox(formData: FormData, name: string) {
+  const value = String(formData.get(name) ?? "");
+  return value === "on" || value === "1" || value === "true";
+}
+
 async function requireUser() {
   const supabase = await createClient();
   const {
@@ -75,10 +80,9 @@ export async function invitePlatformUser(formData: FormData) {
     .toLowerCase();
   const fullName = String(formData.get("full_name") ?? "").trim();
   const title = String(formData.get("title") ?? "").trim();
-  const makePlatformAdmin =
-    String(formData.get("is_platform_admin") ?? "") === "on" ||
-    String(formData.get("is_platform_admin") ?? "") === "1" ||
-    String(formData.get("is_platform_admin") ?? "") === "true";
+  const makePlatformAdmin = parseCheckbox(formData, "is_platform_admin");
+  const canAccessCrm =
+    parseCheckbox(formData, "can_access_crm") || makePlatformAdmin;
   const allocations = parseProjectAllocations(formData);
 
   if (!email || !email.includes("@")) {
@@ -116,6 +120,7 @@ export async function invitePlatformUser(formData: FormData) {
         full_name: fullName || null,
         title: title || null,
         is_platform_admin: makePlatformAdmin,
+        ...(canAccessCrm ? { can_access_crm: true } : {}),
       })
       .eq("id", existingProfile.id);
 
@@ -159,6 +164,7 @@ export async function invitePlatformUser(formData: FormData) {
     .maybeSingle();
 
   let platformAdminPending = false;
+  let crmAccessPending = false;
   if (createdOrExisting) {
     const { error: profileError } = await supabase
       .from("profiles")
@@ -166,6 +172,9 @@ export async function invitePlatformUser(formData: FormData) {
         full_name: fullName || null,
         title: title || null,
         is_platform_admin: makePlatformAdmin,
+        ...(canAccessCrm || !existingProfile
+          ? { can_access_crm: canAccessCrm }
+          : {}),
       })
       .eq("id", createdOrExisting.id);
 
@@ -174,6 +183,7 @@ export async function invitePlatformUser(formData: FormData) {
     }
   } else {
     platformAdminPending = makePlatformAdmin;
+    crmAccessPending = canAccessCrm;
   }
 
   for (const projectId of invitedProjectIds) {
@@ -203,6 +213,7 @@ export async function invitePlatformUser(formData: FormData) {
         ? "Invites created and a sign-in email was sent. They’ll join the projects when they sign in."
         : "Sign-in email sent. They’ll appear here after their first login.",
     platformAdminPending,
+    crmAccessPending,
   };
 }
 
@@ -334,7 +345,11 @@ export async function setPlatformAdmin(userId: string, enabled: boolean) {
 
   const { error } = await supabase
     .from("profiles")
-    .update({ is_platform_admin: enabled })
+    .update(
+      enabled
+        ? { is_platform_admin: true, can_access_crm: true }
+        : { is_platform_admin: false },
+    )
     .eq("id", userId);
 
   if (error) {
@@ -342,6 +357,30 @@ export async function setPlatformAdmin(userId: string, enabled: boolean) {
   }
 
   revalidatePath("/users");
+  revalidatePath("/", "layout");
+  return { success: true };
+}
+
+export async function setCrmAccess(userId: string, enabled: boolean) {
+  const result = await requirePlatformAdmin();
+  if ("error" in result) {
+    return result;
+  }
+
+  const { supabase } = result;
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({ can_access_crm: enabled })
+    .eq("id", userId);
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  revalidatePath("/users");
+  revalidatePath("/", "layout");
+  revalidatePath("/crm");
   return { success: true };
 }
 

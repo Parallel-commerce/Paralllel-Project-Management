@@ -29,13 +29,6 @@ function taskDeepLink(projectId: string, listId: string, taskId: string) {
   return `/projects/${projectId}/lists/${listId}?task=${taskId}`;
 }
 
-function normalizeLinkUrl(raw: string) {
-  const value = raw.trim();
-  if (!value) return null;
-  if (/^https?:\/\//i.test(value)) return value;
-  return `https://${value}`;
-}
-
 async function getListVisibility(
   supabase: Awaited<ReturnType<typeof createClient>>,
   listId: string,
@@ -663,7 +656,6 @@ export async function createTask(projectId: string, listId: string, formData: Fo
   const status = String(formData.get("status") ?? "todo") as TaskStatus;
   const assignedToRaw = String(formData.get("assigned_to") ?? "").trim();
   const reportedByRaw = String(formData.get("reported_by") ?? "").trim();
-  const linkUrl = normalizeLinkUrl(String(formData.get("link_url") ?? ""));
 
   if (!title) {
     return { error: "Title is required." };
@@ -721,7 +713,6 @@ export async function createTask(projectId: string, listId: string, formData: Fo
       description: description || null,
       due_date: dueDate || null,
       status,
-      link_url: linkUrl,
       number: allocation.task_number,
       key: allocation.task_key,
       created_by: user.id,
@@ -813,7 +804,6 @@ export async function updateTask(
   const status = String(formData.get("status") ?? "todo") as TaskStatus;
   const assignedTo = String(formData.get("assigned_to") ?? "").trim();
   const reportedByRaw = String(formData.get("reported_by") ?? "").trim();
-  const linkUrl = normalizeLinkUrl(String(formData.get("link_url") ?? ""));
 
   if (!title) {
     return { error: "Title is required." };
@@ -836,7 +826,7 @@ export async function updateTask(
   const { data: before } = await supabase
     .from("tasks")
     .select(
-      "title, description, due_date, status, link_url, assigned_to, reported_by, created_by",
+      "title, description, due_date, status, assigned_to, reported_by, created_by",
     )
     .eq("id", taskId)
     .maybeSingle();
@@ -844,7 +834,6 @@ export async function updateTask(
   const nextDescription = description || null;
   const nextDueDate = dueDate || null;
   const nextAssignee = assignedTo || null;
-  const nextLinkUrl = linkUrl;
 
   const unchanged =
     before &&
@@ -852,7 +841,6 @@ export async function updateTask(
     (before.description ?? null) === nextDescription &&
     (before.due_date ?? null) === nextDueDate &&
     before.status === status &&
-    (before.link_url ?? null) === nextLinkUrl &&
     (before.assigned_to ?? null) === nextAssignee &&
     before.reported_by === reporter.reportedBy;
 
@@ -867,7 +855,6 @@ export async function updateTask(
       description: nextDescription,
       due_date: nextDueDate,
       status,
-      link_url: nextLinkUrl,
       reported_by: reporter.reportedBy,
       assigned_to: nextAssignee,
     })

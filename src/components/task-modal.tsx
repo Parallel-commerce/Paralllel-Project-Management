@@ -107,7 +107,6 @@ export function TaskModal({
       description: String(formData.get("description") ?? "").trim(),
       due_date: String(formData.get("due_date") ?? "").trim(),
       status: String(formData.get("status") ?? "todo"),
-      link_url: String(formData.get("link_url") ?? "").trim(),
       reported_by: String(formData.get("reported_by") ?? ""),
       assigned_to: String(formData.get("assigned_to") ?? ""),
     });
@@ -379,19 +378,6 @@ export function TaskModal({
                   </select>
                 </label>
               </div>
-              <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
-                Link
-                <input
-                  name="link_url"
-                  type="url"
-                  placeholder="https://…"
-                  defaultValue={task?.link_url ?? ""}
-                  onBlur={() => {
-                    if (mode === "edit") saveEditNow();
-                  }}
-                  className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
-                />
-              </label>
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
                   Reporter
@@ -426,19 +412,6 @@ export function TaskModal({
                   </select>
                 </label>
               </div>
-
-              {mode === "edit" && task?.link_url ? (
-                <p className="text-sm">
-                  <a
-                    href={task.link_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-[var(--accent)] hover:underline"
-                  >
-                    Open link
-                  </a>
-                </p>
-              ) : null}
 
               {mode === "edit" && task ? (
                 <div className="flex flex-wrap items-center justify-between gap-2">

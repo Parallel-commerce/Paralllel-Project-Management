@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { requireInternalUser } from "@/lib/auth";
+import { getIsInternalUser, requireCrmUser } from "@/lib/auth";
 import { inviteMember } from "@/lib/actions/projects";
 import { parseCompanyImportCsv, type ImportRowError } from "@/lib/crm-csv";
 import { parseScheduledWeekdays } from "@/lib/scheduled-weekdays";
@@ -72,7 +72,7 @@ function parseEmail(raw: string) {
 export async function createCompany(
   formData: FormData,
 ): Promise<{ error: string } | void> {
-  const { supabase, user } = await requireInternalUser();
+  const { supabase, user } = await requireCrmUser();
   const name = String(formData.get("name") ?? "").trim();
   const website = normalizeWebsite(String(formData.get("website") ?? ""));
   const notes = emptyToNull(String(formData.get("notes") ?? ""));
@@ -115,7 +115,7 @@ export async function updateCompany(
   companyId: string,
   formData: FormData,
 ): Promise<{ error: string } | void> {
-  const { supabase } = await requireInternalUser();
+  const { supabase } = await requireCrmUser();
   const name = String(formData.get("name") ?? "").trim();
   const website = normalizeWebsite(String(formData.get("website") ?? ""));
   const notes = emptyToNull(String(formData.get("notes") ?? ""));
@@ -156,7 +156,7 @@ export async function deleteCompany(
   companyId: string,
   options?: { redirect?: boolean },
 ): Promise<{ error: string } | void> {
-  const { supabase } = await requireInternalUser();
+  const { supabase } = await requireCrmUser();
 
   const { error } = await supabase.from("companies").delete().eq("id", companyId);
   if (error) {
@@ -173,7 +173,7 @@ export async function createContact(
   companyId: string,
   formData: FormData,
 ): Promise<{ error: string } | void> {
-  const { supabase } = await requireInternalUser();
+  const { supabase } = await requireCrmUser();
   const fullName = String(formData.get("full_name") ?? "").trim();
   const emailResult = parseEmail(String(formData.get("email") ?? ""));
   if (emailResult && typeof emailResult === "object") return emailResult;
@@ -209,7 +209,7 @@ export async function updateContact(
   contactId: string,
   formData: FormData,
 ): Promise<{ error: string } | void> {
-  const { supabase } = await requireInternalUser();
+  const { supabase } = await requireCrmUser();
   const fullName = String(formData.get("full_name") ?? "").trim();
   const emailResult = parseEmail(String(formData.get("email") ?? ""));
   if (emailResult && typeof emailResult === "object") return emailResult;
@@ -246,7 +246,7 @@ export async function deleteContact(
   companyId: string,
   contactId: string,
 ): Promise<{ error: string } | void> {
-  const { supabase } = await requireInternalUser();
+  const { supabase } = await requireCrmUser();
 
   const { error } = await supabase
     .from("contacts")
@@ -266,7 +266,14 @@ export async function convertCompanyToProject(
   companyId: string,
   formData: FormData,
 ): Promise<{ error: string } | void> {
-  const { supabase, user } = await requireInternalUser();
+  const { supabase, user } = await requireCrmUser();
+  const canCreateProjects = await getIsInternalUser();
+  if (!canCreateProjects) {
+    return {
+      error:
+        "Only Parallel team members can convert a company into a project.",
+    };
+  }
   const name = String(formData.get("name") ?? "").trim();
   const description = emptyToNull(String(formData.get("description") ?? ""));
   const scheduledWeekdays = parseScheduledWeekdays(formData);
@@ -362,7 +369,7 @@ export type ImportCompaniesResult = {
 export async function importCompanies(
   formData: FormData,
 ): Promise<ImportCompaniesResult> {
-  const { supabase, user } = await requireInternalUser();
+  const { supabase, user } = await requireCrmUser();
   const file = formData.get("file");
 
   if (!(file instanceof File) || file.size === 0) {

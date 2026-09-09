@@ -17,7 +17,7 @@ import type { Notification } from "@/types/database";
 function notificationKind(type: string) {
   if (type.startsWith("task_comment")) return "Comment";
   if (type === "task_assigned") return "Assigned";
-  if (type === "chat_message") return "Message";
+  if (type.startsWith("chat_message")) return "Message";
   if (type === "task_feedback") return "Feedback";
   if (type === "task_reported") return "Task";
   if (type === "project_invite") return "Invite";

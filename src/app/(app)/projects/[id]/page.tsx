@@ -99,7 +99,7 @@ export default async function ProjectPage({
       .maybeSingle(),
     supabase
       .from("profiles")
-      .select("is_platform_admin")
+      .select("is_platform_admin, can_access_crm")
       .eq("id", user.id)
       .maybeSingle(),
     supabase
@@ -126,6 +126,7 @@ export default async function ProjectPage({
   const isPlatformAdmin = !!profile?.is_platform_admin;
   const isAdmin = role === "admin" || isPlatformAdmin;
   const isInternal = isPlatformAdmin || role === "admin" || role === "member";
+  const canViewCrm = isPlatformAdmin || !!profile?.can_access_crm;
   const companyRow = Array.isArray(project.companies)
     ? project.companies[0]
     : project.companies;
@@ -217,7 +218,7 @@ export default async function ProjectPage({
                 <p className="mt-2 text-xs uppercase tracking-wide text-[var(--muted)]">
                   Your role: {role}
                 </p>
-                {isInternal && companyRow ? (
+                {canViewCrm && companyRow ? (
                   <p className="mt-2 text-sm text-[var(--muted)]">
                     Company:{" "}
                     <Link

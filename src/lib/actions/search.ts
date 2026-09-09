@@ -108,7 +108,7 @@ export async function searchApp(rawQuery: string): Promise<SearchResults> {
 
   const pattern = ilikePattern(query);
 
-  const { data: isInternal } = await supabase.rpc("is_internal_user");
+  const { data: isCrm } = await supabase.rpc("is_crm_user");
 
   const [projectResult, listResult, taskResult, companyResult, contactResult] =
     await Promise.all([
@@ -132,7 +132,7 @@ export async function searchApp(rawQuery: string): Promise<SearchResults> {
       .or(orIlike(["title", "key", "description"], query))
       .order("updated_at", { ascending: false })
       .limit(16),
-    isInternal
+    isCrm
       ? supabase
           .from("companies")
           .select("id, name, website, status, kind, updated_at")
@@ -140,7 +140,7 @@ export async function searchApp(rawQuery: string): Promise<SearchResults> {
           .order("updated_at", { ascending: false })
           .limit(8)
       : Promise.resolve({ data: [], error: null }),
-    isInternal
+    isCrm
       ? supabase
           .from("contacts")
           .select("id, full_name, email, title, company_id, companies(name)")

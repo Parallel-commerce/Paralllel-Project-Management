@@ -4,6 +4,7 @@ import { AppHeader } from "@/components/app-header";
 import { NavigationProgress } from "@/components/navigation-progress";
 import {
   getCurrentProfile,
+  getIsCrmUser,
   getIsInternalUser,
   getSessionUser,
   getSupabase,
@@ -24,10 +25,11 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const [{ user }, profile, isInternal] = await Promise.all([
+  const [{ user }, profile, isInternal, isCrm] = await Promise.all([
     getSessionUser(),
     getCurrentProfile(),
     getIsInternalUser(),
+    getIsCrmUser(),
   ]);
 
   const initialUnreadCount = user
@@ -42,6 +44,7 @@ export default async function AppLayout({
       <AppHeader
         isPlatformAdmin={!!profile?.is_platform_admin}
         isInternal={isInternal}
+        isCrm={isCrm}
         initialUnreadCount={initialUnreadCount}
       />
       {children}

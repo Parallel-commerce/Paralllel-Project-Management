@@ -24,6 +24,7 @@ export type Profile = {
   title: string | null;
   avatar_path: string | null;
   is_platform_admin: boolean;
+  can_access_crm: boolean;
   deleted_at: string | null;
   previous_email: string | null;
   created_at: string;
@@ -106,7 +107,6 @@ export type Task = {
   description: string | null;
   due_date: string | null;
   status: TaskStatus;
-  link_url: string | null;
   number: number;
   key: string;
   created_by: string;
@@ -176,7 +176,26 @@ export type Message = {
   id: string;
   conversation_id: string;
   sender_id: string;
+  parent_id: string | null;
   body: string;
+  created_at: string;
+};
+
+export type MessageAttachment = {
+  id: string;
+  message_id: string;
+  conversation_id: string;
+  file_path: string;
+  file_name: string;
+  content_type: string | null;
+  size_bytes: number | null;
+  uploaded_by: string;
+  created_at: string;
+};
+
+export type MessageMention = {
+  message_id: string;
+  user_id: string;
   created_at: string;
 };
 
@@ -262,6 +281,7 @@ export type Database = {
           title?: string | null;
           avatar_path?: string | null;
           is_platform_admin?: boolean;
+          can_access_crm?: boolean;
           deleted_at?: string | null;
           previous_email?: string | null;
           created_at?: string;
@@ -273,6 +293,7 @@ export type Database = {
           title?: string | null;
           avatar_path?: string | null;
           is_platform_admin?: boolean;
+          can_access_crm?: boolean;
           deleted_at?: string | null;
           previous_email?: string | null;
           updated_at?: string;
@@ -440,7 +461,6 @@ export type Database = {
           description?: string | null;
           due_date?: string | null;
           status?: TaskStatus;
-          link_url?: string | null;
           number: number;
           key: string;
           created_by: string;
@@ -456,7 +476,6 @@ export type Database = {
           description?: string | null;
           due_date?: string | null;
           status?: TaskStatus;
-          link_url?: string | null;
           reported_by?: string;
           assigned_to?: string | null;
           number?: number;
@@ -659,11 +678,13 @@ export type Database = {
           id?: string;
           conversation_id: string;
           sender_id: string;
-          body: string;
+          parent_id?: string | null;
+          body?: string;
           created_at?: string;
         };
         Update: {
           body?: string;
+          parent_id?: string | null;
         };
         Relationships: [
           {
@@ -676,6 +697,81 @@ export type Database = {
           {
             foreignKeyName: "messages_sender_id_fkey";
             columns: ["sender_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "messages_parent_id_fkey";
+            columns: ["parent_id"];
+            isOneToOne: false;
+            referencedRelation: "messages";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      message_attachments: {
+        Row: MessageAttachment;
+        Insert: {
+          id?: string;
+          message_id: string;
+          conversation_id: string;
+          file_path: string;
+          file_name: string;
+          content_type?: string | null;
+          size_bytes?: number | null;
+          uploaded_by: string;
+          created_at?: string;
+        };
+        Update: {
+          file_name?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "message_attachments_message_id_fkey";
+            columns: ["message_id"];
+            isOneToOne: false;
+            referencedRelation: "messages";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "message_attachments_conversation_id_fkey";
+            columns: ["conversation_id"];
+            isOneToOne: false;
+            referencedRelation: "conversations";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "message_attachments_uploaded_by_fkey";
+            columns: ["uploaded_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      message_mentions: {
+        Row: MessageMention;
+        Insert: {
+          message_id: string;
+          user_id: string;
+          created_at?: string;
+        };
+        Update: {
+          message_id?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "message_mentions_message_id_fkey";
+            columns: ["message_id"];
+            isOneToOne: false;
+            referencedRelation: "messages";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "message_mentions_user_id_fkey";
+            columns: ["user_id"];
             isOneToOne: false;
             referencedRelation: "profiles";
             referencedColumns: ["id"];
@@ -840,6 +936,10 @@ export type Database = {
         Returns: boolean;
       };
       is_internal_user: {
+        Args: Record<string, never>;
+        Returns: boolean;
+      };
+      is_crm_user: {
         Args: Record<string, never>;
         Returns: boolean;
       };

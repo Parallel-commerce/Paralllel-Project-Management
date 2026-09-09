@@ -11,11 +11,13 @@ import { profileAvatarPublicUrl } from "@/lib/profile-avatar";
 export async function AppHeader({
   isPlatformAdmin,
   isInternal = false,
+  isCrm = false,
   initialUnreadCount = 0,
 }: {
   email?: string | null;
   isPlatformAdmin?: boolean;
   isInternal?: boolean;
+  isCrm?: boolean;
   initialUnreadCount?: number;
 } = {}) {
   const [{ user }, profile] = await Promise.all([
@@ -42,6 +44,7 @@ export async function AppHeader({
             <DesktopNav
               isPlatformAdmin={platformAdmin}
               isInternal={isInternal}
+              isCrm={isCrm}
             />
           </div>
           <GlobalSearch />
@@ -69,6 +72,7 @@ export async function AppHeader({
       <MobileBottomNav
         isPlatformAdmin={platformAdmin}
         isInternal={isInternal}
+        isCrm={isCrm}
       />
     </>
   );
