@@ -15,6 +15,7 @@ export type CompanyKind =
   | "prospect"
   | "lost_opportunity"
   | "customer"
+  | "ex_customer"
   | "agency";
 
 export type Profile = {
@@ -1050,5 +1051,6 @@ export const COMPANY_KINDS: { value: CompanyKind; label: string }[] = [
   { value: "prospect", label: "Prospect" },
   { value: "lost_opportunity", label: "Lost opportunity" },
   { value: "customer", label: "Customer" },
+  { value: "ex_customer", label: "Ex customer" },
   { value: "agency", label: "Agency / evangelist" },
 ];

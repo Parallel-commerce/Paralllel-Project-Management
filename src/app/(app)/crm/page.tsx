@@ -108,9 +108,9 @@ export default async function CrmPage({
               Prospects
             </h1>
             <p className="mt-2 text-sm text-[var(--muted)]">
-              Record whether a company is a prospect, customer, lost
-              opportunity, or another agency, then move them through the sales
-              process.
+              Record whether a company is a prospect, customer, ex customer,
+              lost opportunity, or another agency, then move them through the
+              sales process.
             </p>
 
             <CrmFilters status={tab} kind={kind} />

@@ -23,6 +23,11 @@ export function companyKindColors(kind: CompanyKind) {
         accent: "bg-[var(--status-done-border)]",
         tag: "bg-[var(--status-done-bg)] text-[var(--status-done-label)] ring-[var(--status-done-border)]/25",
       };
+    case "ex_customer":
+      return {
+        accent: "bg-[var(--status-progress-border)]",
+        tag: "bg-[var(--status-progress-bg)] text-[var(--status-progress-label)] ring-[var(--status-progress-border)]/25",
+      };
     case "agency":
       return {
         accent: "bg-[var(--status-feedback-border)]",
