@@ -7,6 +7,7 @@ import { CompanyKindTag } from "@/components/company-kind-tag";
 import { CompanyMark } from "@/components/company-mark";
 import { CompanyStatusTag } from "@/components/company-status-tag";
 import { ConvertCompanyForm } from "@/components/convert-company-form";
+import { CrmBackLink } from "@/components/crm-list-place";
 import { DeleteProjectButton } from "@/components/delete-project-button";
 import { getIsInternalUser, requireCrmUser } from "@/lib/auth";
 import type { Company, Contact } from "@/types/database";
@@ -45,12 +46,7 @@ export default async function CompanyPage({
 
   return (
     <main className="app-container py-6 sm:py-10">
-      <Link
-        href="/crm"
-        className="text-sm text-[var(--muted)] hover:text-[var(--foreground)]"
-      >
-        ← Prospects
-      </Link>
+      <CrmBackLink />
 
       <div className="mt-3 flex items-start gap-3 sm:gap-4">
         <CompanyMark

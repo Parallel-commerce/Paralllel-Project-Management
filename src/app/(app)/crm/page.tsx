@@ -1,10 +1,13 @@
 import Link from "next/link";
 
-import { CompanyKindTag } from "@/components/company-kind-tag";
+import { CompanyKindSelect, CompanyStatusSelect } from "@/components/company-quick-select";
 import { CompanyMark } from "@/components/company-mark";
-import { CompanyStatusTag } from "@/components/company-status-tag";
 import { CreateCompanyForm } from "@/components/create-company-form";
 import { CrmFilters } from "@/components/crm-filters";
+import {
+  CrmCompanyLink,
+  CrmListPlaceRestore,
+} from "@/components/crm-list-place";
 import { DeleteCompanyButton } from "@/components/delete-company-button";
 import { DeleteProjectButton } from "@/components/delete-project-button";
 import { ImportCompaniesForm } from "@/components/import-companies-form";
@@ -114,6 +117,7 @@ export default async function CrmPage({
             </p>
 
             <CrmFilters status={tab} kind={kind} />
+            <CrmListPlaceRestore />
 
             {isEmpty ? (
               <div className="mt-6 rounded-xl border border-dashed border-[var(--border)] bg-[var(--surface)]/60 px-4 py-10 text-center">
@@ -135,50 +139,66 @@ export default async function CrmPage({
                     Array.isArray(company.projects) ? company.projects : []
                   ) as LinkedProject[];
                   return (
-                    <li key={company.id}>
+                    <li key={company.id} id={`crm-company-${company.id}`}>
                       <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] transition hover:border-[var(--foreground)]/15 hover:bg-white">
-                        <div className="flex min-h-[4.25rem] items-center gap-2 sm:gap-3">
-                          <Link
-                            href={`/crm/${company.id}`}
-                            className="group flex min-w-0 flex-1 items-center gap-3 px-3 py-3 sm:gap-4 sm:px-4 sm:py-3.5"
+                        <div className="flex min-h-[4.25rem] items-start gap-3 px-3 py-3 sm:items-center sm:px-4 sm:py-3.5">
+                          <CrmCompanyLink
+                            companyId={company.id}
+                            className="shrink-0"
                           >
                             <CompanyMark
                               name={company.name}
                               website={company.website}
                             />
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate font-medium tracking-tight">
-                                {company.name}
-                              </p>
-                              <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-[var(--muted)]">
-                                <CompanyKindTag kind={company.kind} />
-                                <CompanyStatusTag status={company.status} />
-                                <span>
-                                  {count} contact{count === 1 ? "" : "s"}
-                                </span>
-                                {followUp ? (
-                                  <span
-                                    className={
-                                      followUp.overdue &&
-                                      company.status !== "won"
-                                        ? "text-[var(--danger)]"
-                                        : ""
-                                    }
-                                  >
-                                    Follow up {followUp.label}
-                                  </span>
-                                ) : null}
+                          </CrmCompanyLink>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-start justify-between gap-2">
+                              <CrmCompanyLink
+                                companyId={company.id}
+                                className="min-w-0"
+                              >
+                                <p className="truncate font-medium tracking-tight">
+                                  {company.name}
+                                </p>
+                              </CrmCompanyLink>
+                              <div className="flex shrink-0 items-center gap-1">
+                                <CrmCompanyLink
+                                  companyId={company.id}
+                                  className="hidden text-sm text-[var(--accent)] sm:inline"
+                                >
+                                  Open
+                                </CrmCompanyLink>
+                                <DeleteCompanyButton
+                                  companyId={company.id}
+                                  companyName={company.name}
+                                />
                               </div>
                             </div>
-                            <span className="hidden shrink-0 text-sm text-[var(--accent)] sm:inline">
-                              Open
-                            </span>
-                          </Link>
-                          <div className="pr-2 sm:pr-3">
-                            <DeleteCompanyButton
-                              companyId={company.id}
-                              companyName={company.name}
-                            />
+                            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                              <CompanyKindSelect
+                                companyId={company.id}
+                                kind={company.kind}
+                              />
+                              <CompanyStatusSelect
+                                companyId={company.id}
+                                status={company.status}
+                              />
+                              <span className="text-xs text-[var(--muted)]">
+                                {count} contact{count === 1 ? "" : "s"}
+                              </span>
+                              {followUp ? (
+                                <span
+                                  className={`text-xs ${
+                                    followUp.overdue &&
+                                    company.status !== "won"
+                                      ? "text-[var(--danger)]"
+                                      : "text-[var(--muted)]"
+                                  }`}
+                                >
+                                  Follow up {followUp.label}
+                                </span>
+                              ) : null}
+                            </div>
                           </div>
                         </div>
                         {linkedProjects.length > 0 ? (

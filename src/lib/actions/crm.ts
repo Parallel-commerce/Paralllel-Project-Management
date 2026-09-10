@@ -152,6 +152,48 @@ export async function updateCompany(
   revalidatePath(`/crm/${companyId}`);
 }
 
+export async function updateCompanyKind(
+  companyId: string,
+  kind: string,
+): Promise<{ error: string } | void> {
+  const { supabase } = await requireCrmUser();
+  const kindResult = parseKind(kind);
+  if (typeof kindResult === "object") return kindResult;
+
+  const { error } = await supabase
+    .from("companies")
+    .update({ kind: kindResult })
+    .eq("id", companyId);
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  revalidatePath("/crm");
+  revalidatePath(`/crm/${companyId}`);
+}
+
+export async function updateCompanyStatus(
+  companyId: string,
+  status: string,
+): Promise<{ error: string } | void> {
+  const { supabase } = await requireCrmUser();
+  const statusResult = parseStatus(status);
+  if (typeof statusResult === "object") return statusResult;
+
+  const { error } = await supabase
+    .from("companies")
+    .update({ status: statusResult })
+    .eq("id", companyId);
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  revalidatePath("/crm");
+  revalidatePath(`/crm/${companyId}`);
+}
+
 export async function deleteCompany(
   companyId: string,
   options?: { redirect?: boolean },
