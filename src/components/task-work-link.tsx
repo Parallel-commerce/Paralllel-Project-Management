@@ -2,13 +2,15 @@ import Link from "next/link";
 import { format, parseISO } from "date-fns";
 
 import { StatusTag } from "@/components/status-tag";
-import type { TaskStatus } from "@/types/database";
+import { TaskTypeTag } from "@/components/task-type-tag";
+import type { TaskStatus, TaskType } from "@/types/database";
 
 export type TaskWorkLinkProps = {
   href?: string;
   onOpen?: () => void;
   title: string;
   status: TaskStatus;
+  taskType?: TaskType | null;
   projectName: string;
   listName: string;
   taskKey?: string | null;
@@ -30,6 +32,7 @@ export function TaskWorkLink({
   onOpen,
   title,
   status,
+  taskType,
   projectName,
   listName,
   taskKey,
@@ -73,6 +76,7 @@ export function TaskWorkLink({
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
+          <TaskTypeTag taskType={taskType} />
           <StatusTag status={status} />
           <span
             className={`text-xs tabular-nums ${

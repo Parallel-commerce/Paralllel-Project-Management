@@ -13,14 +13,16 @@ import {
 } from "date-fns";
 import { useMemo, useState } from "react";
 
+import { TaskTypeTag } from "@/components/task-type-tag";
 import { taskStatusColors } from "@/lib/task-status";
-import type { TaskStatus } from "@/types/database";
+import type { TaskStatus, TaskType } from "@/types/database";
 
 export type CalendarTask = {
   id: string;
   title: string;
   due_date: string | null;
   status: TaskStatus;
+  task_type?: TaskType | null;
   projectName?: string;
   listName?: string;
 };
@@ -280,8 +282,11 @@ export function MyWorkCalendar({
                         className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${statusDot(task.status)}`}
                       />
                       <span className="min-w-0">
-                        <span className="block truncate font-medium">
-                          {task.title}
+                        <span className="flex flex-wrap items-center gap-1.5">
+                          <span className="truncate font-medium">
+                            {task.title}
+                          </span>
+                          <TaskTypeTag taskType={task.task_type} />
                         </span>
                         {context ? (
                           <span className="mt-0.5 block truncate text-xs text-[var(--muted)]">
@@ -321,7 +326,8 @@ export function MyWorkCalendar({
                         aria-hidden
                         className={`h-2 w-2 shrink-0 rounded-full ${statusDot(task.status)}`}
                       />
-                      <span className="truncate font-medium">{task.title}</span>
+                      <span className="min-w-0 truncate font-medium">{task.title}</span>
+                      <TaskTypeTag taskType={task.task_type} className="shrink-0" />
                     </span>
                     {context ? (
                       <span className="shrink-0 truncate text-xs text-[var(--muted)]">

@@ -310,6 +310,7 @@ export function MyWorkView({
                     <TaskWorkLink
                       title={task.title}
                       status={task.status}
+                      taskType={task.task_type}
                       taskKey={task.key}
                       dueDate={task.due_date}
                       projectName={task.projectName}
@@ -350,6 +351,7 @@ export function MyWorkView({
                         <TaskWorkLink
                           title={task.title}
                           status={task.status}
+                          taskType={task.task_type}
                           taskKey={task.key}
                           dueDate={task.due_date}
                           projectName={task.projectName}

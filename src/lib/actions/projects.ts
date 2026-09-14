@@ -12,6 +12,7 @@ import { logActivity, notifyUser, sendSignInCode } from "@/lib/notify";
 import { PROJECT_LOGO_BUCKET } from "@/lib/project-logo";
 import { parseScheduledWeekdays } from "@/lib/scheduled-weekdays";
 import { projectTaskPrefix } from "@/lib/task-key";
+import { parseTaskType } from "@/lib/task-type";
 import { TASK_ATTACHMENT_BUCKET } from "@/lib/task-attachments";
 import type { ListVisibility, ProjectRole, TaskAttachment, TaskStatus } from "@/types/database";
 
@@ -654,11 +655,17 @@ export async function createTask(projectId: string, listId: string, formData: Fo
   const description = String(formData.get("description") ?? "").trim();
   const dueDate = String(formData.get("due_date") ?? "").trim();
   const status = String(formData.get("status") ?? "todo") as TaskStatus;
+  const taskTypeRaw = String(formData.get("task_type") ?? "").trim();
   const assignedToRaw = String(formData.get("assigned_to") ?? "").trim();
   const reportedByRaw = String(formData.get("reported_by") ?? "").trim();
+  const taskType = parseTaskType(taskTypeRaw);
 
   if (!title) {
     return { error: "Title is required." };
+  }
+
+  if (taskTypeRaw && !taskType) {
+    return { error: "Invalid task type." };
   }
 
   const reporter = await resolveReporterId(
@@ -713,6 +720,7 @@ export async function createTask(projectId: string, listId: string, formData: Fo
       description: description || null,
       due_date: dueDate || null,
       status,
+      task_type: taskType,
       number: allocation.task_number,
       key: allocation.task_key,
       created_by: user.id,
@@ -764,6 +772,7 @@ export async function createTask(projectId: string, listId: string, formData: Fo
       task_key: allocation.task_key,
       task_number: allocation.task_number,
       status,
+      task_type: taskType,
     },
     clientVisible,
   });
@@ -802,11 +811,17 @@ export async function updateTask(
   const description = String(formData.get("description") ?? "").trim();
   const dueDate = String(formData.get("due_date") ?? "").trim();
   const status = String(formData.get("status") ?? "todo") as TaskStatus;
+  const taskTypeRaw = String(formData.get("task_type") ?? "").trim();
   const assignedTo = String(formData.get("assigned_to") ?? "").trim();
   const reportedByRaw = String(formData.get("reported_by") ?? "").trim();
+  const taskType = parseTaskType(taskTypeRaw);
 
   if (!title) {
     return { error: "Title is required." };
+  }
+
+  if (taskTypeRaw && !taskType) {
+    return { error: "Invalid task type." };
   }
 
   const reporter = await resolveReporterId(
@@ -826,7 +841,7 @@ export async function updateTask(
   const { data: before } = await supabase
     .from("tasks")
     .select(
-      "title, description, due_date, status, assigned_to, reported_by, created_by",
+      "title, description, due_date, status, task_type, assigned_to, reported_by, created_by",
     )
     .eq("id", taskId)
     .maybeSingle();
@@ -841,6 +856,7 @@ export async function updateTask(
     (before.description ?? null) === nextDescription &&
     (before.due_date ?? null) === nextDueDate &&
     before.status === status &&
+    (before.task_type ?? null) === taskType &&
     (before.assigned_to ?? null) === nextAssignee &&
     before.reported_by === reporter.reportedBy;
 
@@ -855,6 +871,7 @@ export async function updateTask(
       description: nextDescription,
       due_date: nextDueDate,
       status,
+      task_type: taskType,
       reported_by: reporter.reportedBy,
       assigned_to: nextAssignee,
     })
@@ -941,6 +958,7 @@ export async function updateTask(
     summary: `Updated task “${title}”`,
     metadata: {
       status,
+      task_type: taskType,
       assigned_to: nextAssignee,
       reported_by: reporter.reportedBy,
       previous_status: before?.status ?? null,

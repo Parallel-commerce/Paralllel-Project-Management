@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { companyKindLabel } from "@/lib/company-kind";
 import { companyStatusLabel } from "@/lib/company-status";
-import type { TaskStatus } from "@/types/database";
+import type { TaskStatus, TaskType } from "@/types/database";
 
 export type SearchHit = {
   id: string;
@@ -13,6 +13,7 @@ export type SearchHit = {
   title: string;
   subtitle: string;
   status?: TaskStatus;
+  taskType?: TaskType | null;
   archived?: boolean;
 };
 
@@ -78,6 +79,7 @@ function toSearchHit(row: SearchHit & { score: number }): SearchHit {
     title: row.title,
     subtitle: row.subtitle,
     status: row.status,
+    taskType: row.taskType,
     archived: row.archived,
   };
 }
@@ -127,7 +129,7 @@ export async function searchApp(rawQuery: string): Promise<SearchResults> {
     supabase
       .from("tasks")
       .select(
-        "id, key, title, status, list_id, project_id, archived_at, updated_at, projects(name), lists(name)",
+        "id, key, title, status, task_type, list_id, project_id, archived_at, updated_at, projects(name), lists(name)",
       )
       .or(orIlike(["title", "key", "description"], query))
       .order("updated_at", { ascending: false })
@@ -135,8 +137,8 @@ export async function searchApp(rawQuery: string): Promise<SearchResults> {
     isCrm
       ? supabase
           .from("companies")
-          .select("id, name, website, status, kind, updated_at")
-          .or(orIlike(["name", "website", "notes"], query))
+          .select("id, name, website, status, kind, summary, updated_at")
+          .or(orIlike(["name", "website", "notes", "summary"], query))
           .order("updated_at", { ascending: false })
           .limit(8)
       : Promise.resolve({ data: [], error: null }),
@@ -144,7 +146,7 @@ export async function searchApp(rawQuery: string): Promise<SearchResults> {
       ? supabase
           .from("contacts")
           .select("id, full_name, email, title, company_id, companies(name)")
-          .or(orIlike(["full_name", "email", "phone", "title"], query))
+          .or(orIlike(["full_name", "email", "phone", "title", "linkedin_url"], query))
           .limit(8)
       : Promise.resolve({ data: [], error: null }),
   ]);
@@ -198,6 +200,7 @@ export async function searchApp(rawQuery: string): Promise<SearchResults> {
         title: task.title,
         subtitle: parts.join(" · "),
         status: task.status as TaskStatus,
+        taskType: (task.task_type as TaskType | null) ?? null,
         archived,
         score: matchScore(query, task.key, task.title) + (archived ? 0 : 4),
       };
@@ -216,7 +219,7 @@ export async function searchApp(rawQuery: string): Promise<SearchResults> {
       ]
         .filter(Boolean)
         .join(" · "),
-      score: matchScore(query, company.name, company.website),
+        score: matchScore(query, company.name, company.website, company.summary),
     })),
   ).map(toSearchHit);
 

@@ -5,7 +5,7 @@ import { TaskWorkLink } from "@/components/task-work-link";
 import { formatDateTime } from "@/lib/format-date";
 import { personDisplayName } from "@/lib/person";
 import { createClient } from "@/lib/supabase/server";
-import { TASK_STATUSES, type TaskStatus } from "@/types/database";
+import { TASK_STATUSES, type TaskStatus, type TaskType } from "@/types/database";
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -26,6 +26,7 @@ type AttentionTask = {
   title: string;
   due_date: string | null;
   status: TaskStatus;
+  task_type: TaskType | null;
   list_id: string;
   project_id: string;
   projectName: string;
@@ -79,7 +80,7 @@ export async function AdminHomeInsights() {
       .lt("due_date", today),
     supabase
       .from("tasks")
-      .select("id, key, title, due_date, status, list_id, project_id")
+      .select("id, key, title, due_date, status, task_type, list_id, project_id")
       .is("archived_at", null)
       .neq("status", "done")
       .not("due_date", "is", null)
@@ -88,7 +89,7 @@ export async function AdminHomeInsights() {
       .limit(5),
     supabase
       .from("tasks")
-      .select("id, key, title, due_date, status, list_id, project_id")
+      .select("id, key, title, due_date, status, task_type, list_id, project_id")
       .is("archived_at", null)
       .eq("status", "requiring_feedback")
       .order("updated_at", { ascending: false })
@@ -157,6 +158,7 @@ export async function AdminHomeInsights() {
       title: row.title as string,
       due_date: (row.due_date as string | null) ?? null,
       status: row.status as TaskStatus,
+      task_type: (row.task_type as TaskType | null) ?? null,
       list_id: row.list_id as string,
       project_id: row.project_id as string,
       projectName: projectNameById.get(row.project_id as string) ?? "Project",
@@ -174,6 +176,7 @@ export async function AdminHomeInsights() {
       title: row.title as string,
       due_date: (row.due_date as string | null) ?? null,
       status: row.status as TaskStatus,
+      task_type: (row.task_type as TaskType | null) ?? null,
       list_id: row.list_id as string,
       project_id: row.project_id as string,
       projectName: projectNameById.get(row.project_id as string) ?? "Project",
@@ -324,6 +327,7 @@ export async function AdminHomeInsights() {
                   href={`/projects/${task.project_id}/lists/${task.list_id}?task=${task.id}`}
                   title={task.title}
                   status={task.status}
+                  taskType={task.task_type}
                   taskKey={task.key}
                   dueDate={task.due_date}
                   projectName={task.projectName}

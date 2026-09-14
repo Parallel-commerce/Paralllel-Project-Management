@@ -3,10 +3,11 @@ import { notFound, redirect } from "next/navigation";
 
 import { RestoreArchivedTaskButton } from "@/components/restore-archived-task-button";
 import { StatusTag } from "@/components/status-tag";
+import { TaskTypeTag } from "@/components/task-type-tag";
 import { formatDate } from "@/lib/format-date";
 import { personDisplayName } from "@/lib/person";
 import { createClient } from "@/lib/supabase/server";
-import type { TaskStatus } from "@/types/database";
+import type { TaskStatus, TaskType } from "@/types/database";
 
 export default async function ListArchivePage({
   params,
@@ -49,7 +50,7 @@ export default async function ListArchivePage({
   const { data: taskRows } = await supabase
     .from("tasks")
     .select(
-      "id, key, title, status, due_date, assigned_to, completed_at, archived_at, updated_at",
+      "id, key, title, status, task_type, due_date, assigned_to, completed_at, archived_at, updated_at",
     )
     .eq("list_id", listId)
     .not("archived_at", "is", null)
@@ -130,6 +131,9 @@ export default async function ListArchivePage({
                   ) : null}
                   <p className="font-medium">{task.title}</p>
                   <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm text-[var(--muted)]">
+                    <TaskTypeTag
+                      taskType={(task.task_type as TaskType | null) ?? null}
+                    />
                     <StatusTag status={task.status as TaskStatus} />
                     <span>
                       Completed {formatDate(task.completed_at as string | null)}

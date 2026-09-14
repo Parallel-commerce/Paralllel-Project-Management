@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import { DueDatePicker } from "@/components/due-date-picker";
 import { createTask } from "@/lib/actions/projects";
+import { TASK_TYPES } from "@/types/database";
 
 export type HomeListOption = {
   id: string;
@@ -349,6 +350,22 @@ export function HomeQuickTaskForm({
         defaultValue={defaultDueDate ?? ""}
         highlightedWeekdays={selectedProject?.scheduledWeekdays ?? []}
       />
+
+      <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
+        Type
+        <select
+          name="task_type"
+          defaultValue=""
+          className="min-h-10 rounded-md border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
+        >
+          <option value="">No type</option>
+          {TASK_TYPES.map((type) => (
+            <option key={type.value} value={type.value}>
+              {type.label}
+            </option>
+          ))}
+        </select>
+      </label>
 
       <button
         type="submit"

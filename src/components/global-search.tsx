@@ -14,6 +14,7 @@ import {
 import { createPortal } from "react-dom";
 
 import { StatusTag } from "@/components/status-tag";
+import { TaskTypeTag } from "@/components/task-type-tag";
 import { searchApp, type SearchHit, type SearchResults } from "@/lib/actions/search";
 
 const EMPTY: SearchResults = {
@@ -271,6 +272,11 @@ export function GlobalSearch() {
                                 </p>
                               ) : null}
                             </div>
+                            {hit.taskType ? (
+                              <span className="mt-0.5 shrink-0">
+                                <TaskTypeTag taskType={hit.taskType} />
+                              </span>
+                            ) : null}
                             {hit.status ? (
                               <span className="mt-0.5 shrink-0">
                                 <StatusTag status={hit.status} />

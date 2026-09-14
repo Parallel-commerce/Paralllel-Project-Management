@@ -11,7 +11,7 @@ import { TaskWorkLink } from "@/components/task-work-link";
 import { getCurrentProfile, requireSessionUser } from "@/lib/auth";
 import { projectLogoPublicUrl } from "@/lib/project-logo";
 import { scheduledWeekdaysFromProject } from "@/lib/scheduled-weekdays";
-import type { ProjectRole, TaskStatus } from "@/types/database";
+import type { ProjectRole, TaskStatus, TaskType } from "@/types/database";
 
 function greetingForNow(date = new Date()) {
   const hour = date.getHours();
@@ -53,7 +53,7 @@ export default async function HomeDashboardPage() {
     supabase
       .from("tasks")
       .select(
-        "id, key, title, due_date, status, list_id, project_id, projects(name), lists(name)",
+        "id, key, title, due_date, status, task_type, list_id, project_id, projects(name), lists(name)",
       )
       .eq("assigned_to", user.id)
       .neq("status", "done")
@@ -175,6 +175,7 @@ export default async function HomeDashboardPage() {
                       href={`/projects/${task.project_id}/lists/${task.list_id}?task=${task.id}`}
                       title={task.title as string}
                       status={task.status as TaskStatus}
+                      taskType={(task.task_type as TaskType | null) ?? null}
                       taskKey={(task.key as string | null) ?? null}
                       dueDate={(task.due_date as string | null) ?? null}
                       projectName={(project?.name as string) ?? "Project"}

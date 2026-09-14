@@ -14,6 +14,7 @@ import {
 import { useEffect, useMemo, useState, useTransition } from "react";
 
 import { MyWorkCalendar } from "@/components/my-work-calendar";
+import { TaskTypeTag } from "@/components/task-type-tag";
 import {
   TaskModal,
   type ProfileOption,
@@ -28,11 +29,13 @@ import { groupTasksByCompletedWeek } from "@/lib/completed-week";
 import { personDisplayName } from "@/lib/person";
 import { formatScheduledWeekdays } from "@/lib/scheduled-weekdays";
 import { taskStatusColors } from "@/lib/task-status";
-import { TASK_STATUSES, type TaskStatus } from "@/types/database";
+import { taskTypeLabel } from "@/lib/task-type";
+import { TASK_STATUSES, TASK_TYPES, type TaskStatus, type TaskType } from "@/types/database";
 
 export type { TaskWithPeople };
 
 type DueFilter = "all" | "overdue" | "this_week" | "none";
+type TypeFilter = "all" | "none" | TaskType;
 type ViewMode = "list" | "board" | "calendar";
 
 function displayName(profile?: ProfileOption | null) {
@@ -102,12 +105,23 @@ function TaskCard({
           ⋮⋮
         </button>
         <button type="button" onClick={onOpen} className="min-w-0 flex-1 text-left">
-          {task.key ? (
-            <p className="text-[11px] font-medium tabular-nums tracking-wide text-[var(--muted)]">
-              {task.key}
-            </p>
+          {task.key || task.task_type ? (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {task.key ? (
+                <p className="text-[11px] font-medium tabular-nums tracking-wide text-[var(--muted)]">
+                  {task.key}
+                </p>
+              ) : null}
+              <TaskTypeTag taskType={task.task_type} />
+            </div>
           ) : null}
-          <h3 className="font-medium leading-snug">{task.title}</h3>
+          <h3
+            className={`font-medium leading-snug ${
+              task.key || task.task_type ? "mt-0.5" : ""
+            }`}
+          >
+            {task.title}
+          </h3>
           {task.due_date ? (
             <p
               className={`mt-1 text-xs ${
@@ -160,10 +174,15 @@ function TaskListRow({
         className="flex w-full flex-col gap-1 px-3 py-3 text-left hover:bg-[var(--surface)]/80 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
       >
         <div className="min-w-0">
-          {task.key ? (
-            <p className="text-[11px] font-medium tabular-nums tracking-wide text-[var(--muted)]">
-              {task.key}
-            </p>
+          {task.key || task.task_type ? (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {task.key ? (
+                <p className="text-[11px] font-medium tabular-nums tracking-wide text-[var(--muted)]">
+                  {task.key}
+                </p>
+              ) : null}
+              <TaskTypeTag taskType={task.task_type} />
+            </div>
           ) : null}
           <p className="font-medium leading-snug">{task.title}</p>
           <p className="mt-1 text-xs text-[var(--muted)] sm:hidden">
@@ -399,6 +418,7 @@ export function TaskBoard({
   const [assigneeFilter, setAssigneeFilter] = useState("all");
   const [reporterFilter, setReporterFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<"all" | TaskStatus>("all");
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [dueFilter, setDueFilter] = useState<DueFilter>("all");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [, startTransition] = useTransition();
@@ -434,17 +454,26 @@ export function TaskBoard({
         return false;
       }
       if (statusFilter !== "all" && task.status !== statusFilter) return false;
+      if (typeFilter === "none" && task.task_type) return false;
+      if (
+        typeFilter !== "all" &&
+        typeFilter !== "none" &&
+        task.task_type !== typeFilter
+      ) {
+        return false;
+      }
       if (!matchesDueFilter(task, dueFilter)) return false;
       if (!q) return true;
       return (
         task.title.toLowerCase().includes(q) ||
         (task.key ?? "").toLowerCase().includes(q) ||
         (task.description ?? "").toLowerCase().includes(q) ||
+        taskTypeLabel(task.task_type).toLowerCase().includes(q) ||
         displayName(task.assignee).toLowerCase().includes(q) ||
         displayName(task.reporter).toLowerCase().includes(q)
       );
     });
-  }, [tasks, query, assigneeFilter, reporterFilter, statusFilter, dueFilter]);
+  }, [tasks, query, assigneeFilter, reporterFilter, statusFilter, typeFilter, dueFilter]);
 
   const grouped = useMemo(() => {
     const map = Object.fromEntries(
@@ -468,6 +497,7 @@ export function TaskBoard({
     assigneeFilter !== "all" ||
     reporterFilter !== "all" ||
     statusFilter !== "all" ||
+    typeFilter !== "all" ||
     dueFilter !== "all";
 
   function clearFilters() {
@@ -475,6 +505,7 @@ export function TaskBoard({
     setAssigneeFilter("all");
     setReporterFilter("all");
     setStatusFilter("all");
+    setTypeFilter("all");
     setDueFilter("all");
   }
 
@@ -619,7 +650,7 @@ export function TaskBoard({
         </div>
 
         {filtersOpen ? (
-          <div className="grid gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 sm:grid-cols-2 xl:grid-cols-5">
+          <div className="grid gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 sm:grid-cols-2 xl:grid-cols-3">
             <label className="flex flex-col gap-1 text-xs text-[var(--muted)]">
               Search
               <input
@@ -673,6 +704,24 @@ export function TaskBoard({
                 {TASK_STATUSES.map((status) => (
                   <option key={status.value} value={status.value}>
                     {status.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-[var(--muted)]">
+              Type
+              <select
+                value={typeFilter}
+                onChange={(event) =>
+                  setTypeFilter(event.target.value as TypeFilter)
+                }
+                className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--foreground)]"
+              >
+                <option value="all">All types</option>
+                <option value="none">No type</option>
+                {TASK_TYPES.map((type) => (
+                  <option key={type.value} value={type.value}>
+                    {type.label}
                   </option>
                 ))}
               </select>

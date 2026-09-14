@@ -7,6 +7,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { DueDatePicker } from "@/components/due-date-picker";
 import { TaskAttachments } from "@/components/task-attachments";
 import { TaskComments } from "@/components/task-comments";
+import { TaskTypeTag } from "@/components/task-type-tag";
 import { TaskStatusHistory } from "@/components/task-status-history";
 import {
   TimeTrackingPanel,
@@ -20,6 +21,7 @@ import {
 import { personDisplayName } from "@/lib/person";
 import {
   TASK_STATUSES,
+  TASK_TYPES,
   type ProjectRole,
   type Task,
 } from "@/types/database";
@@ -107,6 +109,7 @@ export function TaskModal({
       description: String(formData.get("description") ?? "").trim(),
       due_date: String(formData.get("due_date") ?? "").trim(),
       status: String(formData.get("status") ?? "todo"),
+      task_type: String(formData.get("task_type") ?? ""),
       reported_by: String(formData.get("reported_by") ?? ""),
       assigned_to: String(formData.get("assigned_to") ?? ""),
     });
@@ -233,10 +236,15 @@ export function TaskModal({
               <h2 className="font-display text-xl tracking-tight">
                 {mode === "create" ? "New task" : "Edit task"}
               </h2>
-              {mode === "edit" && task?.key ? (
-                <p className="mt-1 text-sm font-medium tabular-nums tracking-wide text-[var(--muted)]">
-                  {task.key}
-                </p>
+              {mode === "edit" && task ? (
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  {task.key ? (
+                    <p className="text-sm font-medium tabular-nums tracking-wide text-[var(--muted)]">
+                      {task.key}
+                    </p>
+                  ) : null}
+                  <TaskTypeTag taskType={task.task_type} />
+                </div>
               ) : null}
               {contextLabel ? (
                 contextHref ? (
@@ -373,6 +381,21 @@ export function TaskModal({
                     {TASK_STATUSES.map((status) => (
                       <option key={status.value} value={status.value}>
                         {status.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
+                  Type
+                  <select
+                    name="task_type"
+                    defaultValue={task?.task_type ?? ""}
+                    className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
+                  >
+                    <option value="">No type</option>
+                    {TASK_TYPES.map((type) => (
+                      <option key={type.value} value={type.value}>
+                        {type.label}
                       </option>
                     ))}
                   </select>

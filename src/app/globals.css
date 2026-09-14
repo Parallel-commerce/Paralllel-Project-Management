@@ -29,6 +29,35 @@
   --status-done-bg: #eef6f0;
   --status-done-border: #5a9a6e;
   --status-done-label: #2f5d3d;
+
+  /* Task type tags — distinct from status colours */
+  --type-bug-bg: #fdecea;
+  --type-bug-border: #c23a2b;
+  --type-bug-label: #8f2419;
+  --type-feature-bg: #eaf5f7;
+  --type-feature-border: #3d8a9a;
+  --type-feature-label: #1f5864;
+  --type-improvement-bg: #eef6f0;
+  --type-improvement-border: #5a9a6e;
+  --type-improvement-label: #2f5d3d;
+  --type-data-bg: #eeeaf7;
+  --type-data-border: #6e5aa0;
+  --type-data-label: #43356a;
+  --type-docs-bg: #eef1f4;
+  --type-docs-border: #5a7388;
+  --type-docs-label: #334656;
+  --type-design-bg: #fceef4;
+  --type-design-border: #c45a86;
+  --type-design-label: #7a3254;
+  --type-research-bg: #faf3e6;
+  --type-research-border: #c4892a;
+  --type-research-label: #7a5412;
+  --type-maintenance-bg: #f0efed;
+  --type-maintenance-border: #7a7670;
+  --type-maintenance-label: #4a4844;
+  --type-other-bg: #f4f1ee;
+  --type-other-border: #8a8178;
+  --type-other-label: #544e48;
 }
 
 @theme inline {

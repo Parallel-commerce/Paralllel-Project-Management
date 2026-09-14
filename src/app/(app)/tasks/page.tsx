@@ -13,7 +13,7 @@ import { scheduledWeekdaysFromProject } from "@/lib/scheduled-weekdays";
 import type { ProjectRole, Task } from "@/types/database";
 
 const TASK_COLUMNS =
-  "id, list_id, project_id, title, description, due_date, status, number, key, created_by, reported_by, assigned_to, completed_at, archived_at, created_at, updated_at, lists(name), projects(name, scheduled_weekdays)";
+  "id, list_id, project_id, title, description, due_date, status, task_type, number, key, created_by, reported_by, assigned_to, completed_at, archived_at, created_at, updated_at, lists(name), projects(name, scheduled_weekdays)";
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);

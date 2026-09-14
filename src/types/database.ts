@@ -5,6 +5,16 @@ export type TaskStatus =
   | "in_progress"
   | "requiring_feedback"
   | "done";
+export type TaskType =
+  | "bug"
+  | "new_feature"
+  | "improvement"
+  | "data"
+  | "documentation"
+  | "design"
+  | "research"
+  | "maintenance"
+  | "other";
 export type CompanyStatus =
   | "lead"
   | "contacted"
@@ -51,11 +61,14 @@ export type Company = {
   id: string;
   name: string;
   website: string | null;
+  summary: string | null;
+  linkedin_url: string | null;
   notes: string | null;
   status: CompanyStatus;
   kind: CompanyKind;
   follow_up_at: string | null;
   follow_up_note: string | null;
+  enriched_at: string | null;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -68,6 +81,7 @@ export type Contact = {
   email: string | null;
   phone: string | null;
   title: string | null;
+  linkedin_url: string | null;
   notes: string | null;
   is_primary: boolean;
   created_at: string;
@@ -108,6 +122,7 @@ export type Task = {
   description: string | null;
   due_date: string | null;
   status: TaskStatus;
+  task_type: TaskType | null;
   number: number;
   key: string;
   created_by: string;
@@ -342,11 +357,14 @@ export type Database = {
           id?: string;
           name: string;
           website?: string | null;
+          summary?: string | null;
+          linkedin_url?: string | null;
           notes?: string | null;
           status?: CompanyStatus;
           kind?: CompanyKind;
           follow_up_at?: string | null;
           follow_up_note?: string | null;
+          enriched_at?: string | null;
           created_by: string;
           created_at?: string;
           updated_at?: string;
@@ -354,11 +372,14 @@ export type Database = {
         Update: {
           name?: string;
           website?: string | null;
+          summary?: string | null;
+          linkedin_url?: string | null;
           notes?: string | null;
           status?: CompanyStatus;
           kind?: CompanyKind;
           follow_up_at?: string | null;
           follow_up_note?: string | null;
+          enriched_at?: string | null;
           updated_at?: string;
         };
         Relationships: [
@@ -380,6 +401,7 @@ export type Database = {
           email?: string | null;
           phone?: string | null;
           title?: string | null;
+          linkedin_url?: string | null;
           notes?: string | null;
           is_primary?: boolean;
           created_at?: string;
@@ -391,6 +413,7 @@ export type Database = {
           email?: string | null;
           phone?: string | null;
           title?: string | null;
+          linkedin_url?: string | null;
           notes?: string | null;
           is_primary?: boolean;
           updated_at?: string;
@@ -462,6 +485,7 @@ export type Database = {
           description?: string | null;
           due_date?: string | null;
           status?: TaskStatus;
+          task_type?: TaskType | null;
           number: number;
           key: string;
           created_by: string;
@@ -477,6 +501,7 @@ export type Database = {
           description?: string | null;
           due_date?: string | null;
           status?: TaskStatus;
+          task_type?: TaskType | null;
           reported_by?: string;
           assigned_to?: string | null;
           number?: number;
@@ -1018,6 +1043,7 @@ export type Database = {
       project_role: ProjectRole;
       list_visibility: ListVisibility;
       task_status: TaskStatus;
+      task_type: TaskType;
       report_period: ReportPeriod;
       company_status: CompanyStatus;
       company_kind: CompanyKind;
@@ -1031,6 +1057,18 @@ export const TASK_STATUSES: { value: TaskStatus; label: string }[] = [
   { value: "in_progress", label: "In progress" },
   { value: "requiring_feedback", label: "Requiring feedback" },
   { value: "done", label: "Done" },
+];
+
+export const TASK_TYPES: { value: TaskType; label: string }[] = [
+  { value: "bug", label: "Bug" },
+  { value: "new_feature", label: "New feature" },
+  { value: "improvement", label: "Improvement" },
+  { value: "data", label: "Data" },
+  { value: "documentation", label: "Documentation" },
+  { value: "design", label: "Design" },
+  { value: "research", label: "Research" },
+  { value: "maintenance", label: "Maintenance" },
+  { value: "other", label: "Other" },
 ];
 
 export const PROJECT_ROLES: { value: ProjectRole; label: string }[] = [
