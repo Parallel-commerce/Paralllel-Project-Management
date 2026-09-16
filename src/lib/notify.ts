@@ -102,8 +102,8 @@ export async function sendSignInReminderEmail(input: {
   ].join("\n");
 
   const html = `
-  <div style="font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;line-height:1.5;color:#0f1117;max-width:520px;margin:0 auto;padding:24px;">
-    <p style="font-size:20px;font-weight:700;margin:0 0 16px;">parallel<span style="color:#e8420a;">.</span></p>
+  <div style="font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;line-height:1.5;color:#111111;max-width:520px;margin:0 auto;padding:24px;">
+    <p style="font-size:20px;font-weight:700;margin:0 0 16px;color:#111111;">Parallel</p>
     <p style="margin:0 0 12px;">Hi ${escapeHtml(firstName)},</p>
     <p style="margin:0 0 16px;">You've been invited to <strong>Parallel</strong> — Parallel Commerce's project workspace.</p>
     <p style="margin:0 0 8px;font-weight:600;">Getting started is simple:</p>
@@ -114,14 +114,14 @@ export async function sendSignInReminderEmail(input: {
       <li style="margin-bottom:6px;">Enter the code to sign in — no password needed</li>
     </ol>
     <p style="margin:0 0 24px;">
-      <a href="${loginUrl}" style="display:inline-block;background:#e8420a;color:#fff;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:600;">
+      <a href="${loginUrl}" style="display:inline-block;background:#A53328;color:#fff;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:600;">
         Open Parallel
       </a>
     </p>
-    <p style="margin:0 0 8px;font-size:14px;color:#6b6b72;">
+    <p style="margin:0 0 8px;font-size:14px;color:#6F5C50;">
       If you don't see the code email, check spam or promotions, then try again from the sign-in page.
     </p>
-    <p style="margin:0;font-size:14px;color:#6b6b72;">— Parallel</p>
+    <p style="margin:0;font-size:14px;color:#6F5C50;">— Parallel</p>
   </div>
   `.trim();
 
@@ -187,34 +187,34 @@ function buildNotificationEmail(input: {
 
   const commentCard = isCommentLike
     ? `
-    <div style="margin:0 0 24px;border:1px solid #e8e8ec;border-radius:12px;background:#f7f6f4;overflow:hidden;">
+    <div style="margin:0 0 24px;border:1px solid #C7BCB1;border-radius:12px;background:#EAE6DE;overflow:hidden;">
       ${
         fromLabel
-          ? `<div style="padding:12px 16px 0;font-size:13px;font-weight:600;color:#0f1117;">${escapeHtml(fromLabel)}</div>`
+          ? `<div style="padding:12px 16px 0;font-size:13px;font-weight:600;color:#111111;">${escapeHtml(fromLabel)}</div>`
           : ""
       }
-      <div style="padding:12px 16px 16px;font-size:15px;line-height:1.55;color:#0f1117;">${formatEmailMultiline(input.body || input.title)}</div>
+      <div style="padding:12px 16px 16px;font-size:15px;line-height:1.55;color:#111111;">${formatEmailMultiline(input.body || input.title)}</div>
     </div>`
     : input.body
-      ? `<p style="margin:0 0 24px;font-size:15px;line-height:1.55;color:#0f1117;">${formatEmailMultiline(input.body)}</p>`
+      ? `<p style="margin:0 0 24px;font-size:15px;line-height:1.55;color:#111111;">${formatEmailMultiline(input.body)}</p>`
       : "";
 
   const html = `
-  <div style="font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;line-height:1.5;color:#0f1117;background:#ffffff;max-width:520px;margin:0 auto;padding:24px;">
-    <p style="font-size:20px;font-weight:700;margin:0 0 20px;">parallel<span style="color:#e8420a;">.</span></p>
+  <div style="font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;line-height:1.5;color:#111111;background:#ffffff;max-width:520px;margin:0 auto;padding:24px;">
+    <p style="font-size:20px;font-weight:700;margin:0 0 20px;color:#111111;">Parallel</p>
     <p style="margin:0 0 8px;">Hi ${escapeHtml(input.firstName)},</p>
-    <p style="margin:0 0 16px;font-size:16px;font-weight:600;color:#0f1117;">${escapeHtml(input.title)}</p>
+    <p style="margin:0 0 16px;font-size:16px;font-weight:600;color:#111111;">${escapeHtml(input.title)}</p>
     ${commentCard}
     ${
       input.linkUrl
         ? `<p style="margin:0 0 28px;">
-      <a href="${escapeHtml(input.linkUrl)}" style="display:inline-block;background:#e8420a;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:600;">
+      <a href="${escapeHtml(input.linkUrl)}" style="display:inline-block;background:#A53328;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:600;">
         ${escapeHtml(cta)}
       </a>
     </p>`
         : ""
     }
-    <p style="margin:0;font-size:13px;color:#6b6b72;">— Parallel</p>
+    <p style="margin:0;font-size:13px;color:#6F5C50;">— Parallel</p>
   </div>
   `.trim();
 

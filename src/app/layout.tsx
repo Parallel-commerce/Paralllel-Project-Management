@@ -20,8 +20,8 @@ export const metadata: Metadata = {
   description:
     "Track tasks across projects with shared lists for your team and clients.",
   icons: {
-    icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
-    apple: [{ url: "/apple-icon" }],
+    icon: [{ url: "/favicon.png", type: "image/png" }],
+    apple: [{ url: "/apple-touch-icon.png" }],
   },
 };
 

@@ -1,39 +1,46 @@
 @import "tailwindcss";
 
 :root {
-  /* Parallel brand — Ink, Orange, warm neutrals */
-  --background: #f7f6f4;
-  --foreground: #0f1117;
-  --muted: #6b6b72;
-  --border: #e8e8ec;
+  /* Parallel brand palette */
+  --parallel-red: #a53328;
+  --deep-red: #731411;
+  --bone: #eae6de;
+  --charcoal: #111111;
+  --sand: #c7bcb1;
+  --warm-grey: #a38c7b;
+
+  --background: color-mix(in srgb, var(--bone) 38%, white);
+  --foreground: var(--charcoal);
+  --muted: color-mix(in srgb, var(--charcoal) 62%, var(--warm-grey));
+  --border: color-mix(in srgb, var(--sand) 40%, var(--bone));
   --surface: #ffffff;
-  --surface-2: #f0efed;
-  --accent: #e8420a;
-  --accent-hover: #b33208;
-  --accent-soft: #fff1ee;
-  --danger: #b91c1c;
-  --column: #f0efed;
-  --ink: #0f1117;
-  --orange: #e8420a;
+  --surface-2: color-mix(in srgb, var(--bone) 55%, white);
+  --accent: var(--parallel-red);
+  --accent-hover: var(--deep-red);
+  --accent-soft: color-mix(in srgb, var(--parallel-red) 12%, white);
+  --danger: var(--deep-red);
+  --column: color-mix(in srgb, var(--bone) 70%, white);
+  --ink: var(--charcoal);
+  --orange: var(--parallel-red);
 
   /* Board / list status columns — soft distinction, brand-aligned */
-  --status-todo-bg: #eef1f4;
-  --status-todo-border: #7d8b99;
-  --status-todo-label: #3d4a57;
+  --status-todo-bg: color-mix(in srgb, white 40%, var(--bone));
+  --status-todo-border: var(--warm-grey);
+  --status-todo-label: color-mix(in srgb, var(--charcoal) 55%, var(--warm-grey));
   --status-progress-bg: #eaf5f7;
   --status-progress-border: #4f8f9e;
   --status-progress-label: #245864;
-  --status-feedback-bg: #fff1ee;
-  --status-feedback-border: #e8420a;
-  --status-feedback-label: #b33208;
+  --status-feedback-bg: color-mix(in srgb, var(--parallel-red) 12%, var(--bone));
+  --status-feedback-border: var(--parallel-red);
+  --status-feedback-label: var(--deep-red);
   --status-done-bg: #eef6f0;
   --status-done-border: #5a9a6e;
   --status-done-label: #2f5d3d;
 
   /* Task type tags — distinct from status colours */
-  --type-bug-bg: #fdecea;
-  --type-bug-border: #c23a2b;
-  --type-bug-label: #8f2419;
+  --type-bug-bg: color-mix(in srgb, var(--parallel-red) 12%, white);
+  --type-bug-border: var(--parallel-red);
+  --type-bug-label: var(--deep-red);
   --type-feature-bg: #eaf5f7;
   --type-feature-border: #3d8a9a;
   --type-feature-label: #1f5864;
@@ -49,15 +56,15 @@
   --type-design-bg: #fceef4;
   --type-design-border: #c45a86;
   --type-design-label: #7a3254;
-  --type-research-bg: #faf3e6;
-  --type-research-border: #c4892a;
-  --type-research-label: #7a5412;
-  --type-maintenance-bg: #f0efed;
-  --type-maintenance-border: #7a7670;
-  --type-maintenance-label: #4a4844;
-  --type-other-bg: #f4f1ee;
-  --type-other-border: #8a8178;
-  --type-other-label: #544e48;
+  --type-research-bg: color-mix(in srgb, white 45%, var(--bone));
+  --type-research-border: var(--warm-grey);
+  --type-research-label: color-mix(in srgb, var(--charcoal) 42%, var(--warm-grey));
+  --type-maintenance-bg: color-mix(in srgb, white 50%, var(--bone));
+  --type-maintenance-border: var(--warm-grey);
+  --type-maintenance-label: color-mix(in srgb, var(--charcoal) 50%, var(--warm-grey));
+  --type-other-bg: var(--bone);
+  --type-other-border: var(--sand);
+  --type-other-label: color-mix(in srgb, var(--charcoal) 48%, var(--warm-grey));
 }
 
 @theme inline {
@@ -75,11 +82,6 @@ html {
 body {
   min-height: 100%;
   background-color: var(--background);
-  background-image:
-    linear-gradient(165deg, rgba(232, 66, 10, 0.06) 0%, transparent 38%),
-    linear-gradient(320deg, rgba(15, 17, 23, 0.03) 0%, transparent 42%);
-  background-repeat: no-repeat;
-  background-size: 100% 100%;
   color: var(--foreground);
   font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
 }

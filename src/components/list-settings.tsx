@@ -118,7 +118,7 @@ export function ListSettings({
                     }
                   });
                 }}
-                className="mt-3 w-full rounded-md border border-[var(--border)] px-3 py-2 text-sm text-[var(--danger)] hover:bg-red-50 disabled:opacity-60"
+                className="mt-3 w-full rounded-md border border-[var(--border)] px-3 py-2 text-sm text-[var(--danger)] hover:bg-[var(--accent-soft)] disabled:opacity-60"
               >
                 Delete list
               </button>

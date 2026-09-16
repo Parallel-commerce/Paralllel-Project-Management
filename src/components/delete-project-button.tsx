@@ -40,7 +40,7 @@ export function DeleteProjectButton({
             router.refresh();
           });
         }}
-        className="whitespace-nowrap rounded-md px-2 py-1.5 text-xs text-[var(--danger)] hover:bg-red-50 disabled:opacity-60 sm:px-2.5 sm:text-sm"
+        className="whitespace-nowrap rounded-md px-2 py-1.5 text-xs text-[var(--danger)] hover:bg-[var(--accent-soft)] disabled:opacity-60 sm:px-2.5 sm:text-sm"
       >
         {pending ? "Deleting…" : "Delete project"}
       </button>

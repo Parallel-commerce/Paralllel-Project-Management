@@ -195,7 +195,7 @@ export function ProjectSettings({
               <button
                 type="submit"
                 disabled={pending || !nameMatches}
-                className="rounded-md border border-[var(--border)] px-3 py-2 text-sm text-[var(--danger)] hover:bg-red-50 disabled:opacity-60"
+                className="rounded-md border border-[var(--border)] px-3 py-2 text-sm text-[var(--danger)] hover:bg-[var(--accent-soft)] disabled:opacity-60"
               >
                 {deleting ? "Deleting…" : "Delete project"}
               </button>

@@ -474,7 +474,7 @@ export function CompanyEditor({
                 }
               });
             }}
-            className="rounded-md border border-[var(--border)] px-4 py-2 text-sm text-[var(--danger)] hover:bg-red-50 disabled:opacity-60"
+            className="rounded-md border border-[var(--border)] px-4 py-2 text-sm text-[var(--danger)] hover:bg-[var(--accent-soft)] disabled:opacity-60"
           >
             Delete
           </button>

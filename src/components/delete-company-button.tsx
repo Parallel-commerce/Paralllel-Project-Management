@@ -40,7 +40,7 @@ export function DeleteCompanyButton({
             router.refresh();
           });
         }}
-        className="whitespace-nowrap rounded-md px-2 py-1.5 text-xs text-[var(--muted)] hover:bg-red-50 hover:text-[var(--danger)] disabled:opacity-60 sm:px-2.5 sm:text-sm"
+        className="whitespace-nowrap rounded-md px-2 py-1.5 text-xs text-[var(--muted)] hover:bg-[var(--accent-soft)] hover:text-[var(--danger)] disabled:opacity-60 sm:px-2.5 sm:text-sm"
       >
         {pending ? "Deleting…" : "Delete company"}
       </button>

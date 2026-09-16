@@ -3,7 +3,7 @@ import Link from "next/link";
 
 export function ParallelLogo({
   href = "/home",
-  className = "h-7 w-auto",
+  className = "h-8 w-auto",
   priority = true,
 }: {
   href?: string;
@@ -14,9 +14,9 @@ export function ParallelLogo({
     <Link href={href} className="inline-flex shrink-0 items-center">
       <Image
         src="/parallel-logo.png"
-        alt="parallel."
-        width={160}
-        height={48}
+        alt="Parallel"
+        width={2777}
+        height={715}
         className={className}
         priority={priority}
       />

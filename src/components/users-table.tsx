@@ -640,7 +640,7 @@ function UserTableRows({
                   type="button"
                   disabled={pending}
                   onClick={onRequestDelete}
-                  className="rounded-md border border-[var(--danger)]/30 px-2.5 py-1.5 text-xs font-medium text-[var(--danger)] hover:bg-red-50 disabled:opacity-50"
+                  className="rounded-md border border-[var(--danger)]/30 px-2.5 py-1.5 text-xs font-medium text-[var(--danger)] hover:bg-[var(--accent-soft)] disabled:opacity-50"
                 >
                   Remove user
                 </button>

@@ -40,7 +40,7 @@ export async function AppHeader({
       <header className="sticky top-0 z-50 border-b border-[var(--border)] bg-[var(--surface)]/90 backdrop-blur">
         <div className="app-container flex h-14 items-center justify-between gap-3">
           <div className="flex shrink-0 items-center gap-5 self-stretch">
-            <ParallelLogo className="h-6 w-auto sm:h-7" />
+            <ParallelLogo className="h-5 w-auto sm:h-6" />
             <DesktopNav
               isPlatformAdmin={platformAdmin}
               isInternal={isInternal}
