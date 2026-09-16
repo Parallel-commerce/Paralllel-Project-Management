@@ -3,19 +3,34 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { enrichCompanyRecord } from "@/lib/ai/claude-company-enrich";
 import { getIsInternalUser, requireCrmUser } from "@/lib/auth";
 import { inviteMember } from "@/lib/actions/projects";
 import { parseCompanyImportCsv, type ImportRowError } from "@/lib/crm-csv";
+import {
+  normalizeCompanyLinkedInUrl,
+  normalizePersonLinkedInUrl,
+} from "@/lib/linkedin";
+import { parseProjectEngagement } from "@/lib/project-type";
 import { parseScheduledWeekdays } from "@/lib/scheduled-weekdays";
+import { fetchAllRows } from "@/lib/supabase/fetch-all";
+import {
+  parseVerticalName,
+  verticalNamesEqual,
+  type VerticalOption,
+} from "@/lib/verticals";
 import {
   COMPANY_KINDS,
   COMPANY_STATUSES,
   type CompanyKind,
+  type CompanyReengage,
   type CompanyStatus,
+  type Database,
 } from "@/types/database";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
-const IMPORT_MAX_BYTES = 512 * 1024;
-const IMPORT_MAX_ROWS = 500;
+const IMPORT_MAX_BYTES = 2 * 1024 * 1024;
+const IMPORT_MAX_ROWS = 5000;
 
 const STATUS_VALUES = new Set<CompanyStatus>(
   COMPANY_STATUSES.map((item) => item.value),
@@ -51,6 +66,30 @@ function parseKind(raw: string): CompanyKind | { error: string } {
   return raw as CompanyKind;
 }
 
+function parseCanReengage(
+  raw: string,
+): CompanyReengage | null | { error: string } {
+  const value = raw
+    .trim()
+    .toLowerCase()
+    .replace(/[\s./-]+/g, "_");
+  if (!value) return null;
+  if (value === "yes" || value === "true" || value === "1" || value === "y") {
+    return "yes";
+  }
+  if (value === "no" || value === "false" || value === "0" || value === "n") {
+    return "no";
+  }
+  if (
+    value === "not_applicable" ||
+    value === "n_a" ||
+    value === "na"
+  ) {
+    return "not_applicable";
+  }
+  return { error: "Choose yes, no, or not applicable for re-engage." };
+}
+
 function parseDate(raw: string) {
   const value = raw.trim();
   if (!value) return null;
@@ -67,6 +106,129 @@ function parseEmail(raw: string) {
     return { error: "Enter a valid email address." } as const;
   }
   return value;
+}
+
+function parseCompanyLinkedIn(raw: string) {
+  const value = raw.trim();
+  if (!value) return null;
+  const normalized = normalizeCompanyLinkedInUrl(value);
+  if (!normalized) {
+    return { error: "Enter a LinkedIn company page URL." } as const;
+  }
+  return normalized;
+}
+
+function parsePersonLinkedIn(raw: string) {
+  const value = raw.trim();
+  if (!value) return null;
+  const normalized = normalizePersonLinkedInUrl(value);
+  if (!normalized) {
+    return { error: "Enter a LinkedIn profile URL." } as const;
+  }
+  return normalized;
+}
+
+type CrmClient = SupabaseClient<Database>;
+
+async function findOrCreateVertical(
+  supabase: CrmClient,
+  name: string,
+  cache?: VerticalOption[],
+): Promise<VerticalOption | { error: string }> {
+  if (cache) {
+    const cached = cache.find((item) => verticalNamesEqual(item.name, name));
+    if (cached) return cached;
+  } else {
+    const { data: existing, error: existingError } = await supabase
+      .from("verticals")
+      .select("id, name")
+      .order("name", { ascending: true });
+
+    if (existingError) {
+      return { error: existingError.message };
+    }
+
+    const match = (existing ?? []).find((item) =>
+      verticalNamesEqual(item.name, name),
+    );
+    if (match) return match;
+  }
+
+  const { data: created, error } = await supabase
+    .from("verticals")
+    .insert({ name })
+    .select("id, name")
+    .single();
+
+  if (!error && created) {
+    cache?.push(created);
+    return created;
+  }
+  if (error?.code === "23505") {
+    const { data: raced } = await supabase
+      .from("verticals")
+      .select("id, name")
+      .order("name", { ascending: true });
+    const found = (raced ?? []).find((item) =>
+      verticalNamesEqual(item.name, name),
+    );
+    if (found) {
+      if (cache && !cache.some((item) => item.id === found.id)) {
+        cache.push(found);
+      }
+      return found;
+    }
+  }
+  return { error: error?.message ?? "Could not save that vertical." };
+}
+
+async function attachCompanyVerticals(
+  supabase: CrmClient,
+  companyId: string,
+  names: string[],
+  cache?: VerticalOption[],
+): Promise<{ error: string } | void> {
+  const unique: string[] = [];
+  for (const raw of names) {
+    const parsed = parseVerticalName(raw);
+    if (parsed && typeof parsed === "object") return parsed;
+    if (!parsed) continue;
+    if (!unique.some((name) => verticalNamesEqual(name, parsed))) {
+      unique.push(parsed);
+    }
+  }
+  if (unique.length === 0) return;
+
+  const ids: string[] = [];
+  for (const name of unique) {
+    const vertical = await findOrCreateVertical(supabase, name, cache);
+    if ("error" in vertical) return vertical;
+    ids.push(vertical.id);
+  }
+
+  const { error } = await supabase.from("company_verticals").insert(
+    ids.map((verticalId) => ({
+      company_id: companyId,
+      vertical_id: verticalId,
+    })),
+  );
+  if (error && error.code !== "23505") {
+    return { error: error.message };
+  }
+}
+
+async function replaceCompanyVerticals(
+  supabase: CrmClient,
+  companyId: string,
+  names: string[],
+  cache?: VerticalOption[],
+): Promise<{ error: string } | void> {
+  const { error } = await supabase
+    .from("company_verticals")
+    .delete()
+    .eq("company_id", companyId);
+  if (error) return { error: error.message };
+  return attachCompanyVerticals(supabase, companyId, names, cache);
 }
 
 export async function createCompany(
@@ -107,6 +269,13 @@ export async function createCompany(
     return { error: error?.message ?? "Could not create company." };
   }
 
+  const verticals = await attachCompanyVerticals(
+    supabase,
+    data.id,
+    formData.getAll("vertical").map((value) => String(value)),
+  );
+  if (verticals && "error" in verticals) return verticals;
+
   revalidatePath("/crm");
   redirect(`/crm/${data.id}`);
 }
@@ -123,6 +292,8 @@ export async function updateCompany(
   if (typeof statusResult === "object") return statusResult;
   const kindResult = parseKind(String(formData.get("kind") ?? "prospect"));
   if (typeof kindResult === "object") return kindResult;
+  const canReengage = parseCanReengage(String(formData.get("can_reengage") ?? ""));
+  if (canReengage && typeof canReengage === "object") return canReengage;
   const followUp = parseDate(String(formData.get("follow_up_at") ?? ""));
   if (followUp && typeof followUp === "object") return followUp;
   const followUpNote = emptyToNull(String(formData.get("follow_up_note") ?? ""));
@@ -139,8 +310,36 @@ export async function updateCompany(
       notes,
       status: statusResult,
       kind: kindResult,
+      can_reengage: canReengage,
       follow_up_at: followUp,
       follow_up_note: followUpNote,
+    })
+    .eq("id", companyId);
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  revalidatePath("/crm");
+  revalidatePath(`/crm/${companyId}`);
+}
+
+export async function updateCompanyLookup(
+  companyId: string,
+  formData: FormData,
+): Promise<{ error: string } | void> {
+  const { supabase } = await requireCrmUser();
+  const summary = emptyToNull(String(formData.get("summary") ?? ""));
+  const linkedinResult = parseCompanyLinkedIn(
+    String(formData.get("linkedin_url") ?? ""),
+  );
+  if (linkedinResult && typeof linkedinResult === "object") return linkedinResult;
+
+  const { error } = await supabase
+    .from("companies")
+    .update({
+      summary,
+      linkedin_url: linkedinResult,
     })
     .eq("id", companyId);
 
@@ -194,6 +393,180 @@ export async function updateCompanyStatus(
   revalidatePath(`/crm/${companyId}`);
 }
 
+export async function updateCompanyReengage(
+  companyId: string,
+  canReengage: string,
+): Promise<{ error: string } | void> {
+  const { supabase } = await requireCrmUser();
+  const parsed = parseCanReengage(canReengage);
+  if (parsed && typeof parsed === "object") return parsed;
+
+  const { error } = await supabase
+    .from("companies")
+    .update({ can_reengage: parsed })
+    .eq("id", companyId);
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  revalidatePath("/crm");
+  revalidatePath(`/crm/${companyId}`);
+}
+
+export async function addCompanyVertical(
+  companyId: string,
+  input: { id?: string; name: string },
+): Promise<{ error: string } | VerticalOption> {
+  const { supabase } = await requireCrmUser();
+  const parsed = parseVerticalName(input.name);
+  if (!parsed) {
+    return { error: "Enter a vertical name." };
+  }
+  if (typeof parsed === "object") return parsed;
+
+  let vertical: VerticalOption;
+  if (input.id) {
+    const { data, error } = await supabase
+      .from("verticals")
+      .select("id, name")
+      .eq("id", input.id)
+      .maybeSingle();
+    if (error) return { error: error.message };
+    if (!data) return { error: "That vertical is no longer available." };
+    vertical = data;
+  } else {
+    const created = await findOrCreateVertical(supabase, parsed);
+    if ("error" in created) return created;
+    vertical = created;
+  }
+
+  const { error } = await supabase.from("company_verticals").insert({
+    company_id: companyId,
+    vertical_id: vertical.id,
+  });
+  if (error && error.code !== "23505") {
+    return { error: error.message };
+  }
+
+  revalidatePath("/crm");
+  revalidatePath(`/crm/${companyId}`);
+  return vertical;
+}
+
+export async function removeCompanyVertical(
+  companyId: string,
+  verticalId: string,
+): Promise<{ error: string } | void> {
+  const { supabase } = await requireCrmUser();
+  const { error } = await supabase
+    .from("company_verticals")
+    .delete()
+    .eq("company_id", companyId)
+    .eq("vertical_id", verticalId);
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  revalidatePath("/crm");
+  revalidatePath(`/crm/${companyId}`);
+}
+
+export type EnrichCompanyResult =
+  | { error: string }
+  | {
+      ok: true;
+      companyLinkedIn: boolean;
+      contactsLinkedIn: number;
+    };
+
+export async function enrichCompany(
+  companyId: string,
+): Promise<EnrichCompanyResult> {
+  const { supabase } = await requireCrmUser();
+
+  const [{ data: company, error: companyError }, { data: contacts, error: contactsError }] =
+    await Promise.all([
+      supabase
+        .from("companies")
+        .select("id, name, website, notes, linkedin_url")
+        .eq("id", companyId)
+        .maybeSingle(),
+      supabase
+        .from("contacts")
+        .select("id, full_name, title, email, linkedin_url")
+        .eq("company_id", companyId)
+        .order("is_primary", { ascending: false })
+        .order("full_name", { ascending: true }),
+    ]);
+
+  if (companyError || !company) {
+    return { error: companyError?.message ?? "Company not found." };
+  }
+  if (contactsError) {
+    return { error: contactsError.message };
+  }
+
+  const contactRows = contacts ?? [];
+  const result = await enrichCompanyRecord({
+    name: company.name,
+    website: company.website,
+    notes: company.notes,
+    contacts: contactRows.map((contact) => ({
+      id: contact.id,
+      full_name: contact.full_name,
+      title: contact.title,
+      email: contact.email,
+    })),
+  });
+
+  if ("error" in result) {
+    return result;
+  }
+
+  const companyLinkedIn = result.linkedin_url ?? company.linkedin_url;
+  const { error: updateError } = await supabase
+    .from("companies")
+    .update({
+      summary: result.summary,
+      linkedin_url: companyLinkedIn,
+      enriched_at: new Date().toISOString(),
+    })
+    .eq("id", companyId);
+
+  if (updateError) {
+    return { error: updateError.message };
+  }
+
+  let contactsLinkedIn = 0;
+  const foundById = new Map(
+    result.contacts.map((contact) => [contact.id, contact.linkedin_url]),
+  );
+  for (const contact of contactRows) {
+    const found = foundById.get(contact.id) ?? null;
+    if (!found) continue;
+    if (contact.linkedin_url === found) continue;
+    const { error } = await supabase
+      .from("contacts")
+      .update({ linkedin_url: found })
+      .eq("id", contact.id)
+      .eq("company_id", companyId);
+    if (error) {
+      return { error: error.message };
+    }
+    contactsLinkedIn += 1;
+  }
+
+  revalidatePath("/crm");
+  revalidatePath(`/crm/${companyId}`);
+  return {
+    ok: true,
+    companyLinkedIn: Boolean(result.linkedin_url),
+    contactsLinkedIn,
+  };
+}
+
 export async function deleteCompany(
   companyId: string,
   options?: { redirect?: boolean },
@@ -221,6 +594,10 @@ export async function createContact(
   if (emailResult && typeof emailResult === "object") return emailResult;
   const phone = emptyToNull(String(formData.get("phone") ?? ""));
   const title = emptyToNull(String(formData.get("title") ?? ""));
+  const linkedinResult = parsePersonLinkedIn(
+    String(formData.get("linkedin_url") ?? ""),
+  );
+  if (linkedinResult && typeof linkedinResult === "object") return linkedinResult;
   const notes = emptyToNull(String(formData.get("notes") ?? ""));
   const isPrimary = String(formData.get("is_primary") ?? "") === "1";
 
@@ -234,6 +611,7 @@ export async function createContact(
     email: emailResult,
     phone,
     title,
+    linkedin_url: linkedinResult,
     notes,
     is_primary: isPrimary,
   });
@@ -257,6 +635,10 @@ export async function updateContact(
   if (emailResult && typeof emailResult === "object") return emailResult;
   const phone = emptyToNull(String(formData.get("phone") ?? ""));
   const title = emptyToNull(String(formData.get("title") ?? ""));
+  const linkedinResult = parsePersonLinkedIn(
+    String(formData.get("linkedin_url") ?? ""),
+  );
+  if (linkedinResult && typeof linkedinResult === "object") return linkedinResult;
   const notes = emptyToNull(String(formData.get("notes") ?? ""));
   const isPrimary = String(formData.get("is_primary") ?? "") === "1";
 
@@ -271,6 +653,7 @@ export async function updateContact(
       email: emailResult,
       phone,
       title,
+      linkedin_url: linkedinResult,
       notes,
       is_primary: isPrimary,
     })
@@ -319,6 +702,7 @@ export async function convertCompanyToProject(
   const name = String(formData.get("name") ?? "").trim();
   const description = emptyToNull(String(formData.get("description") ?? ""));
   const scheduledWeekdays = parseScheduledWeekdays(formData);
+  const engagement = parseProjectEngagement(formData);
   const inviteIds = formData
     .getAll("invite_contact_ids")
     .map((value) => String(value).trim())
@@ -326,6 +710,9 @@ export async function convertCompanyToProject(
 
   if (!name) {
     return { error: "Project name is required." };
+  }
+  if ("error" in engagement) {
+    return { error: engagement.error };
   }
 
   const { data: company, error: companyError } = await supabase
@@ -369,6 +756,23 @@ export async function convertCompanyToProject(
     };
   }
 
+  const { error: engagementError } = await supabase
+    .from("project_engagement")
+    .upsert(
+      {
+        project_id: project.id,
+        project_type: engagement.projectType,
+        monthly_hours: engagement.monthlyHours,
+      },
+      { onConflict: "project_id" },
+    );
+
+  if (engagementError) {
+    return {
+      error: `Project created but engagement details could not be saved: ${engagementError.message}`,
+    };
+  }
+
   if (company.status !== "won" || company.kind !== "customer") {
     await supabase
       .from("companies")
@@ -402,11 +806,31 @@ export async function convertCompanyToProject(
 export type ImportCompaniesResult = {
   companiesCreated: number;
   companiesMatched: number;
+  companiesUpdated: number;
   contactsCreated: number;
+  contactsUpdated: number;
   contactsSkipped: number;
+  verticalsAssigned: number;
+  warning?: string;
   errors: ImportRowError[];
   error?: string;
 };
+
+function emptyImportResult(
+  extra: Partial<ImportCompaniesResult> = {},
+): ImportCompaniesResult {
+  return {
+    companiesCreated: 0,
+    companiesMatched: 0,
+    companiesUpdated: 0,
+    contactsCreated: 0,
+    contactsUpdated: 0,
+    contactsSkipped: 0,
+    verticalsAssigned: 0,
+    errors: [],
+    ...extra,
+  };
+}
 
 export async function importCompanies(
   formData: FormData,
@@ -415,109 +839,186 @@ export async function importCompanies(
   const file = formData.get("file");
 
   if (!(file instanceof File) || file.size === 0) {
-    return {
-      companiesCreated: 0,
-      companiesMatched: 0,
-      contactsCreated: 0,
-      contactsSkipped: 0,
-      errors: [],
-      error: "Choose a CSV file to import.",
-    };
+    return emptyImportResult({ error: "Choose a CSV file to import." });
   }
 
   if (file.size > IMPORT_MAX_BYTES) {
-    return {
-      companiesCreated: 0,
-      companiesMatched: 0,
-      contactsCreated: 0,
-      contactsSkipped: 0,
-      errors: [],
-      error: "CSV must be 512KB or smaller.",
-    };
+    return emptyImportResult({ error: "CSV must be 2MB or smaller." });
   }
 
   const text = await file.text();
   const lineCount = text.split(/\r?\n/).filter((line) => line.trim()).length;
   if (lineCount - 1 > IMPORT_MAX_ROWS) {
-    return {
-      companiesCreated: 0,
-      companiesMatched: 0,
-      contactsCreated: 0,
-      contactsSkipped: 0,
-      errors: [],
+    return emptyImportResult({
       error: `CSV can have at most ${IMPORT_MAX_ROWS} data rows.`,
-    };
+    });
   }
 
   const parsed = parseCompanyImportCsv(text);
   if ("error" in parsed) {
-    return {
-      companiesCreated: 0,
-      companiesMatched: 0,
-      contactsCreated: 0,
-      contactsSkipped: 0,
-      errors: [],
-      error: parsed.error,
-    };
+    return emptyImportResult({ error: parsed.error });
   }
 
-  const { companies, errors } = parsed;
+  const { companies, errors, hasVerticalsColumn } = parsed;
+  const companiesWithVerticals = companies.filter(
+    (company) => company.verticals.length > 0,
+  ).length;
+  const warning =
+    hasVerticalsColumn && companiesWithVerticals === 0
+      ? "The verticals, summary, and LinkedIn columns were empty, so those fields were left unchanged. Put values in the verticals column and import again."
+      : hasVerticalsColumn && companiesWithVerticals < companies.length
+        ? `Verticals were found for ${companiesWithVerticals} of ${companies.length} companies. Fill the verticals column for the rest and import again.`
+        : undefined;
 
   if (companies.length === 0) {
-    return {
-      companiesCreated: 0,
-      companiesMatched: 0,
-      contactsCreated: 0,
-      contactsSkipped: 0,
+    return emptyImportResult({
       errors,
       error: errors[0]?.message ?? "No companies found in the CSV.",
-    };
+    });
   }
 
-  const { data: existingRows, error: existingError } = await supabase
-    .from("companies")
-    .select("id, name");
-
-  if (existingError) {
-    return {
-      companiesCreated: 0,
-      companiesMatched: 0,
-      contactsCreated: 0,
-      contactsSkipped: 0,
-      errors,
-      error: existingError.message,
-    };
-  }
-
-  const existingByName = new Map(
-    (existingRows ?? []).map((row) => [row.name.trim().toLowerCase(), row.id]),
+  const existingResult = await fetchAllRows<{ id: string; name: string }>(
+    (from, to) =>
+      supabase
+        .from("companies")
+        .select("id, name")
+        .order("id", { ascending: true })
+        .range(from, to),
   );
+  if (existingResult.error) {
+    return emptyImportResult({ errors, error: existingResult.error });
+  }
+
+  const existingById = new Map(
+    existingResult.data.map((row) => [row.id, row]),
+  );
+  const existingByName = new Map(
+    existingResult.data.map((row) => [row.name.trim().toLowerCase(), row.id]),
+  );
+
+  const verticalsCacheResult = await fetchAllRows<VerticalOption>((from, to) =>
+    supabase
+      .from("verticals")
+      .select("id, name")
+      .order("name", { ascending: true })
+      .range(from, to),
+  );
+  if (verticalsCacheResult.error) {
+    return emptyImportResult({ errors, error: verticalsCacheResult.error });
+  }
+  const verticalsCache = verticalsCacheResult.data;
 
   let companiesCreated = 0;
   let companiesMatched = 0;
-  let contactsCreated = 0;
-  let contactsSkipped = 0;
-  const companyIds = new Map<string, string>();
+  let companiesUpdated = 0;
+  let verticalsAssigned = 0;
+  const companyIds = new Map<object, string>();
 
   for (const company of companies) {
-    const key = company.name.toLowerCase();
-    const existingId = existingByName.get(key);
+    const row = company.contacts[0]?.row ?? 0;
+    const payload = {
+      name: company.name,
+      website: company.website,
+      notes: company.notes,
+      status: company.status,
+      kind: company.kind,
+      can_reengage: company.can_reengage,
+      follow_up_at: company.follow_up_at,
+      follow_up_note: company.follow_up_note,
+      summary: company.summary,
+      linkedin_url: company.linkedin_url,
+    };
+
+    if (company.id) {
+      if (!existingById.has(company.id)) {
+        errors.push({
+          row,
+          message: `company_id ${company.id} was not found.`,
+        });
+        continue;
+      }
+
+      const { error } = await supabase
+        .from("companies")
+        .update(payload)
+        .eq("id", company.id);
+      if (error) {
+        errors.push({ row, message: error.message });
+        continue;
+      }
+
+      if (company.verticals.length > 0) {
+        const verticals = await replaceCompanyVerticals(
+          supabase,
+          company.id,
+          company.verticals,
+          verticalsCache,
+        );
+        if (verticals && "error" in verticals) {
+          errors.push({ row, message: verticals.error });
+          continue;
+        }
+        verticalsAssigned += 1;
+      }
+
+      companyIds.set(company, company.id);
+      existingById.set(company.id, { id: company.id, name: company.name });
+      existingByName.set(company.name.trim().toLowerCase(), company.id);
+      companiesUpdated += 1;
+      continue;
+    }
+
+    const existingId = existingByName.get(company.name.toLowerCase());
     if (existingId) {
-      companyIds.set(key, existingId);
-      companiesMatched += 1;
+      companyIds.set(company, existingId);
+      const patch: {
+        summary?: string | null;
+        linkedin_url?: string | null;
+        notes?: string | null;
+        website?: string | null;
+      } = {};
+      if (company.summary) patch.summary = company.summary;
+      if (company.linkedin_url) patch.linkedin_url = company.linkedin_url;
+      if (company.notes) patch.notes = company.notes;
+      if (company.website) patch.website = company.website;
+
+      let wrote = false;
+      if (Object.keys(patch).length > 0) {
+        const { error } = await supabase
+          .from("companies")
+          .update(patch)
+          .eq("id", existingId);
+        if (error) {
+          errors.push({ row, message: error.message });
+        } else {
+          wrote = true;
+        }
+      }
+
+      if (company.verticals.length > 0) {
+        const verticals = await replaceCompanyVerticals(
+          supabase,
+          existingId,
+          company.verticals,
+          verticalsCache,
+        );
+        if (verticals && "error" in verticals) {
+          errors.push({ row, message: verticals.error });
+        } else {
+          wrote = true;
+          verticalsAssigned += 1;
+        }
+      }
+
+      if (wrote) companiesUpdated += 1;
+      else companiesMatched += 1;
       continue;
     }
 
     const { data, error } = await supabase
       .from("companies")
       .insert({
-        name: company.name,
-        website: company.website,
-        notes: company.notes,
-        status: company.status,
-        kind: company.kind,
-        follow_up_at: company.follow_up_at,
-        follow_up_note: company.follow_up_note,
+        ...payload,
         created_by: user.id,
       })
       .select("id")
@@ -525,38 +1026,72 @@ export async function importCompanies(
 
     if (error || !data) {
       errors.push({
-        row: company.contacts[0]?.row ?? 0,
+        row,
         message: error?.message ?? `Could not create ${company.name}.`,
       });
       continue;
     }
 
-    companyIds.set(key, data.id);
-    existingByName.set(key, data.id);
+    const verticals = await attachCompanyVerticals(
+      supabase,
+      data.id,
+      company.verticals,
+      verticalsCache,
+    );
+    if (verticals && "error" in verticals) {
+      errors.push({ row, message: verticals.error });
+    } else if (company.verticals.length > 0) {
+      verticalsAssigned += 1;
+    }
+
+    companyIds.set(company, data.id);
+    existingById.set(data.id, { id: data.id, name: company.name });
+    existingByName.set(company.name.toLowerCase(), data.id);
     companiesCreated += 1;
   }
 
-  const importedIds = [...companyIds.values()];
+  const importedIds = new Set(companyIds.values());
+  const contactsResult = await fetchAllRows<{
+    id: string;
+    company_id: string;
+    full_name: string;
+    email: string | null;
+    is_primary: boolean;
+  }>((from, to) =>
+    supabase
+      .from("contacts")
+      .select("id, company_id, full_name, email, is_primary")
+      .order("id", { ascending: true })
+      .range(from, to),
+  );
+  if (contactsResult.error) {
+    return emptyImportResult({
+      companiesCreated,
+      companiesMatched,
+      companiesUpdated,
+      verticalsAssigned,
+      errors,
+      error: contactsResult.error,
+    });
+  }
+
+  const existingContactsById = new Map(
+    contactsResult.data.map((contact) => [contact.id, contact]),
+  );
   const existingContactKeys = new Set<string>();
   const companiesWithPrimary = new Set<string>();
 
-  if (importedIds.length > 0) {
-    const { data: existingContacts } = await supabase
-      .from("contacts")
-      .select("company_id, full_name, email, is_primary")
-      .in("company_id", importedIds);
-
-    for (const contact of existingContacts ?? []) {
-      const email = (contact.email ?? "").trim().toLowerCase();
-      if (email) {
-        existingContactKeys.add(`${contact.company_id}:email:${email}`);
-      }
-      existingContactKeys.add(
-        `${contact.company_id}:name:${contact.full_name.trim().toLowerCase()}`,
-      );
-      if (contact.is_primary) {
-        companiesWithPrimary.add(contact.company_id);
-      }
+  for (const contact of contactsResult.data) {
+    if (!importedIds.has(contact.company_id)) continue;
+    const email = (contact.email ?? "").trim().toLowerCase();
+    if (email) {
+      existingContactKeys.add(`${contact.company_id}:email:${email}`);
+    }
+    existingContactKeys.add(
+      `${contact.company_id}:name:${contact.full_name.trim().toLowerCase()}`,
+    );
+    if (contact.is_primary) {
+      companiesWithPrimary.add(contact.company_id);
     }
   }
 
@@ -566,19 +1101,64 @@ export async function importCompanies(
     email: string | null;
     phone: string | null;
     title: string | null;
+    linkedin_url: string | null;
     notes: string | null;
     is_primary: boolean;
   }> = [];
+  let contactsUpdated = 0;
+  let contactsSkipped = 0;
 
   for (const company of companies) {
-    const companyId = companyIds.get(company.name.toLowerCase());
+    const companyId = companyIds.get(company);
     if (!companyId) continue;
 
     for (const contact of company.contacts) {
+      if (contact.id) {
+        const existing = existingContactsById.get(contact.id);
+        if (!existing) {
+          errors.push({
+            row: contact.row,
+            message: `contact_id ${contact.id} was not found.`,
+          });
+          continue;
+        }
+        if (existing.company_id !== companyId) {
+          errors.push({
+            row: contact.row,
+            message: "contact_id belongs to a different company.",
+          });
+          continue;
+        }
+
+        const { error } = await supabase
+          .from("contacts")
+          .update({
+            full_name: contact.full_name,
+            email: contact.email,
+            phone: contact.phone,
+            title: contact.title,
+            linkedin_url: contact.linkedin_url,
+            notes: contact.notes,
+            is_primary: contact.is_primary,
+          })
+          .eq("id", contact.id)
+          .eq("company_id", companyId);
+        if (error) {
+          errors.push({ row: contact.row, message: error.message });
+          continue;
+        }
+        contactsUpdated += 1;
+        if (contact.is_primary) companiesWithPrimary.add(companyId);
+        continue;
+      }
+
       const email = contact.email;
       const nameKey = `${companyId}:name:${contact.full_name.toLowerCase()}`;
       const emailKey = email ? `${companyId}:email:${email}` : null;
-      if (existingContactKeys.has(nameKey) || (emailKey && existingContactKeys.has(emailKey))) {
+      if (
+        existingContactKeys.has(nameKey) ||
+        (emailKey && existingContactKeys.has(emailKey))
+      ) {
         contactsSkipped += 1;
         continue;
       }
@@ -591,6 +1171,7 @@ export async function importCompanies(
         email,
         phone: contact.phone,
         title: contact.title,
+        linkedin_url: contact.linkedin_url,
         notes: contact.notes,
         is_primary: isPrimary,
       });
@@ -600,14 +1181,19 @@ export async function importCompanies(
     }
   }
 
+  let contactsCreated = 0;
   if (toInsert.length > 0) {
     const { error } = await supabase.from("contacts").insert(toInsert);
     if (error) {
       return {
         companiesCreated,
         companiesMatched,
+        companiesUpdated,
         contactsCreated,
+        contactsUpdated,
         contactsSkipped,
+        verticalsAssigned,
+        warning,
         errors,
         error: error.message,
       };
@@ -619,8 +1205,12 @@ export async function importCompanies(
   return {
     companiesCreated,
     companiesMatched,
+    companiesUpdated,
     contactsCreated,
+    contactsUpdated,
     contactsSkipped,
+    verticalsAssigned,
+    warning,
     errors,
   };
 }

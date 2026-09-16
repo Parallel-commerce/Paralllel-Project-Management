@@ -2,12 +2,21 @@
 
 import { useState, useTransition } from "react";
 
+import { CompanyVerticalField } from "@/components/company-vertical-field";
 import { createCompany } from "@/lib/actions/crm";
+import { verticalNamesEqual, type VerticalOption } from "@/lib/verticals";
 import { COMPANY_KINDS, COMPANY_STATUSES } from "@/types/database";
 
-export function CreateCompanyForm() {
+export function CreateCompanyForm({
+  verticals = [],
+}: {
+  verticals?: VerticalOption[];
+}) {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [selectedVerticals, setSelectedVerticals] = useState<VerticalOption[]>(
+    [],
+  );
 
   return (
     <form
@@ -66,6 +75,31 @@ export function CreateCompanyForm() {
           ))}
         </select>
       </label>
+      <CompanyVerticalField
+        name="vertical"
+        selected={selectedVerticals}
+        options={verticals}
+        disabled={pending}
+        onAdd={(input) => {
+          setSelectedVerticals((current) => {
+            if (current.some((item) => verticalNamesEqual(item.name, input.name))) {
+              return current;
+            }
+            return [
+              ...current,
+              {
+                id: input.id ?? `new:${input.name.toLowerCase()}`,
+                name: input.name,
+              },
+            ];
+          });
+        }}
+        onRemove={(verticalId) => {
+          setSelectedVerticals((current) =>
+            current.filter((item) => item.id !== verticalId),
+          );
+        }}
+      />
       {error ? (
         <p className="text-sm text-[var(--danger)]" role="alert">
           {error}

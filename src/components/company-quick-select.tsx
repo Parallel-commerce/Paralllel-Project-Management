@@ -3,13 +3,20 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 
-import { updateCompanyKind, updateCompanyStatus } from "@/lib/actions/crm";
+import { updateCompanyKind, updateCompanyReengage, updateCompanyStatus } from "@/lib/actions/crm";
 import { companyKindColors } from "@/lib/company-kind";
+import {
+  COMPANY_REENGAGE_OPTIONS,
+  companyReengageColors,
+  companyReengageValue,
+  type CompanyReengageFormValue,
+} from "@/lib/company-reengage";
 import { companyStatusColors } from "@/lib/company-status";
 import {
   COMPANY_KINDS,
   COMPANY_STATUSES,
   type CompanyKind,
+  type CompanyReengage,
   type CompanyStatus,
 } from "@/types/database";
 
@@ -52,7 +59,7 @@ function TagSelect({
         className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
       >
         {options.map((option) => (
-          <option key={option.value} value={option.value}>
+          <option key={option.value || "unset"} value={option.value}>
             {option.label}
           </option>
         ))}
@@ -130,6 +137,54 @@ export function CompanyStatusSelect({
         setValue(next as CompanyStatus);
         startTransition(async () => {
           const result = await updateCompanyStatus(companyId, next);
+          if (result?.error) {
+            setValue(previous);
+            return;
+          }
+          router.refresh();
+        });
+      }}
+    />
+  );
+}
+
+export function CompanyReengageSelect({
+  companyId,
+  canReengage,
+}: {
+  companyId: string;
+  canReengage: CompanyReengage | null;
+}) {
+  const router = useRouter();
+  const [value, setValue] = useState<CompanyReengageFormValue>(
+    companyReengageValue(canReengage),
+  );
+  const [pending, startTransition] = useTransition();
+  const colors = companyReengageColors(value || null);
+
+  useEffect(() => {
+    setValue(companyReengageValue(canReengage));
+  }, [canReengage]);
+
+  return (
+    <TagSelect
+      label="Can re-engage"
+      value={value}
+      options={COMPANY_REENGAGE_OPTIONS.map((option) => ({
+        value: option.value,
+        label:
+          option.value === ""
+            ? "Re-engage?"
+            : `Re-engage: ${option.label}`,
+      }))}
+      accent={colors.accent}
+      tag={colors.tag}
+      disabled={pending}
+      onChange={(next) => {
+        const previous = value;
+        setValue(next as CompanyReengageFormValue);
+        startTransition(async () => {
+          const result = await updateCompanyReengage(companyId, next);
           if (result?.error) {
             setValue(previous);
             return;

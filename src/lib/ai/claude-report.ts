@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 
+import { formatAnthropicUserError } from "@/lib/ai/anthropic-error";
 import type { ReportDigest } from "@/types/database";
 
 const MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
@@ -60,9 +61,11 @@ Write the narrative only.`,
 
     return { narrative: text, usedAi: true };
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Claude request failed.";
-    console.error("Claude report narrative failed:", message);
+    const message = formatAnthropicUserError(
+      error,
+      "Claude request failed.",
+    );
+    console.error("Claude report narrative failed:", error);
     return { narrative: fallback, usedAi: false, error: message };
   }
 }

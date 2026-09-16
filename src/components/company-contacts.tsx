@@ -58,6 +58,15 @@ function ContactFields({
         />
       </label>
       <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
+        LinkedIn
+        <input
+          name="linkedin_url"
+          defaultValue={contact?.linkedin_url ?? ""}
+          placeholder="https://www.linkedin.com/in/"
+          className={fieldClass}
+        />
+      </label>
+      <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
         Notes
         <textarea
           name="notes"
@@ -111,6 +120,16 @@ function ContactCard({
               {[contact.email, contact.phone].filter(Boolean).join(" · ") ||
                 "No email or phone"}
             </p>
+            {contact.linkedin_url ? (
+              <a
+                href={contact.linkedin_url}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-1 inline-block text-sm text-[var(--accent)] hover:underline"
+              >
+                LinkedIn
+              </a>
+            ) : null}
             {contact.notes ? (
               <p className="mt-1 text-sm text-[var(--muted)]">{contact.notes}</p>
             ) : null}
@@ -217,7 +236,8 @@ export function CompanyContacts({
       <h2 className="font-medium">Contacts</h2>
       <p className="mt-1 text-sm text-[var(--muted)]">
         People at this company. Emails can be invited as clients when you create
-        a project.
+        a project. Look up the company to fill LinkedIn profiles when they can
+        be found.
       </p>
 
       <form

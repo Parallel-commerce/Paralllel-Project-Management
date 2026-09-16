@@ -7,6 +7,7 @@ import {
 
 export type StatusTab = CompanyStatus | "all" | "follow_ups";
 export type KindTab = CompanyKind | "all";
+export type VerticalTab = "all" | string;
 
 export const STATUS_TABS: { id: StatusTab; label: string }[] = [
   { id: "all", label: "All" },
@@ -25,10 +26,15 @@ export const KIND_TABS: { id: KindTab; label: string }[] = [
   })),
 ];
 
-export function crmHref(status: StatusTab, kind: KindTab) {
+export function crmHref(
+  status: StatusTab,
+  kind: KindTab,
+  vertical: VerticalTab = "all",
+) {
   const params = new URLSearchParams();
   if (status !== "all") params.set("status", status);
   if (kind !== "all") params.set("kind", kind);
+  if (vertical !== "all") params.set("vertical", vertical);
   const query = params.toString();
   return query ? `/crm?${query}` : "/crm";
 }

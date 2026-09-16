@@ -35,27 +35,41 @@ export function ImportCompaniesForm() {
             result.companiesCreated
               ? `${result.companiesCreated} compan${result.companiesCreated === 1 ? "y" : "ies"} added`
               : null,
+            result.companiesUpdated
+              ? `${result.companiesUpdated} compan${result.companiesUpdated === 1 ? "y" : "ies"} updated`
+              : null,
+            result.verticalsAssigned
+              ? `verticals set on ${result.verticalsAssigned}`
+              : null,
             result.companiesMatched
               ? `${result.companiesMatched} matched existing`
               : null,
             result.contactsCreated
               ? `${result.contactsCreated} contact${result.contactsCreated === 1 ? "" : "s"} added`
               : null,
+            result.contactsUpdated
+              ? `${result.contactsUpdated} contact${result.contactsUpdated === 1 ? "" : "s"} updated`
+              : null,
             result.contactsSkipped
               ? `${result.contactsSkipped} contact${result.contactsSkipped === 1 ? "" : "s"} skipped`
               : null,
           ].filter(Boolean);
+          const extraErrorCount = Math.max(0, result.errors.length - 8);
           const rowErrors =
             result.errors.length > 0
-              ? result.errors
-                  .slice(0, 5)
+              ? `${result.errors
+                  .slice(0, 8)
                   .map((item) => `Row ${item.row}: ${item.message}`)
-                  .join(" ")
+                  .join(" ")}${
+                  extraErrorCount
+                    ? ` And ${extraErrorCount} more row issue${extraErrorCount === 1 ? "" : "s"}.`
+                    : ""
+                }`
               : "";
           setSummary(
             parts.length > 0
-              ? `${parts.join(". ")}${rowErrors ? `. ${rowErrors}` : ""}`
-              : rowErrors || "Nothing new to import.",
+              ? `${parts.join(". ")}${result.warning ? `. ${result.warning}` : ""}${rowErrors ? `. ${rowErrors}` : ""}`
+              : result.warning || rowErrors || "Nothing to import.",
           );
           form.reset();
           router.refresh();
@@ -63,16 +77,27 @@ export function ImportCompaniesForm() {
       }}
     >
       <p className="text-sm text-[var(--muted)]">
-        One row per contact. Repeat the company name for extra people. Existing
-        companies are matched by name.
+        Download every company and contact, edit the spreadsheet, then import
+        the same file. Keep the company_id and contact_id columns so existing
+        records update. Leave those ids blank to add new rows. Separate
+        verticals with commas, such as Fashion, Beauty. Follow-up dates must
+        stay YYYY-MM-DD.
       </p>
-      <a
-        href={templateHref()}
-        download="parallel-crm-import.csv"
-        className="text-sm text-[var(--accent)] hover:underline"
-      >
-        Download CSV template
-      </a>
+      <div className="flex flex-col gap-1">
+        <a
+          href="/crm/export"
+          className="text-sm text-[var(--accent)] hover:underline"
+        >
+          Download all companies
+        </a>
+        <a
+          href={templateHref()}
+          download="parallel-crm-import.csv"
+          className="text-sm text-[var(--accent)] hover:underline"
+        >
+          Download empty template
+        </a>
+      </div>
       <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
         CSV file
         <input

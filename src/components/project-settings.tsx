@@ -3,8 +3,10 @@
 import Image from "next/image";
 import { useState, useTransition } from "react";
 
+import { ProjectEngagementFields } from "@/components/project-engagement-fields";
 import { WeekdayPicker } from "@/components/weekday-picker";
 import { deleteProject, updateProject } from "@/lib/actions/projects";
+import type { ProjectType } from "@/types/database";
 
 export function ProjectSettings({
   projectId,
@@ -12,6 +14,8 @@ export function ProjectSettings({
   description,
   logoUrl,
   scheduledWeekdays,
+  projectType,
+  monthlyHours,
   canManage,
 }: {
   projectId: string;
@@ -19,6 +23,8 @@ export function ProjectSettings({
   description: string | null;
   logoUrl: string | null;
   scheduledWeekdays: number[];
+  projectType: ProjectType | null;
+  monthlyHours: number | null;
   canManage: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -99,6 +105,10 @@ export function ProjectSettings({
                 className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
               />
             </label>
+            <ProjectEngagementFields
+              projectType={projectType}
+              monthlyHours={monthlyHours}
+            />
             <WeekdayPicker defaultValue={scheduledWeekdays} />
             <div className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
               <span>Logo</span>

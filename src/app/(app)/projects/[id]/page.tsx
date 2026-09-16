@@ -6,9 +6,11 @@ import { ActivityFeed } from "@/components/activity-feed";
 import { CreateListForm } from "@/components/create-list-form";
 import { MembersPanel } from "@/components/members-panel";
 import { ProjectSettings } from "@/components/project-settings";
+import { ProjectTypeTag } from "@/components/project-type-tag";
 import { StatusCountTag } from "@/components/status-tag";
 import { requireSessionUser } from "@/lib/auth";
 import { projectLogoPublicUrl } from "@/lib/project-logo";
+import { projectEngagementFromRow } from "@/lib/project-type";
 import {
   formatScheduledWeekdays,
   normalizeScheduledWeekdays,
@@ -88,7 +90,7 @@ export default async function ProjectPage({
   ] = await Promise.all([
     supabase
       .from("projects")
-      .select("id, name, description, logo_path, company_id, scheduled_weekdays, companies(id, name)")
+      .select("id, name, description, logo_path, company_id, scheduled_weekdays, companies(id, name), project_engagement(project_type, monthly_hours)")
       .eq("id", id)
       .maybeSingle(),
     supabase
@@ -127,6 +129,9 @@ export default async function ProjectPage({
   const isAdmin = role === "admin" || isPlatformAdmin;
   const isInternal = isPlatformAdmin || role === "admin" || role === "member";
   const canViewCrm = isPlatformAdmin || !!profile?.can_access_crm;
+  const engagement = isInternal
+    ? projectEngagementFromRow(project.project_engagement)
+    : { projectType: null, monthlyHours: null };
   const companyRow = Array.isArray(project.companies)
     ? project.companies[0]
     : project.companies;
@@ -229,6 +234,15 @@ export default async function ProjectPage({
                     </Link>
                   </p>
                 ) : null}
+                {isInternal &&
+                (engagement.projectType || engagement.monthlyHours != null) ? (
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-[var(--muted)]">
+                    <ProjectTypeTag projectType={engagement.projectType} />
+                    {engagement.monthlyHours != null ? (
+                      <span>{engagement.monthlyHours}h / month</span>
+                    ) : null}
+                  </div>
+                ) : null}
                 {scheduledLabel ? (
                   <p className="mt-2 text-sm text-[var(--muted)]">
                     Scheduled: {scheduledLabel}
@@ -250,14 +264,18 @@ export default async function ProjectPage({
             >
               Reports
             </Link>
-            <ProjectSettings
-              projectId={id}
-              name={project.name}
-              description={project.description}
-              logoUrl={logoUrl}
-              scheduledWeekdays={scheduledWeekdays}
-              canManage={isAdmin}
-            />
+            {isAdmin ? (
+              <ProjectSettings
+                projectId={id}
+                name={project.name}
+                description={project.description}
+                logoUrl={logoUrl}
+                scheduledWeekdays={scheduledWeekdays}
+                projectType={engagement.projectType}
+                monthlyHours={engagement.monthlyHours}
+                canManage
+              />
+            ) : null}
           </div>
         </div>
       </div>

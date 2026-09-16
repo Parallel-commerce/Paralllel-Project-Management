@@ -9,7 +9,9 @@ import {
   STATUS_TABS,
   type KindTab,
   type StatusTab,
+  type VerticalTab,
 } from "@/lib/crm-filters";
+import type { VerticalOption } from "@/lib/verticals";
 
 function FilterSelect({
   label,
@@ -78,22 +80,32 @@ function FilterSelect({
 export function CrmFilters({
   status,
   kind,
+  vertical,
+  verticals,
 }: {
   status: StatusTab;
   kind: KindTab;
+  vertical: VerticalTab;
+  verticals: VerticalOption[];
 }) {
   const router = useRouter();
-  const filtered = kind !== "all" || status !== "all";
+  const filtered = kind !== "all" || status !== "all" || vertical !== "all";
+  const verticalOptions = [
+    { id: "all", label: "All" },
+    ...verticals.map((item) => ({ id: item.id, label: item.name })),
+  ];
 
   return (
     <div className="mt-5 flex flex-wrap items-center gap-2 sm:mt-6">
-      <div className="grid w-full min-w-0 grid-cols-1 overflow-hidden rounded-lg border border-[var(--border)] sm:inline-grid sm:w-auto sm:grid-cols-2">
+      <div className="grid w-full min-w-0 grid-cols-1 overflow-hidden rounded-lg border border-[var(--border)] sm:inline-grid sm:w-auto sm:grid-cols-3">
         <FilterSelect
           label="Type"
           value={kind}
           options={KIND_TABS}
           active={kind !== "all"}
-          onChange={(value) => router.push(crmHref(status, value as KindTab))}
+          onChange={(value) =>
+            router.push(crmHref(status, value as KindTab, vertical))
+          }
         />
         <FilterSelect
           label="Stage"
@@ -102,7 +114,17 @@ export function CrmFilters({
           active={status !== "all"}
           className="border-t border-[var(--border)] sm:border-l sm:border-t-0"
           onChange={(value) =>
-            router.push(crmHref(value as StatusTab, kind))
+            router.push(crmHref(value as StatusTab, kind, vertical))
+          }
+        />
+        <FilterSelect
+          label="Vertical"
+          value={vertical}
+          options={verticalOptions}
+          active={vertical !== "all"}
+          className="border-t border-[var(--border)] sm:border-l sm:border-t-0"
+          onChange={(value) =>
+            router.push(crmHref(status, kind, value as VerticalTab))
           }
         />
       </div>

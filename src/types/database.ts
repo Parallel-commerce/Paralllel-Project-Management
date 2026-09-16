@@ -27,6 +27,13 @@ export type CompanyKind =
   | "customer"
   | "ex_customer"
   | "agency";
+export type CompanyReengage = "yes" | "no" | "not_applicable";
+export type ProjectType =
+  | "new_website"
+  | "maintain"
+  | "optimise"
+  | "accelerate"
+  | "enterprise_b2b";
 
 export type Profile = {
   id: string;
@@ -66,6 +73,7 @@ export type Company = {
   notes: string | null;
   status: CompanyStatus;
   kind: CompanyKind;
+  can_reengage: CompanyReengage | null;
   follow_up_at: string | null;
   follow_up_note: string | null;
   enriched_at: string | null;
@@ -84,6 +92,26 @@ export type Contact = {
   linkedin_url: string | null;
   notes: string | null;
   is_primary: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Vertical = {
+  id: string;
+  name: string;
+  created_at: string;
+};
+
+export type CompanyVertical = {
+  company_id: string;
+  vertical_id: string;
+  created_at: string;
+};
+
+export type ProjectEngagement = {
+  project_id: string;
+  project_type: ProjectType | null;
+  monthly_hours: number | null;
   created_at: string;
   updated_at: string;
 };
@@ -349,6 +377,37 @@ export type Database = {
             referencedRelation: "companies";
             referencedColumns: ["id"];
           },
+          {
+            foreignKeyName: "project_engagement_project_id_fkey";
+            columns: ["id"];
+            isOneToOne: true;
+            referencedRelation: "project_engagement";
+            referencedColumns: ["project_id"];
+          },
+        ];
+      };
+      project_engagement: {
+        Row: ProjectEngagement;
+        Insert: {
+          project_id: string;
+          project_type?: ProjectType | null;
+          monthly_hours?: number | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          project_type?: ProjectType | null;
+          monthly_hours?: number | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "project_engagement_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: true;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
         ];
       };
       companies: {
@@ -362,6 +421,7 @@ export type Database = {
           notes?: string | null;
           status?: CompanyStatus;
           kind?: CompanyKind;
+          can_reengage?: CompanyReengage | null;
           follow_up_at?: string | null;
           follow_up_note?: string | null;
           enriched_at?: string | null;
@@ -377,6 +437,7 @@ export type Database = {
           notes?: string | null;
           status?: CompanyStatus;
           kind?: CompanyKind;
+          can_reengage?: CompanyReengage | null;
           follow_up_at?: string | null;
           follow_up_note?: string | null;
           enriched_at?: string | null;
@@ -424,6 +485,46 @@ export type Database = {
             columns: ["company_id"];
             isOneToOne: false;
             referencedRelation: "companies";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      verticals: {
+        Row: Vertical;
+        Insert: {
+          id?: string;
+          name: string;
+          created_at?: string;
+        };
+        Update: {
+          name?: string;
+        };
+        Relationships: [];
+      };
+      company_verticals: {
+        Row: CompanyVertical;
+        Insert: {
+          company_id: string;
+          vertical_id: string;
+          created_at?: string;
+        };
+        Update: {
+          company_id?: string;
+          vertical_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "company_verticals_company_id_fkey";
+            columns: ["company_id"];
+            isOneToOne: false;
+            referencedRelation: "companies";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "company_verticals_vertical_id_fkey";
+            columns: ["vertical_id"];
+            isOneToOne: false;
+            referencedRelation: "verticals";
             referencedColumns: ["id"];
           },
         ];
@@ -1047,6 +1148,8 @@ export type Database = {
       report_period: ReportPeriod;
       company_status: CompanyStatus;
       company_kind: CompanyKind;
+      company_reengage: CompanyReengage;
+      project_type: ProjectType;
     };
     CompositeTypes: Record<string, never>;
   };
@@ -1091,4 +1194,18 @@ export const COMPANY_KINDS: { value: CompanyKind; label: string }[] = [
   { value: "customer", label: "Customer" },
   { value: "ex_customer", label: "Ex customer" },
   { value: "agency", label: "Agency / evangelist" },
+];
+
+export const COMPANY_REENGAGES: { value: CompanyReengage; label: string }[] = [
+  { value: "yes", label: "Yes" },
+  { value: "no", label: "No" },
+  { value: "not_applicable", label: "Not applicable" },
+];
+
+export const PROJECT_TYPES: { value: ProjectType; label: string }[] = [
+  { value: "new_website", label: "New Website" },
+  { value: "maintain", label: "Maintain" },
+  { value: "optimise", label: "Optimise" },
+  { value: "accelerate", label: "Accelerate" },
+  { value: "enterprise_b2b", label: "Enterprise & B2B" },
 ];

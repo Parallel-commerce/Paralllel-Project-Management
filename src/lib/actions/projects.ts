@@ -10,11 +10,18 @@ import {
 } from "@/lib/actions/users";
 import { logActivity, notifyUser, sendSignInCode } from "@/lib/notify";
 import { PROJECT_LOGO_BUCKET } from "@/lib/project-logo";
+import { parseProjectEngagement } from "@/lib/project-type";
 import { parseScheduledWeekdays } from "@/lib/scheduled-weekdays";
 import { projectTaskPrefix } from "@/lib/task-key";
 import { parseTaskType } from "@/lib/task-type";
 import { TASK_ATTACHMENT_BUCKET } from "@/lib/task-attachments";
-import type { ListVisibility, ProjectRole, TaskAttachment, TaskStatus } from "@/types/database";
+import type {
+  ListVisibility,
+  ProjectRole,
+  ProjectType,
+  TaskAttachment,
+  TaskStatus,
+} from "@/types/database";
 
 const LOGO_MIME_TYPES = new Set([
   "image/jpeg",
@@ -102,6 +109,22 @@ async function requireUser() {
   return { supabase, user };
 }
 
+async function saveProjectEngagement(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  projectId: string,
+  input: { projectType: ProjectType | null; monthlyHours: number | null },
+) {
+  const { error } = await supabase.from("project_engagement").upsert(
+    {
+      project_id: projectId,
+      project_type: input.projectType,
+      monthly_hours: input.monthlyHours,
+    },
+    { onConflict: "project_id" },
+  );
+  return error;
+}
+
 export async function createProject(
   formData: FormData,
 ): Promise<{ error: string } | void> {
@@ -109,9 +132,13 @@ export async function createProject(
   const name = String(formData.get("name") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim();
   const scheduledWeekdays = parseScheduledWeekdays(formData);
+  const engagement = parseProjectEngagement(formData);
 
   if (!name) {
     return { error: "Project name is required." };
+  }
+  if ("error" in engagement) {
+    return { error: engagement.error };
   }
 
   const { data: profile } = await supabase
@@ -165,6 +192,13 @@ export async function createProject(
     };
   }
 
+  const engagementError = await saveProjectEngagement(supabase, data.id, engagement);
+  if (engagementError) {
+    return {
+      error: `Project created but engagement details could not be saved: ${engagementError.message}`,
+    };
+  }
+
   revalidatePath("/projects");
   redirect(`/projects/${data.id}`);
 }
@@ -193,11 +227,15 @@ export async function updateProject(projectId: string, formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim();
   const scheduledWeekdays = parseScheduledWeekdays(formData);
+  const engagement = parseProjectEngagement(formData);
   const removeLogo = String(formData.get("remove_logo") ?? "") === "1";
   const logo = formData.get("logo");
 
   if (!name) {
     return { error: "Project name is required." };
+  }
+  if ("error" in engagement) {
+    return { error: engagement.error };
   }
 
   const { data: existing, error: existingError } = await supabase
@@ -268,6 +306,15 @@ export async function updateProject(projectId: string, formData: FormData) {
     return { error: error.message };
   }
 
+  const engagementError = await saveProjectEngagement(
+    supabase,
+    projectId,
+    engagement,
+  );
+  if (engagementError) {
+    return { error: engagementError.message };
+  }
+
   await logActivity({
     projectId,
     actorId: user.id,
@@ -281,6 +328,7 @@ export async function updateProject(projectId: string, formData: FormData) {
   revalidatePath(`/projects/${projectId}`);
   revalidatePath("/home");
   revalidatePath("/tasks");
+  revalidatePath("/crm");
   return { success: true };
 }
 

@@ -4,7 +4,9 @@ import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import { companyKindLabel } from "@/lib/company-kind";
+import { companyReengageLabel } from "@/lib/company-reengage";
 import { companyStatusLabel } from "@/lib/company-status";
+import { verticalsFromJoin } from "@/lib/verticals";
 import type { TaskStatus, TaskType } from "@/types/database";
 
 export type SearchHit = {
@@ -137,7 +139,7 @@ export async function searchApp(rawQuery: string): Promise<SearchResults> {
     isCrm
       ? supabase
           .from("companies")
-          .select("id, name, website, status, kind, summary, updated_at")
+          .select("id, name, website, status, kind, can_reengage, summary, updated_at, company_verticals(verticals(id, name))")
           .or(orIlike(["name", "website", "notes", "summary"], query))
           .order("updated_at", { ascending: false })
           .limit(8)
@@ -208,19 +210,36 @@ export async function searchApp(rawQuery: string): Promise<SearchResults> {
   ).map(toSearchHit);
 
   const companies = sortHits(
-    (companyResult.data ?? []).map((company) => ({
-      id: company.id,
-      href: `/crm/${company.id}`,
-      title: company.name,
-      subtitle: [
-        companyKindLabel(company.kind),
-        companyStatusLabel(company.status),
-        company.website,
-      ]
-        .filter(Boolean)
-        .join(" · "),
-        score: matchScore(query, company.name, company.website, company.summary),
-    })),
+    (companyResult.data ?? []).map((company) => {
+      const verticalNames = verticalsFromJoin(
+        company.company_verticals,
+      )
+        .map((item) => item.name)
+        .join(", ");
+      return {
+        id: company.id,
+        href: `/crm/${company.id}`,
+        title: company.name,
+        subtitle: [
+          companyKindLabel(company.kind),
+          companyStatusLabel(company.status),
+          verticalNames || null,
+          company.can_reengage == null
+            ? null
+            : `Re-engage: ${companyReengageLabel(company.can_reengage)}`,
+          company.website,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+        score: matchScore(
+          query,
+          company.name,
+          company.website,
+          company.summary,
+          verticalNames,
+        ),
+      };
+    }),
   ).map(toSearchHit);
 
   const contacts = sortHits(

@@ -3,9 +3,30 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 
-import { deleteCompany, updateCompany } from "@/lib/actions/crm";
+import { CompanyEnrichButton } from "@/components/company-enrich-button";
+import { CompanyVerticalField } from "@/components/company-vertical-field";
+import {
+  addCompanyVertical,
+  deleteCompany,
+  removeCompanyVertical,
+  updateCompany,
+  updateCompanyLookup,
+} from "@/lib/actions/crm";
+import {
+  COMPANY_REENGAGE_OPTIONS,
+  companyReengageValue,
+} from "@/lib/company-reengage";
 import { dateInputValue } from "@/lib/format-date";
+import type { VerticalOption } from "@/lib/verticals";
 import { COMPANY_KINDS, COMPANY_STATUSES, type Company } from "@/types/database";
+
+function lookupSnapshot(form: HTMLFormElement) {
+  const formData = new FormData(form);
+  return JSON.stringify({
+    summary: String(formData.get("summary") ?? "").trim(),
+    linkedin_url: String(formData.get("linkedin_url") ?? "").trim(),
+  });
+}
 
 function companySnapshot(form: HTMLFormElement) {
   const formData = new FormData(form);
@@ -14,17 +35,27 @@ function companySnapshot(form: HTMLFormElement) {
     website: String(formData.get("website") ?? "").trim(),
     kind: String(formData.get("kind") ?? ""),
     status: String(formData.get("status") ?? ""),
+    can_reengage: String(formData.get("can_reengage") ?? ""),
     follow_up_at: String(formData.get("follow_up_at") ?? "").trim(),
     follow_up_note: String(formData.get("follow_up_note") ?? "").trim(),
     notes: String(formData.get("notes") ?? "").trim(),
   });
 }
 
-export function CompanyEditor({ company }: { company: Company }) {
+export function CompanyEditor({
+  company,
+  verticals,
+  selectedVerticals,
+}: {
+  company: Company;
+  verticals: VerticalOption[];
+  selectedVerticals: VerticalOption[];
+}) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSavedSnapshotRef = useRef<string | null>(null);
+  const lastSavedLookupRef = useRef<string | null>(null);
   const savingRef = useRef(false);
   const queuedRef = useRef(false);
   const persistRef = useRef<() => void>(() => {});
@@ -34,13 +65,35 @@ export function CompanyEditor({ company }: { company: Company }) {
     "idle" | "saving" | "saved" | "error"
   >("idle");
   const [pending, startTransition] = useTransition();
+  const [assignedVerticals, setAssignedVerticals] =
+    useState<VerticalOption[]>(selectedVerticals);
+  const [verticalPending, setVerticalPending] = useState(false);
 
   useEffect(() => {
-    if (!formRef.current) return;
-    lastSavedSnapshotRef.current = companySnapshot(formRef.current);
+    setAssignedVerticals(selectedVerticals);
+  }, [selectedVerticals]);
+
+  useEffect(() => {
+    const form = formRef.current;
+    if (!form) return;
+    const summaryField = form.elements.namedItem("summary");
+    const linkedinField = form.elements.namedItem("linkedin_url");
+    if (summaryField instanceof HTMLTextAreaElement) {
+      summaryField.value = company.summary ?? "";
+    }
+    if (linkedinField instanceof HTMLInputElement) {
+      linkedinField.value = company.linkedin_url ?? "";
+    }
+    lastSavedSnapshotRef.current = companySnapshot(form);
+    lastSavedLookupRef.current = lookupSnapshot(form);
     setSaveState("idle");
     setError(null);
-  }, [company.id]);
+  }, [
+    company.id,
+    company.summary,
+    company.linkedin_url,
+    company.enriched_at,
+  ]);
 
   async function persist() {
     const form = formRef.current;
@@ -87,6 +140,28 @@ export function CompanyEditor({ company }: { company: Company }) {
     router.refresh();
   }
 
+  async function persistLookup() {
+    const form = formRef.current;
+    if (!form) return;
+    const snapshot = lookupSnapshot(form);
+    if (snapshot === lastSavedLookupRef.current) return;
+
+    const formData = new FormData(form);
+    setSaveState("saving");
+    setError(null);
+    const result = await updateCompanyLookup(company.id, formData);
+    if (!mountedRef.current) return;
+    if (result?.error) {
+      setError(result.error);
+      setSaveState("error");
+      return;
+    }
+    lastSavedLookupRef.current = snapshot;
+    setError(null);
+    setSaveState("saved");
+    router.refresh();
+  }
+
   persistRef.current = () => {
     void persist();
   };
@@ -119,32 +194,43 @@ export function CompanyEditor({ company }: { company: Company }) {
     void persist();
   }
 
+  function saveLookup() {
+    void persistLookup();
+  }
+
   return (
     <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <h2 className="font-medium">Company</h2>
           <p className="mt-1 text-sm text-[var(--muted)]">
-            Type, sales status, notes, and a follow-up date if they need another
-            pass.
+            Type, sales status, whether they can be re-engaged, the verticals
+            they work in, a company summary, notes, and a follow-up date if they
+            need another pass.
           </p>
         </div>
-        <p
-          className={`text-xs ${
-            saveState === "error"
-              ? "text-[var(--danger)]"
-              : "text-[var(--muted)]"
-          }`}
-          aria-live="polite"
-        >
-          {saveState === "saving"
-            ? "Saving…"
-            : saveState === "saved"
-              ? "Saved"
-              : saveState === "error"
-                ? "Couldn’t save"
-                : "Changes save automatically"}
-        </p>
+        <div className="flex flex-col items-end gap-2">
+          <p
+            className={`text-xs ${
+              saveState === "error"
+                ? "text-[var(--danger)]"
+                : "text-[var(--muted)]"
+            }`}
+            aria-live="polite"
+          >
+            {saveState === "saving"
+              ? "Saving…"
+              : saveState === "saved"
+                ? "Saved"
+                : saveState === "error"
+                  ? "Couldn’t save"
+                  : "Changes save automatically"}
+          </p>
+          <CompanyEnrichButton
+            companyId={company.id}
+            enrichedAt={company.enriched_at}
+          />
+        </div>
       </div>
 
       <form
@@ -154,7 +240,23 @@ export function CompanyEditor({ company }: { company: Company }) {
           event.preventDefault();
           saveNow();
         }}
-        onInput={scheduleSave}
+        onInput={(event) => {
+          const target = event.target as HTMLElement;
+          if (
+            !(
+              target instanceof HTMLInputElement ||
+              target instanceof HTMLTextAreaElement ||
+              target instanceof HTMLSelectElement
+            ) ||
+            !target.name
+          ) {
+            return;
+          }
+          if (target.name === "summary" || target.name === "linkedin_url") {
+            return;
+          }
+          scheduleSave();
+        }}
         onChange={(event) => {
           const target = event.target as HTMLElement;
           if (
@@ -175,17 +277,40 @@ export function CompanyEditor({ company }: { company: Company }) {
             className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
           />
         </label>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
+            Website
+            <input
+              name="website"
+              defaultValue={company.website ?? ""}
+              placeholder="https://"
+              onBlur={saveNow}
+              className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
+            />
+          </label>
+          <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
+            LinkedIn
+            <input
+              name="linkedin_url"
+              defaultValue={company.linkedin_url ?? ""}
+              placeholder="https://www.linkedin.com/company/"
+              onBlur={saveLookup}
+              className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
+            />
+          </label>
+        </div>
         <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
-          Website
-          <input
-            name="website"
-            defaultValue={company.website ?? ""}
-            placeholder="https://"
-            onBlur={saveNow}
+          Summary
+          <textarea
+            name="summary"
+            rows={4}
+            defaultValue={company.summary ?? ""}
+            placeholder="Look up the company to draft this, or write it yourself."
+            onBlur={saveLookup}
             className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
           />
         </label>
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-3">
           <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
             Type
             <select
@@ -214,7 +339,87 @@ export function CompanyEditor({ company }: { company: Company }) {
               ))}
             </select>
           </label>
+          <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
+            Can re-engage
+            <select
+              name="can_reengage"
+              defaultValue={companyReengageValue(company.can_reengage)}
+              className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
+            >
+              {COMPANY_REENGAGE_OPTIONS.map((option) => (
+                <option key={option.value || "unset"} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
+        <CompanyVerticalField
+          selected={assignedVerticals}
+          options={verticals}
+          disabled={verticalPending}
+          onAdd={(input) => {
+            const previous = assignedVerticals;
+            const optimistic: VerticalOption = {
+              id: input.id ?? `new:${input.name.toLowerCase()}`,
+              name: input.name,
+            };
+            if (
+              previous.some(
+                (item) =>
+                  item.id === optimistic.id ||
+                  item.name.localeCompare(input.name, undefined, {
+                    sensitivity: "accent",
+                  }) === 0,
+              )
+            ) {
+              return;
+            }
+            setAssignedVerticals([...previous, optimistic]);
+            setVerticalPending(true);
+            setSaveState("saving");
+            setError(null);
+            void addCompanyVertical(company.id, input).then((result) => {
+              if (!mountedRef.current) return;
+              setVerticalPending(false);
+              if (result && "error" in result) {
+                setAssignedVerticals(previous);
+                setError(result.error);
+                setSaveState("error");
+                return;
+              }
+              setAssignedVerticals((current) =>
+                current.map((item) =>
+                  item.id === optimistic.id ? result : item,
+                ),
+              );
+              setSaveState("saved");
+              router.refresh();
+            });
+          }}
+          onRemove={(verticalId) => {
+            const previous = assignedVerticals;
+            setAssignedVerticals(
+              previous.filter((item) => item.id !== verticalId),
+            );
+            if (verticalId.startsWith("new:")) return;
+            setVerticalPending(true);
+            setSaveState("saving");
+            setError(null);
+            void removeCompanyVertical(company.id, verticalId).then((result) => {
+              if (!mountedRef.current) return;
+              setVerticalPending(false);
+              if (result?.error) {
+                setAssignedVerticals(previous);
+                setError(result.error);
+                setSaveState("error");
+                return;
+              }
+              setSaveState("saved");
+              router.refresh();
+            });
+          }}
+        />
         <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
           Follow up on
           <input

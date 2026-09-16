@@ -25,12 +25,16 @@ import { useOptimistic, useState, useTransition } from "react";
 
 import { StatusCountTag } from "@/components/status-tag";
 import { reorderProjects } from "@/lib/actions/projects";
+import { projectEngagementSummary } from "@/lib/project-type";
+import type { ProjectType } from "@/types/database";
 
 export type ProjectCardData = {
   id: string;
   name: string;
   logoUrl: string | null;
   todoCount: number;
+  projectType?: ProjectType | null;
+  monthlyHours?: number | null;
 };
 
 function ProjectMark({
@@ -60,6 +64,11 @@ function ProjectMark({
 }
 
 function ProjectCardContent({ project }: { project: ProjectCardData }) {
+  const engagementLabel = projectEngagementSummary(
+    project.projectType,
+    project.monthlyHours,
+  );
+
   return (
     <>
       <ProjectMark name={project.name} logoUrl={project.logoUrl} />
@@ -67,12 +76,17 @@ function ProjectCardContent({ project }: { project: ProjectCardData }) {
         <p className="truncate text-sm font-medium tracking-tight">
           {project.name}
         </p>
-        <div className="mt-0.5">
+        <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
           {project.todoCount > 0 ? (
             <StatusCountTag status="todo" count={project.todoCount} />
           ) : (
             <span className="text-[11px] text-[var(--muted)]">No to do</span>
           )}
+          {engagementLabel ? (
+            <span className="truncate text-[11px] text-[var(--muted)]">
+              {engagementLabel}
+            </span>
+          ) : null}
         </div>
       </div>
     </>

@@ -3,6 +3,7 @@ import { ParallelLogo } from "@/components/parallel-logo";
 import { ProjectsGrid } from "@/components/projects-grid";
 import { requireSessionUser } from "@/lib/auth";
 import { projectLogoPublicUrl } from "@/lib/project-logo";
+import { projectEngagementFromRow } from "@/lib/project-type";
 import type { TaskStatus } from "@/types/database";
 
 export default async function ProjectsPage() {
@@ -22,7 +23,7 @@ export default async function ProjectsPage() {
         .in("role", ["admin", "member"]),
       supabase
         .from("projects")
-        .select("id, name, logo_path, sort_order, created_at")
+        .select("id, name, logo_path, sort_order, created_at, project_engagement(project_type, monthly_hours)")
         .order("sort_order", { ascending: true })
         .order("created_at", { ascending: false }),
     ]);
@@ -96,12 +97,19 @@ export default async function ProjectsPage() {
 
             <ProjectsGrid
               canReorder={canReorder}
-              projects={(projects ?? []).map((project) => ({
-                id: project.id,
-                name: project.name,
-                logoUrl: projectLogoPublicUrl(project.logo_path),
-                todoCount: todoByProject[project.id] ?? 0,
-              }))}
+              projects={(projects ?? []).map((project) => {
+                const engagement = canCreateProjects
+                  ? projectEngagementFromRow(project.project_engagement)
+                  : { projectType: null, monthlyHours: null };
+                return {
+                  id: project.id,
+                  name: project.name,
+                  logoUrl: projectLogoPublicUrl(project.logo_path),
+                  todoCount: todoByProject[project.id] ?? 0,
+                  projectType: engagement.projectType,
+                  monthlyHours: engagement.monthlyHours,
+                };
+              })}
             />
           </section>
 
