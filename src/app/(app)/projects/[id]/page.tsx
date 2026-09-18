@@ -259,6 +259,12 @@ export default async function ProjectPage({
               Messages
             </Link>
             <Link
+              href={`/projects/${id}/store`}
+              className="min-h-10 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm hover:bg-[var(--surface-2)]"
+            >
+              Store
+            </Link>
+            <Link
               href={`/projects/${id}/reports`}
               className="min-h-10 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm hover:bg-[var(--surface-2)]"
             >

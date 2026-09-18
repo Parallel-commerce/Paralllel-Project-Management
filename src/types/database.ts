@@ -313,6 +313,57 @@ export type ProjectReport = {
   sent_to: string[];
 };
 
+export type ShopifyConnectionStatus =
+  | "pending"
+  | "connected"
+  | "error"
+  | "disconnected";
+
+export type ProjectShopifyConnection = {
+  project_id: string;
+  shop_domain: string;
+  client_id: string;
+  client_secret_ciphertext: string;
+  access_token_ciphertext: string | null;
+  scopes: string | null;
+  status: ShopifyConnectionStatus;
+  last_error: string | null;
+  last_synced_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type StoreConnectionPublic = {
+  shop_domain: string;
+  client_id: string;
+  has_client_secret: boolean;
+  has_access_token: boolean;
+  status: ShopifyConnectionStatus;
+  last_error: string | null;
+  last_synced_at: string | null;
+  scopes: string | null;
+};
+
+export type ProjectStoreSnapshot = {
+  id: string;
+  project_id: string;
+  shop_name: string | null;
+  shop_domain: string | null;
+  primary_domain: string | null;
+  plan_name: string | null;
+  currency: string | null;
+  orders_7d: number | null;
+  sales_7d: number | null;
+  orders_30d: number | null;
+  sales_30d: number | null;
+  sales_available: boolean;
+  theme_name: string | null;
+  theme_updated_at: string | null;
+  payload: Record<string, unknown>;
+  captured_at: string;
+  created_at: string;
+};
+
 export type Database = {
   public: {
     Tables: {
@@ -968,6 +1019,88 @@ export type Database = {
         };
         Relationships: [];
       };
+      project_shopify_connections: {
+        Row: ProjectShopifyConnection;
+        Insert: {
+          project_id: string;
+          shop_domain: string;
+          client_id: string;
+          client_secret_ciphertext: string;
+          access_token_ciphertext?: string | null;
+          scopes?: string | null;
+          status?: ShopifyConnectionStatus;
+          last_error?: string | null;
+          last_synced_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          shop_domain?: string;
+          client_id?: string;
+          client_secret_ciphertext?: string;
+          access_token_ciphertext?: string | null;
+          scopes?: string | null;
+          status?: ShopifyConnectionStatus;
+          last_error?: string | null;
+          last_synced_at?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "project_shopify_connections_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: true;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      project_store_snapshots: {
+        Row: ProjectStoreSnapshot;
+        Insert: {
+          id?: string;
+          project_id: string;
+          shop_name?: string | null;
+          shop_domain?: string | null;
+          primary_domain?: string | null;
+          plan_name?: string | null;
+          currency?: string | null;
+          orders_7d?: number | null;
+          sales_7d?: number | null;
+          orders_30d?: number | null;
+          sales_30d?: number | null;
+          sales_available?: boolean;
+          theme_name?: string | null;
+          theme_updated_at?: string | null;
+          payload?: Record<string, unknown>;
+          captured_at?: string;
+          created_at?: string;
+        };
+        Update: {
+          shop_name?: string | null;
+          shop_domain?: string | null;
+          primary_domain?: string | null;
+          plan_name?: string | null;
+          currency?: string | null;
+          orders_7d?: number | null;
+          sales_7d?: number | null;
+          orders_30d?: number | null;
+          sales_30d?: number | null;
+          sales_available?: boolean;
+          theme_name?: string | null;
+          theme_updated_at?: string | null;
+          payload?: Record<string, unknown>;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "project_store_snapshots_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       time_entries: {
         Row: TimeEntry;
         Insert: {
@@ -1150,6 +1283,7 @@ export type Database = {
       company_kind: CompanyKind;
       company_reengage: CompanyReengage;
       project_type: ProjectType;
+      shopify_connection_status: ShopifyConnectionStatus;
     };
     CompositeTypes: Record<string, never>;
   };
