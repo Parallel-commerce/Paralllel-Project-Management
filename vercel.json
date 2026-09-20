@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/store-snapshots",
       "schedule": "10 0 * * *"
+    },
+    {
+      "path": "/api/cron/store-speed",
+      "schedule": "40 0 * * *"
     }
   ]
 }

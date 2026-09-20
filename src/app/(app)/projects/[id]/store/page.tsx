@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { StoreDashboard } from "@/components/store-dashboard";
 import { StoreSetupForm } from "@/components/store-setup-form";
+import { StoreSpeedPanel } from "@/components/store-speed-panel";
 import { requireSessionUser } from "@/lib/auth";
 import { toPublicConnection } from "@/lib/shopify/connection";
 import { STORE_SNAPSHOT_FETCH_LIMIT } from "@/lib/store-snapshot";
@@ -10,9 +11,11 @@ import type {
   ProjectRole,
   ProjectShopifyConnection,
   ProjectStoreSnapshot,
+  ProjectStoreSpeedPage,
+  ProjectStoreSpeedRun,
 } from "@/types/database";
 
-export const maxDuration = 180;
+export const maxDuration = 300;
 
 export default async function ProjectStorePage({
   params,
@@ -48,7 +51,8 @@ export default async function ProjectStorePage({
   const role = (membership?.role ?? "client") as ProjectRole;
   const isAdmin = role === "admin" || !!profile?.is_platform_admin;
 
-  const [{ data: connectionRow }, { data: snapshotRows }] = await Promise.all([
+  const [{ data: connectionRow }, { data: snapshotRows }, { data: speedRunRow }] =
+    await Promise.all([
     isAdmin
       ? supabase
           .from("project_shopify_connections")
@@ -62,7 +66,23 @@ export default async function ProjectStorePage({
       .eq("project_id", id)
       .order("captured_at", { ascending: false })
       .limit(STORE_SNAPSHOT_FETCH_LIMIT),
+    supabase
+      .from("project_store_speed_runs")
+      .select("*")
+      .eq("project_id", id)
+      .order("captured_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ]);
+
+  const speedRun = (speedRunRow as ProjectStoreSpeedRun | null) ?? null;
+  const { data: speedPageRows } = speedRun
+    ? await supabase
+        .from("project_store_speed_pages")
+        .select("*")
+        .eq("run_id", speedRun.id)
+    : { data: [] };
+  const speedPages = (speedPageRows ?? []) as ProjectStoreSpeedPage[];
 
   const connection = connectionRow
     ? toPublicConnection(connectionRow as ProjectShopifyConnection)
@@ -115,6 +135,13 @@ export default async function ProjectStorePage({
             </p>
           </div>
         )}
+
+        <StoreSpeedPanel
+          projectId={id}
+          run={speedRun}
+          pages={speedPages}
+          canRefresh={isAdmin && Boolean(connection?.has_access_token)}
+        />
 
         {isAdmin ? (
           <StoreSetupForm projectId={id} connection={connection} />

@@ -15,6 +15,7 @@ import {
   shopifyAuthorizeUrl,
 } from "@/lib/shopify/oauth";
 import { captureShopifySnapshot } from "@/lib/shopify/sync";
+import { captureStoreSpeed } from "@/lib/shopify/speed";
 import { requireStoreAdmin } from "@/lib/store-auth";
 import type {
   ProjectShopifyConnection,
@@ -172,5 +173,18 @@ export async function syncShopifySnapshot(
 
   revalidatePath(`/projects/${projectId}/store`);
   revalidatePath(`/projects/${projectId}`);
+  return { ok: true };
+}
+
+export async function syncStoreSpeed(
+  projectId: string,
+): Promise<{ error: string } | { ok: true }> {
+  const admin = await requireStoreAdmin(projectId);
+  if (!admin.ok) return { error: admin.error };
+
+  const result = await captureStoreSpeed(admin.supabase, projectId);
+  if ("error" in result) return result;
+
+  revalidatePath(`/projects/${projectId}/store`);
   return { ok: true };
 }

@@ -470,6 +470,44 @@ export type ProjectStoreSnapshot = {
   created_at: string;
 };
 
+export type SpeedPageKind = "home" | "collection" | "product" | "cart";
+
+export type ProjectStoreSpeedRun = {
+  id: string;
+  project_id: string;
+  source: StoreSnapshotSource;
+  origin_url: string | null;
+  origin_passed: boolean | null;
+  origin_lcp_ms: number | null;
+  origin_inp_ms: number | null;
+  origin_cls: number | null;
+  origin_category: string | null;
+  digest: Record<string, unknown>;
+  captured_at: string;
+  created_at: string;
+};
+
+export type ProjectStoreSpeedPage = {
+  id: string;
+  run_id: string;
+  project_id: string;
+  page_kind: SpeedPageKind;
+  url: string;
+  title: string | null;
+  performance_score: number | null;
+  lab_lcp_ms: number | null;
+  lab_tbt_ms: number | null;
+  lab_cls: number | null;
+  field_lcp_ms: number | null;
+  field_inp_ms: number | null;
+  field_cls: number | null;
+  field_passed: boolean | null;
+  field_category: string | null;
+  opportunities: { id: string; title: string; savings_ms: number }[];
+  error: string | null;
+  payload: Record<string, unknown>;
+};
+
 export type Database = {
   public: {
     Tables: {
@@ -1213,6 +1251,77 @@ export type Database = {
             columns: ["project_id"];
             isOneToOne: false;
             referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      project_store_speed_runs: {
+        Row: ProjectStoreSpeedRun;
+        Insert: {
+          id?: string;
+          project_id: string;
+          source?: StoreSnapshotSource;
+          origin_url?: string | null;
+          origin_passed?: boolean | null;
+          origin_lcp_ms?: number | null;
+          origin_inp_ms?: number | null;
+          origin_cls?: number | null;
+          origin_category?: string | null;
+          digest?: Record<string, unknown>;
+          captured_at?: string;
+          created_at?: string;
+        };
+        Update: {
+          origin_url?: string | null;
+          origin_passed?: boolean | null;
+          origin_lcp_ms?: number | null;
+          origin_inp_ms?: number | null;
+          origin_cls?: number | null;
+          origin_category?: string | null;
+          digest?: Record<string, unknown>;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "project_store_speed_runs_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      project_store_speed_pages: {
+        Row: ProjectStoreSpeedPage;
+        Insert: {
+          id?: string;
+          run_id: string;
+          project_id: string;
+          page_kind: SpeedPageKind;
+          url: string;
+          title?: string | null;
+          performance_score?: number | null;
+          lab_lcp_ms?: number | null;
+          lab_tbt_ms?: number | null;
+          lab_cls?: number | null;
+          field_lcp_ms?: number | null;
+          field_inp_ms?: number | null;
+          field_cls?: number | null;
+          field_passed?: boolean | null;
+          field_category?: string | null;
+          opportunities?: Record<string, unknown>[] | ProjectStoreSpeedPage["opportunities"];
+          error?: string | null;
+          payload?: Record<string, unknown>;
+        };
+        Update: {
+          title?: string | null;
+          error?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "project_store_speed_pages_run_id_fkey";
+            columns: ["run_id"];
+            isOneToOne: false;
+            referencedRelation: "project_store_speed_runs";
             referencedColumns: ["id"];
           },
         ];
