@@ -114,6 +114,9 @@ export function StoreSpeedPanel({
                     {PAGE_LABEL[page.page_kind]}
                   </p>
                   <p className="mt-1 font-medium">{pageLabel(page)}</p>
+                  <p className="mt-0.5 truncate text-xs text-[var(--muted)]">
+                    {page.url.replace(/^https?:\/\//, "")}
+                  </p>
                   {page.error ? (
                     <p className="mt-2 text-sm text-[var(--danger)]">{page.error}</p>
                   ) : (

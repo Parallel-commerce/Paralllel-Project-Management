@@ -57,9 +57,17 @@ export async function captureStoreSpeed(
   }
 
   const accessToken = decryptSecret(row.access_token_ciphertext);
+  const { data: snapshot } = await supabase
+    .from("project_store_snapshots")
+    .select("primary_domain")
+    .eq("project_id", projectId)
+    .order("captured_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
   const { origin, targets } = await resolveSpeedTargets(
     row.shop_domain,
     accessToken,
+    snapshot?.primary_domain,
   );
 
   const pages: SpeedPageResult[] = [];
