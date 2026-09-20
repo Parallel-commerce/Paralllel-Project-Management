@@ -34,6 +34,8 @@ export function StoreSetupForm({
       <p className="mt-1 text-sm text-[var(--muted)]">
         Create a custom-distribution app for this one store in the Shopify Dev
         Dashboard, then paste its credentials here. Clients never see this.
+        New connects request <code>read_orders</code>, <code>read_themes</code>,
+        and <code>read_reports</code>.
       </p>
 
       <form
@@ -144,7 +146,7 @@ export function StoreSetupForm({
             disabled={pending || !connection?.has_access_token}
             className="rounded-md border border-[var(--border)] bg-white px-4 py-2 text-sm font-medium hover:bg-[var(--surface-2)] disabled:opacity-60"
           >
-            Sync now
+            {pending ? "Syncing…" : "Sync now"}
           </button>
         </form>
         {connection?.has_access_token ? (
@@ -173,10 +175,28 @@ export function StoreSetupForm({
         ) : null}
       </div>
 
+      {connected ? (
+        <p className="mt-3 text-sm text-[var(--muted)]">
+          Sync now refreshes the live 7 and 30 day totals and records yesterday.
+          After that, a nightly job captures each completed shop day after
+          midnight.
+        </p>
+      ) : null}
+
       {connection?.status ? (
         <p className="mt-3 text-xs uppercase tracking-wide text-[var(--muted)]">
           Status: {connection.status.replace("_", " ")}
           {connection.scopes ? ` · Scopes: ${connection.scopes}` : ""}
+        </p>
+      ) : null}
+
+      {connected &&
+      connection.scopes &&
+      !connection.scopes.split(/[,\s]+/).includes("read_reports") ? (
+        <p className="mt-3 text-sm text-[var(--muted)]">
+          Store reports on the Reports page use ShopifyQL when{" "}
+          <code>read_reports</code> is on this app. Add it, then reconnect, so
+          sessions and conversion match what Claude can query.
         </p>
       ) : null}
 

@@ -283,6 +283,9 @@ export type TimeEntry = {
 };
 
 export type ReportPeriod = "week" | "month" | "custom";
+export type ReportKind = "progress" | "store";
+export type ScorecardTrend = "up" | "flat" | "down";
+export type ScorecardFormat = "money" | "count" | "percent";
 
 export type ReportDigest = {
   stats: {
@@ -297,15 +300,112 @@ export type ReportDigest = {
   activity_summaries: string[];
 };
 
+export type PeriodMetric = {
+  this_week: number | null;
+  last_week: number | null;
+  change_pct: number | null;
+};
+
+export type ScorecardMetric = {
+  key: string;
+  label: string;
+  this_week: number | null;
+  last_week: number | null;
+  change_pct: number | null;
+  trend: ScorecardTrend | null;
+  format: ScorecardFormat;
+  available: boolean;
+};
+
+export type StoreReportDay = {
+  date: string;
+  sales?: number | null;
+  orders?: number | null;
+  sessions?: number | null;
+  conversion_rate?: number | null;
+};
+
+export type StoreChannelRow = {
+  name: string;
+  sales: number;
+  previous_sales: number | null;
+  share_pct: number | null;
+  change_pct: number | null;
+};
+
+export type StoreProductRow = {
+  title: string;
+  units: number | null;
+  sales: number | null;
+  sell_through: number | null;
+};
+
+export type StoreReferrerRow = {
+  source: string;
+  sessions: number;
+  share_pct: number | null;
+};
+
+export type StoreReportDigest = {
+  kind: "store";
+  source: "shopifyql" | "admin_orders" | "mixed";
+  shop_name: string | null;
+  currency: string | null;
+  timezone: string | null;
+  period?: ReportPeriod;
+  week_start: string;
+  week_end: string;
+  previous_week_start: string;
+  previous_week_end: string;
+  unavailable: string[];
+  warnings: string[];
+  scorecard: {
+    metrics: ScorecardMetric[];
+    greens: number;
+    scored: number;
+    score: number;
+    interpretation: string;
+  };
+  sales: {
+    total_sales: PeriodMetric;
+    orders: PeriodMetric;
+    aov: PeriodMetric;
+    discounts: PeriodMetric;
+    discount_order_pct: PeriodMetric | null;
+    avg_discount: number | null;
+    strongest_day: { date: string; sales: number } | null;
+    weakest_day: { date: string; sales: number } | null;
+    daily: StoreReportDay[];
+  };
+  channels: StoreChannelRow[];
+  customers: {
+    new: PeriodMetric | null;
+    returning: PeriodMetric | null;
+    returning_rate: PeriodMetric | null;
+  };
+  conversion: {
+    rate: PeriodMetric | null;
+    sessions: PeriodMetric | null;
+    best_day: { date: string; rate: number } | null;
+    worst_day: { date: string; rate: number } | null;
+  };
+  products: StoreProductRow[];
+  referrers: StoreReferrerRow[];
+  sessions_daily: StoreReportDay[];
+};
+
+export type ProjectReportDigest = ReportDigest | StoreReportDigest;
+
 export type ProjectReport = {
   id: string;
   project_id: string;
+  kind: ReportKind;
   period: ReportPeriod;
   period_start: string;
   period_end: string;
   title: string;
   narrative: string | null;
-  digest: ReportDigest;
+  digest: ProjectReportDigest;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -344,6 +444,8 @@ export type StoreConnectionPublic = {
   scopes: string | null;
 };
 
+export type StoreSnapshotSource = "manual" | "scheduled";
+
 export type ProjectStoreSnapshot = {
   id: string;
   project_id: string;
@@ -352,6 +454,8 @@ export type ProjectStoreSnapshot = {
   primary_domain: string | null;
   plan_name: string | null;
   currency: string | null;
+  orders_1d: number | null;
+  sales_1d: number | null;
   orders_7d: number | null;
   sales_7d: number | null;
   orders_30d: number | null;
@@ -359,6 +463,8 @@ export type ProjectStoreSnapshot = {
   sales_available: boolean;
   theme_name: string | null;
   theme_updated_at: string | null;
+  snapshot_date: string | null;
+  source: StoreSnapshotSource;
   payload: Record<string, unknown>;
   captured_at: string;
   created_at: string;
@@ -997,12 +1103,13 @@ export type Database = {
         Insert: {
           id?: string;
           project_id: string;
+          kind?: ReportKind;
           period: ReportPeriod;
           period_start: string;
           period_end: string;
           title: string;
           narrative?: string | null;
-          digest?: ReportDigest;
+          digest?: ProjectReportDigest;
           created_by: string;
           created_at?: string;
           updated_at?: string;
@@ -1012,7 +1119,8 @@ export type Database = {
         Update: {
           title?: string;
           narrative?: string | null;
-          digest?: ReportDigest;
+          digest?: ProjectReportDigest;
+          kind?: ReportKind;
           sent_at?: string | null;
           sent_to?: string[];
           updated_at?: string;
@@ -1065,6 +1173,8 @@ export type Database = {
           primary_domain?: string | null;
           plan_name?: string | null;
           currency?: string | null;
+          orders_1d?: number | null;
+          sales_1d?: number | null;
           orders_7d?: number | null;
           sales_7d?: number | null;
           orders_30d?: number | null;
@@ -1072,6 +1182,8 @@ export type Database = {
           sales_available?: boolean;
           theme_name?: string | null;
           theme_updated_at?: string | null;
+          snapshot_date?: string | null;
+          source?: StoreSnapshotSource;
           payload?: Record<string, unknown>;
           captured_at?: string;
           created_at?: string;
@@ -1082,6 +1194,8 @@ export type Database = {
           primary_domain?: string | null;
           plan_name?: string | null;
           currency?: string | null;
+          orders_1d?: number | null;
+          sales_1d?: number | null;
           orders_7d?: number | null;
           sales_7d?: number | null;
           orders_30d?: number | null;
@@ -1089,6 +1203,8 @@ export type Database = {
           sales_available?: boolean;
           theme_name?: string | null;
           theme_updated_at?: string | null;
+          snapshot_date?: string | null;
+          source?: StoreSnapshotSource;
           payload?: Record<string, unknown>;
         };
         Relationships: [
@@ -1279,6 +1395,7 @@ export type Database = {
       task_status: TaskStatus;
       task_type: TaskType;
       report_period: ReportPeriod;
+      report_kind: ReportKind;
       company_status: CompanyStatus;
       company_kind: CompanyKind;
       company_reengage: CompanyReengage;

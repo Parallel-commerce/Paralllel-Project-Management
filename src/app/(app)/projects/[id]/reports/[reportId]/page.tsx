@@ -2,7 +2,9 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { ReportEditor } from "@/components/report-editor";
+import { StoreReportScorecard } from "@/components/store-report-scorecard";
 import { formatDateTime } from "@/lib/format-date";
+import { asStoreReportDigest } from "@/lib/store-report";
 import { createClient } from "@/lib/supabase/server";
 import type { ProjectRole, ReportDigest } from "@/types/database";
 
@@ -30,7 +32,7 @@ export default async function ProjectReportDetailPage({
   const { data: report } = await supabase
     .from("project_reports")
     .select(
-      "id, title, narrative, digest, period, period_start, period_end, created_at, sent_at, sent_to",
+      "id, title, narrative, digest, kind, period, period_start, period_end, created_at, sent_at, sent_to",
     )
     .eq("id", reportId)
     .eq("project_id", id)
@@ -40,16 +42,30 @@ export default async function ProjectReportDetailPage({
     notFound();
   }
 
-  const { data: membership } = await supabase
-    .from("project_members")
-    .select("role")
-    .eq("project_id", id)
-    .eq("user_id", user.id)
-    .maybeSingle();
+  const [{ data: membership }, { data: profile }] = await Promise.all([
+    supabase
+      .from("project_members")
+      .select("role")
+      .eq("project_id", id)
+      .eq("user_id", user.id)
+      .maybeSingle(),
+    supabase
+      .from("profiles")
+      .select("is_platform_admin")
+      .eq("id", user.id)
+      .maybeSingle(),
+  ]);
 
   const role = (membership?.role ?? "client") as ProjectRole;
-  const isAdmin = role === "admin";
-  const digest = report.digest as ReportDigest;
+  const isAdmin = role === "admin" || !!profile?.is_platform_admin;
+  const storeDigest = asStoreReportDigest(report.digest, report.kind);
+  const progressDigest =
+    storeDigest ||
+    !report.digest ||
+    typeof report.digest !== "object" ||
+    !("stats" in report.digest)
+      ? null
+      : (report.digest as ReportDigest);
 
   const { data: clientMembers } = isAdmin
     ? await supabase
@@ -93,6 +109,12 @@ export default async function ProjectReportDetailPage({
           {report.sent_at ? ` · Sent ${formatDateTime(report.sent_at)}` : " · Draft"}
         </p>
 
+        {isAdmin && storeDigest?.warnings.length ? (
+          <p className="mt-4 rounded-lg border border-[var(--border)] px-3 py-2 text-sm text-[var(--danger)]">
+            {storeDigest.warnings.join(" ")}
+          </p>
+        ) : null}
+
         <section className="mt-8 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
           <h2 className="font-medium">Narrative</h2>
           <div className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-[var(--foreground)]">
@@ -100,42 +122,46 @@ export default async function ProjectReportDetailPage({
           </div>
         </section>
 
+        {storeDigest ? (
+          <StoreReportScorecard digest={storeDigest} />
+        ) : progressDigest ? (
         <section className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
           <h2 className="font-medium">Snapshot</h2>
           <dl className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
             <div>
               <dt className="text-[var(--muted)]">Completed</dt>
               <dd className="mt-1 text-lg font-medium">
-                {digest.stats.tasks_completed}
+                {progressDigest.stats.tasks_completed}
               </dd>
             </div>
             <div>
               <dt className="text-[var(--muted)]">Created</dt>
               <dd className="mt-1 text-lg font-medium">
-                {digest.stats.tasks_created}
+                {progressDigest.stats.tasks_created}
               </dd>
             </div>
             <div>
               <dt className="text-[var(--muted)]">Comments</dt>
               <dd className="mt-1 text-lg font-medium">
-                {digest.stats.comments}
+                {progressDigest.stats.comments}
               </dd>
             </div>
             <div>
               <dt className="text-[var(--muted)]">Status moves</dt>
               <dd className="mt-1 text-lg font-medium">
-                {digest.stats.status_changes}
+                {progressDigest.stats.status_changes}
               </dd>
             </div>
           </dl>
-          {digest.completed_tasks.length > 0 ? (
+          {progressDigest.completed_tasks.length > 0 ? (
             <ul className="mt-4 list-disc space-y-1 pl-5 text-sm text-[var(--muted)]">
-              {digest.completed_tasks.map((task) => (
+              {progressDigest.completed_tasks.map((task) => (
                 <li key={task}>{task}</li>
               ))}
             </ul>
           ) : null}
         </section>
+        ) : null}
 
         {report.sent_to.length > 0 ? (
           <p className="mt-4 text-sm text-[var(--muted)]">
@@ -152,6 +178,7 @@ export default async function ProjectReportDetailPage({
               narrative={report.narrative}
               clients={clients}
               sentTo={report.sent_to}
+              kind={storeDigest ? "store" : "progress"}
             />
           </div>
         ) : null}

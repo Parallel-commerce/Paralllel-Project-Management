@@ -71,6 +71,15 @@ export async function sendPlainEmail(to: string, subject: string, text: string) 
   return sendEmail(to, subject, text);
 }
 
+export async function sendHtmlEmail(
+  to: string,
+  subject: string,
+  text: string,
+  html: string,
+) {
+  return sendEmail(to, subject, text, html);
+}
+
 /** Friendly reminder: open Parallel, enter email, use the one-time code. */
 export async function sendSignInReminderEmail(input: {
   to: string;

@@ -1,70 +1,93 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 
-import { generateProjectReport } from "@/lib/actions/reports";
-import type { ReportPreset } from "@/lib/reports";
+import { ReportRangePicker, type ReportRangeValue } from "@/components/report-range-picker";
+import {
+  generateProjectReport,
+  generateStoreReport,
+} from "@/lib/actions/reports";
 
-const PRESETS: { value: ReportPreset; label: string; hint: string }[] = [
-  { value: "this_week", label: "This week", hint: "Monday to now" },
-  { value: "last_week", label: "Last week", hint: "Previous full week" },
-  { value: "this_month", label: "This month", hint: "1st to now" },
-  { value: "last_month", label: "Last month", hint: "Previous calendar month" },
-];
-
-export function GenerateReportForm({ projectId }: { projectId: string }) {
-  const [preset, setPreset] = useState<ReportPreset>("this_week");
+export function GenerateReportForm({
+  projectId,
+  storeConnected,
+  missingReportsScope,
+}: {
+  projectId: string;
+  storeConnected: boolean;
+  missingReportsScope: boolean;
+}) {
+  const [range, setRange] = useState<ReportRangeValue>({
+    preset: "last_week",
+    start: "",
+    end: "",
+  });
   const [error, setError] = useState<string | null>(null);
+  const [pendingKind, setPendingKind] = useState<"progress" | "store" | null>(
+    null,
+  );
   const [pending, startTransition] = useTransition();
+  const customIncomplete =
+    range.preset === "custom" && (!range.start || !range.end);
+  const busy = pending || pendingKind !== null;
+
+  function run(kind: "progress" | "store") {
+    setError(null);
+    setPendingKind(kind);
+    startTransition(async () => {
+      try {
+        const result =
+          kind === "store"
+            ? await generateStoreReport(projectId, range)
+            : await generateProjectReport(projectId, range);
+        if (result && "error" in result) {
+          setError(result.error);
+        }
+      } finally {
+        setPendingKind(null);
+      }
+    });
+  }
 
   return (
-    <form
-      className="flex flex-col gap-4 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5"
-      onSubmit={(event) => {
-        event.preventDefault();
-        setError(null);
-        startTransition(async () => {
-          const result = await generateProjectReport(projectId, preset);
-          if (result && "error" in result) {
-            setError(result.error);
-          }
-        });
-      }}
-    >
+    <div className="flex flex-col gap-4 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
       <div>
         <h2 className="font-medium">Generate report</h2>
         <p className="mt-1 text-sm text-[var(--muted)]">
-          Builds a digest from project activity, drafts a Claude narrative, then
-          lets you preview and email clients.
+          Choose a date range, then generate a performance report from project
+          activity or a store report from Shopify.
         </p>
       </div>
 
-      <fieldset className="grid gap-2 sm:grid-cols-2">
-        {PRESETS.map((option) => (
-          <label
-            key={option.value}
-            className={`flex cursor-pointer flex-col rounded-lg border px-3 py-2 text-sm ${
-              preset === option.value
-                ? "border-[var(--accent)] bg-[var(--accent-soft)]"
-                : "border-[var(--border)] bg-white"
-            }`}
+      <ReportRangePicker value={range} onChange={setRange} />
+
+      {missingReportsScope ? (
+        <p className="text-sm text-[var(--muted)]">
+          Store reports can run without <code>read_reports</code>, but sessions
+          and conversion need that scope. Add it on the custom app and{" "}
+          <Link
+            href={`/projects/${projectId}/store`}
+            className="text-[var(--accent)] hover:underline"
           >
-            <span className="flex items-center gap-2 font-medium">
-              <input
-                type="radio"
-                name="preset"
-                value={option.value}
-                checked={preset === option.value}
-                onChange={() => setPreset(option.value)}
-              />
-              {option.label}
-            </span>
-            <span className="mt-1 pl-5 text-xs text-[var(--muted)]">
-              {option.hint}
-            </span>
-          </label>
-        ))}
-      </fieldset>
+            reconnect
+          </Link>
+          .
+        </p>
+      ) : null}
+
+      {!storeConnected ? (
+        <p className="text-sm text-[var(--muted)]">
+          Connect Shopify on the{" "}
+          <Link
+            href={`/projects/${projectId}/store`}
+            className="text-[var(--accent)] hover:underline"
+          >
+            Store
+          </Link>{" "}
+          page to generate store reports.
+        </p>
+      ) : null}
 
       {error ? (
         <p className="text-sm text-[var(--danger)]" role="alert">
@@ -72,13 +95,26 @@ export function GenerateReportForm({ projectId }: { projectId: string }) {
         </p>
       ) : null}
 
-      <button
-        type="submit"
-        disabled={pending}
-        className="self-start rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-60"
-      >
-        {pending ? "Generating…" : "Generate report"}
-      </button>
-    </form>
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <button
+          type="button"
+          disabled={busy || customIncomplete}
+          onClick={() => run("progress")}
+          className="rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-60"
+        >
+          {pendingKind === "progress"
+            ? "Generating…"
+            : "Generate performance report"}
+        </button>
+        <button
+          type="button"
+          disabled={busy || customIncomplete || !storeConnected}
+          onClick={() => run("store")}
+          className="rounded-md border border-[var(--border)] bg-white px-4 py-2 text-sm font-medium hover:bg-[var(--surface-2)] disabled:opacity-60"
+        >
+          {pendingKind === "store" ? "Generating…" : "Generate store report"}
+        </button>
+      </div>
+    </div>
   );
 }

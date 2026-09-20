@@ -1,6 +1,24 @@
 import type { ReportDigest, ReportPeriod } from "@/types/database";
 
-export type ReportPreset = "this_week" | "last_week" | "this_month" | "last_month";
+export type ReportPreset = "last_week" | "last_month" | "custom";
+
+export type ReportRangeInput = {
+  preset: ReportPreset;
+  start?: string | null;
+  end?: string | null;
+};
+
+export type ReportWindow = {
+  period: ReportPeriod;
+  periodStart: Date;
+  periodEnd: Date;
+  label: string;
+  title: string;
+  startYmd: string;
+  endYmd: string;
+};
+
+const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function startOfWeek(date: Date) {
   const d = new Date(date);
@@ -15,56 +33,130 @@ function startOfMonth(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1, 0, 0, 0, 0);
 }
 
-export function resolveReportWindow(preset: ReportPreset, now = new Date()) {
-  const end = new Date(now);
+function endOfDay(date: Date) {
+  const next = new Date(date);
+  next.setHours(23, 59, 59, 999);
+  return next;
+}
 
-  if (preset === "this_week") {
-    const start = startOfWeek(now);
-    return {
-      period: "week" as ReportPeriod,
-      periodStart: start,
-      periodEnd: end,
-      label: formatRangeLabel(start, end),
-      title: `Weekly report · ${formatShortDate(start)}–${formatShortDate(end)}`,
-    };
+function toYmd(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function parseYmd(value: string) {
+  if (!YMD_RE.test(value)) return null;
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(year, (month ?? 1) - 1, day ?? 1, 0, 0, 0, 0);
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== (month ?? 1) - 1 ||
+    date.getDate() !== (day ?? 1)
+  ) {
+    return null;
   }
+  return date;
+}
 
-  if (preset === "last_week") {
+export function parseReportRange(input: {
+  preset?: string | null;
+  start?: string | null;
+  end?: string | null;
+}): ReportRangeInput | { error: string } {
+  if (
+    input.preset !== "last_week" &&
+    input.preset !== "last_month" &&
+    input.preset !== "custom"
+  ) {
+    return { error: "Choose last week, last month, or a custom range." };
+  }
+  if (input.preset === "custom" && (!input.start || !input.end)) {
+    return { error: "Choose a start and end date." };
+  }
+  return {
+    preset: input.preset,
+    start: input.start,
+    end: input.end,
+  };
+}
+
+export function resolveReportWindow(
+  input: ReportRangeInput,
+  now = new Date(),
+): ReportWindow | { error: string } {
+  if (input.preset === "last_week") {
     const thisWeekStart = startOfWeek(now);
     const start = new Date(thisWeekStart);
     start.setDate(start.getDate() - 7);
     const periodEnd = new Date(thisWeekStart);
     periodEnd.setMilliseconds(-1);
     return {
-      period: "week" as ReportPeriod,
+      period: "week",
       periodStart: start,
       periodEnd,
       label: formatRangeLabel(start, periodEnd),
       title: `Weekly report · ${formatShortDate(start)}–${formatShortDate(periodEnd)}`,
+      startYmd: toYmd(start),
+      endYmd: toYmd(periodEnd),
     };
   }
 
-  if (preset === "this_month") {
-    const start = startOfMonth(now);
+  if (input.preset === "last_month") {
+    const thisMonthStart = startOfMonth(now);
+    const start = new Date(
+      thisMonthStart.getFullYear(),
+      thisMonthStart.getMonth() - 1,
+      1,
+    );
+    const periodEnd = new Date(thisMonthStart);
+    periodEnd.setMilliseconds(-1);
     return {
-      period: "month" as ReportPeriod,
+      period: "month",
       periodStart: start,
-      periodEnd: end,
-      label: formatRangeLabel(start, end),
+      periodEnd,
+      label: formatRangeLabel(start, periodEnd),
       title: `Monthly report · ${formatMonth(start)}`,
+      startYmd: toYmd(start),
+      endYmd: toYmd(periodEnd),
     };
   }
 
-  const thisMonthStart = startOfMonth(now);
-  const start = new Date(thisMonthStart.getFullYear(), thisMonthStart.getMonth() - 1, 1);
-  const periodEnd = new Date(thisMonthStart);
-  periodEnd.setMilliseconds(-1);
+  const start = parseYmd(input.start ?? "");
+  const rawEnd = parseYmd(input.end ?? "");
+  if (!start || !rawEnd) {
+    return { error: "Choose a valid start and end date." };
+  }
+  if (start > rawEnd) {
+    return { error: "The start date must be on or before the end date." };
+  }
+
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
+  if (start > today) {
+    return { error: "The range cannot start in the future." };
+  }
+
+  const periodEnd = endOfDay(rawEnd > today ? today : rawEnd);
+  const days =
+    Math.round(
+      (new Date(periodEnd.getFullYear(), periodEnd.getMonth(), periodEnd.getDate()).getTime() -
+        start.getTime()) /
+        86_400_000,
+    ) + 1;
+  if (days > 366) {
+    return { error: "Choose a range of 366 days or fewer." };
+  }
+
   return {
-    period: "month" as ReportPeriod,
+    period: "custom",
     periodStart: start,
     periodEnd,
     label: formatRangeLabel(start, periodEnd),
-    title: `Monthly report · ${formatMonth(start)}`,
+    title: `Report · ${formatShortDate(start)}–${formatShortDate(periodEnd)}`,
+    startYmd: toYmd(start),
+    endYmd: toYmd(periodEnd),
   };
 }
 

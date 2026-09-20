@@ -5,13 +5,14 @@ import { StoreDashboard } from "@/components/store-dashboard";
 import { StoreSetupForm } from "@/components/store-setup-form";
 import { requireSessionUser } from "@/lib/auth";
 import { toPublicConnection } from "@/lib/shopify/connection";
+import { STORE_SNAPSHOT_FETCH_LIMIT } from "@/lib/store-snapshot";
 import type {
   ProjectRole,
   ProjectShopifyConnection,
   ProjectStoreSnapshot,
 } from "@/types/database";
 
-export const maxDuration = 60;
+export const maxDuration = 180;
 
 export default async function ProjectStorePage({
   params,
@@ -47,7 +48,7 @@ export default async function ProjectStorePage({
   const role = (membership?.role ?? "client") as ProjectRole;
   const isAdmin = role === "admin" || !!profile?.is_platform_admin;
 
-  const [{ data: connectionRow }, { data: snapshotRow }] = await Promise.all([
+  const [{ data: connectionRow }, { data: snapshotRows }] = await Promise.all([
     isAdmin
       ? supabase
           .from("project_shopify_connections")
@@ -60,14 +61,14 @@ export default async function ProjectStorePage({
       .select("*")
       .eq("project_id", id)
       .order("captured_at", { ascending: false })
-      .limit(1)
-      .maybeSingle(),
+      .limit(STORE_SNAPSHOT_FETCH_LIMIT),
   ]);
 
   const connection = connectionRow
     ? toPublicConnection(connectionRow as ProjectShopifyConnection)
     : null;
-  const snapshot = (snapshotRow as ProjectStoreSnapshot | null) ?? null;
+  const history = (snapshotRows ?? []) as ProjectStoreSnapshot[];
+  const snapshot = history[0] ?? null;
 
   return (
     <main className="app-container py-6 sm:py-10">
@@ -80,8 +81,14 @@ export default async function ProjectStorePage({
       <h1 className="mt-3 font-display text-3xl tracking-tight">Store</h1>
       <p className="mt-2 text-sm text-[var(--muted)]">
         {isAdmin
-          ? "Connect this project’s Shopify store and refresh the snapshot when you want an update."
-          : "Live snapshot of this store’s recent orders, sales, and published theme."}
+          ? "Connect this project’s Shopify store and refresh the live totals. Daily snapshots run after midnight. Client reports are generated from Reports."
+          : "Live snapshot of this store’s recent orders, sales, and published theme. Daily history is the last complete shop day."}{" "}
+        <Link
+          href={`/projects/${id}/reports`}
+          className="text-[var(--accent)] hover:underline"
+        >
+          View reports
+        </Link>
       </p>
 
       {query.connected === "1" && isAdmin ? (
@@ -97,7 +104,7 @@ export default async function ProjectStorePage({
 
       <div className="mt-8 space-y-8">
         {snapshot ? (
-          <StoreDashboard snapshot={snapshot} />
+          <StoreDashboard snapshot={snapshot} history={history} />
         ) : (
           <div className="rounded-xl border border-dashed border-[var(--border)] bg-[var(--column)]/60 px-6 py-12 text-center">
             <p className="font-medium">Store dashboard isn’t available yet</p>

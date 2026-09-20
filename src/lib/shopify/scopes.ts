@@ -1,4 +1,8 @@
-export const DEFAULT_SHOPIFY_SCOPES = ["read_orders", "read_themes"] as const;
+export const DEFAULT_SHOPIFY_SCOPES = [
+  "read_orders",
+  "read_themes",
+  "read_reports",
+] as const;
 
 export function shopifyScopes() {
   const raw = process.env.SHOPIFY_SCOPES?.trim();

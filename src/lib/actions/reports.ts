@@ -4,14 +4,25 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { generateReportNarrative } from "@/lib/ai/claude-report";
-import { appUrl, logActivity, sendPlainEmail } from "@/lib/notify";
+import { generateStoreReportNarrative } from "@/lib/ai/claude-store-report";
+import { buildProjectReportEmail } from "@/lib/email-report";
+import { appUrl, logActivity, sendHtmlEmail } from "@/lib/notify";
 import {
   buildDigestFromActivity,
+  parseReportRange,
   resolveReportWindow,
-  type ReportPreset,
+  type ReportRangeInput,
 } from "@/lib/reports";
+import { resolveStoreAccess } from "@/lib/shopify/connection";
+import { fetchWeeklyStoreDigest } from "@/lib/shopify/weekly";
+import { requireStoreAdmin } from "@/lib/store-auth";
+import { asStoreReportDigest, storeReportTitle } from "@/lib/store-report";
 import { createClient } from "@/lib/supabase/server";
-import type { ReportDigest } from "@/types/database";
+import type {
+  ProjectShopifyConnection,
+  ReportDigest,
+  StoreReportDigest,
+} from "@/types/database";
 
 async function requireUser() {
   const supabase = await createClient();
@@ -33,31 +44,67 @@ async function requireProjectAdmin(projectId: string): Promise<
     }
 > {
   const { supabase, user } = await requireUser();
-  const { data: membership } = await supabase
-    .from("project_members")
-    .select("role")
-    .eq("project_id", projectId)
-    .eq("user_id", user.id)
-    .maybeSingle();
+  const [{ data: membership }, { data: profile }] = await Promise.all([
+    supabase
+      .from("project_members")
+      .select("role")
+      .eq("project_id", projectId)
+      .eq("user_id", user.id)
+      .maybeSingle(),
+    supabase
+      .from("profiles")
+      .select("is_platform_admin")
+      .eq("id", user.id)
+      .maybeSingle(),
+  ]);
 
-  if (membership?.role !== "admin") {
+  if (membership?.role !== "admin" && !profile?.is_platform_admin) {
     return { error: "Only project admins can manage reports." };
   }
 
   return { ok: true, supabase, user };
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function collectRecipients(
+  formData: FormData,
+): { emails: string[] } | { error: string } {
+  const raw = [
+    ...formData.getAll("recipients"),
+    ...formData.getAll("extra_recipients"),
+  ]
+    .flatMap((value) => String(value).split(/[,;\n]+/))
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+
+  const invalid = raw.find((email) => !EMAIL_RE.test(email));
+  if (invalid) {
+    return { error: `“${invalid}” is not a valid email address.` };
+  }
+
+  return { emails: [...new Set(raw)] };
+}
+
 export async function generateProjectReport(
   projectId: string,
-  preset: ReportPreset,
+  range: ReportRangeInput,
 ): Promise<{ error: string } | void> {
   const admin = await requireProjectAdmin(projectId);
   if (!("ok" in admin)) {
     return { error: admin.error };
   }
 
+  const parsed = parseReportRange(range);
+  if ("error" in parsed) {
+    return { error: parsed.error };
+  }
+
   const { supabase, user } = admin;
-  const window = resolveReportWindow(preset);
+  const window = resolveReportWindow(parsed);
+  if ("error" in window) {
+    return { error: window.error };
+  }
 
   const { data: project } = await supabase
     .from("projects")
@@ -100,6 +147,7 @@ export async function generateProjectReport(
     .from("project_reports")
     .insert({
       project_id: projectId,
+      kind: "progress",
       period: window.period,
       period_start: window.periodStart.toISOString(),
       period_end: window.periodEnd.toISOString(),
@@ -126,6 +174,107 @@ export async function generateProjectReport(
 
   revalidatePath(`/projects/${projectId}`);
   revalidatePath(`/projects/${projectId}/reports`);
+  redirect(`/projects/${projectId}/reports/${report.id}`);
+}
+
+export async function generateStoreReport(
+  projectId: string,
+  range: ReportRangeInput,
+): Promise<{ error: string } | void> {
+  const admin = await requireStoreAdmin(projectId);
+  if (!admin.ok) {
+    return { error: admin.error };
+  }
+
+  const parsed = parseReportRange(range);
+  if ("error" in parsed) {
+    return { error: parsed.error };
+  }
+
+  const { supabase, user } = admin;
+
+  const { data: project } = await supabase
+    .from("projects")
+    .select("name")
+    .eq("id", projectId)
+    .maybeSingle();
+
+  if (!project) {
+    return { error: "Project not found." };
+  }
+
+  const { data: connection } = await supabase
+    .from("project_shopify_connections")
+    .select("*")
+    .eq("project_id", projectId)
+    .maybeSingle();
+
+  const access = resolveStoreAccess(connection as ProjectShopifyConnection | null);
+  if ("error" in access) {
+    return { error: access.error };
+  }
+
+  let digest: StoreReportDigest;
+  try {
+    digest = await fetchWeeklyStoreDigest(access.shop, access.accessToken, parsed);
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Could not pull store metrics from Shopify for the selected range.",
+    };
+  }
+
+  const ai = await generateStoreReportNarrative({
+    projectName: project.name,
+    digest,
+  });
+
+  if (!ai.usedAi) {
+    digest.warnings.push(
+      ai.error ??
+        "Claude did not write this draft, so the narrative is numbers only. Generate again after checking ANTHROPIC_API_KEY.",
+    );
+  }
+
+  const title = storeReportTitle(
+    digest.period,
+    digest.week_start,
+    digest.week_end,
+  );
+  const { data: report, error } = await supabase
+    .from("project_reports")
+    .insert({
+      project_id: projectId,
+      kind: "store",
+      period: digest.period ?? "week",
+      period_start: `${digest.week_start}T00:00:00.000Z`,
+      period_end: `${digest.week_end}T23:59:59.999Z`,
+      title,
+      narrative: ai.narrative,
+      digest,
+      created_by: user.id,
+    })
+    .select("id")
+    .single();
+
+  if (error || !report) {
+    return { error: error?.message ?? "Could not create store report." };
+  }
+
+  await logActivity({
+    projectId,
+    actorId: user.id,
+    entityType: "report",
+    entityId: report.id,
+    action: "created",
+    summary: `Created ${title}`,
+  });
+
+  revalidatePath(`/projects/${projectId}`);
+  revalidatePath(`/projects/${projectId}/reports`);
+  revalidatePath(`/projects/${projectId}/store`);
   redirect(`/projects/${projectId}/reports/${report.id}`);
 }
 
@@ -176,13 +325,12 @@ export async function sendProjectReport(
   }
 
   const { supabase, user } = admin;
-  const recipients = formData
-    .getAll("recipients")
-    .map((value) => String(value).trim().toLowerCase())
-    .filter(Boolean);
-
-  if (recipients.length === 0) {
-    return { error: "Select at least one recipient." };
+  const recipients = collectRecipients(formData);
+  if ("error" in recipients) {
+    return { error: recipients.error };
+  }
+  if (recipients.emails.length === 0) {
+    return { error: "Select or add at least one recipient." };
   }
 
   const { data: project } = await supabase
@@ -193,7 +341,7 @@ export async function sendProjectReport(
 
   const { data: report } = await supabase
     .from("project_reports")
-    .select("id, title, narrative, digest, period_start, period_end")
+    .select("id, title, narrative, digest, period_start, period_end, kind")
     .eq("id", reportId)
     .eq("project_id", projectId)
     .maybeSingle();
@@ -202,32 +350,32 @@ export async function sendProjectReport(
     return { error: "Report not found." };
   }
 
-  const digest = report.digest as ReportDigest;
   const reportUrl = `${appUrl()}/projects/${projectId}/reports/${reportId}`;
-  const body = [
-    report.narrative?.trim() || "Progress update attached.",
-    "",
-    "Snapshot",
-    `• Tasks completed: ${digest.stats.tasks_completed}`,
-    `• Tasks created: ${digest.stats.tasks_created}`,
-    `• Comments: ${digest.stats.comments}`,
-    `• Status updates: ${digest.stats.status_changes}`,
-    digest.completed_tasks.length
-      ? `\nCompleted:\n${digest.completed_tasks.map((t) => `• ${t}`).join("\n")}`
-      : "",
-    `\nView in Parallel: ${reportUrl}`,
-  ]
-    .filter(Boolean)
-    .join("\n");
+  const storeDigest = asStoreReportDigest(report.digest, report.kind);
+  const progressDigest =
+    storeDigest ||
+    !report.digest ||
+    typeof report.digest !== "object" ||
+    !("stats" in report.digest)
+      ? null
+      : (report.digest as ReportDigest);
+  const { text, html } = buildProjectReportEmail({
+    projectName: project.name,
+    title: report.title,
+    narrative: report.narrative,
+    reportUrl,
+    progressDigest,
+  });
 
   const sentTo: string[] = [];
   const failures: string[] = [];
 
-  for (const email of recipients) {
-    const resultEmail = await sendPlainEmail(
+  for (const email of recipients.emails) {
+    const resultEmail = await sendHtmlEmail(
       email,
       `${project.name}: ${report.title}`,
-      body,
+      text,
+      html,
     );
     if ("error" in resultEmail && resultEmail.error) {
       failures.push(`${email}: ${resultEmail.error}`);
@@ -287,7 +435,9 @@ export async function sendProjectReport(
       p_user_id: member.user_id,
       p_type: "report_sent",
       p_title: `New report: ${report.title}`,
-      p_body: `A progress report for ${project.name} is ready.`,
+      p_body: storeDigest
+        ? `A store report for ${project.name} is ready.`
+        : `A progress report for ${project.name} is ready.`,
       p_link: `/projects/${projectId}/reports/${reportId}`,
     });
   }

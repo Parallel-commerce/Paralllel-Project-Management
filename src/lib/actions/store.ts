@@ -15,45 +15,11 @@ import {
   shopifyAuthorizeUrl,
 } from "@/lib/shopify/oauth";
 import { captureShopifySnapshot } from "@/lib/shopify/sync";
-import { createClient } from "@/lib/supabase/server";
+import { requireStoreAdmin } from "@/lib/store-auth";
 import type {
   ProjectShopifyConnection,
   ShopifyConnectionStatus,
 } from "@/types/database";
-
-type StoreAdmin =
-  | { ok: true; supabase: Awaited<ReturnType<typeof createClient>> }
-  | { ok: false; error: string };
-
-async function requireStoreAdmin(projectId: string): Promise<StoreAdmin> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    redirect("/login");
-  }
-
-  const [{ data: membership }, { data: profile }] = await Promise.all([
-    supabase
-      .from("project_members")
-      .select("role")
-      .eq("project_id", projectId)
-      .eq("user_id", user.id)
-      .maybeSingle(),
-    supabase
-      .from("profiles")
-      .select("is_platform_admin")
-      .eq("id", user.id)
-      .maybeSingle(),
-  ]);
-
-  if (membership?.role !== "admin" && !profile?.is_platform_admin) {
-    return { ok: false, error: "Only project admins can manage the store dashboard." };
-  }
-
-  return { ok: true, supabase };
-}
 
 export async function saveShopifyCredentials(
   projectId: string,

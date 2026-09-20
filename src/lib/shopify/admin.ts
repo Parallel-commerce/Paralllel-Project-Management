@@ -1,13 +1,14 @@
+import { lastCompleteLocalDay } from "@/lib/store-report";
 import { shopAdminOrigin } from "@/lib/shopify/domain";
 
 export const SHOPIFY_API_VERSION = "2026-04";
 
-type GraphQlError = {
+export type GraphQlError = {
   message: string;
   extensions?: { code?: string };
 };
 
-type GraphQlResponse<T> = {
+export type GraphQlResponse<T> = {
   data?: T;
   errors?: GraphQlError[];
 };
@@ -29,6 +30,10 @@ export type StoreSnapshotData = {
   primaryDomain: string | null;
   planName: string | null;
   currency: string | null;
+  timeZone: string;
+  orders1d: number | null;
+  sales1d: number | null;
+  snapshotDate: string | null;
   orders7d: number | null;
   sales7d: number | null;
   orders30d: number | null;
@@ -45,6 +50,7 @@ const SHOP_QUERY = /* GraphQL */ `
       name
       myshopifyDomain
       currencyCode
+      ianaTimezone
       primaryDomain {
         url
       }
@@ -80,7 +86,7 @@ const ORDERS_PAGE_QUERY = /* GraphQL */ `
   }
 `;
 
-function isAccessDenied(errors: GraphQlError[] | undefined) {
+export function isAccessDenied(errors: GraphQlError[] | undefined) {
   return (errors ?? []).some((error) => {
     const code = error.extensions?.code?.toUpperCase() ?? "";
     const message = error.message.toLowerCase();
@@ -93,7 +99,7 @@ function isAccessDenied(errors: GraphQlError[] | undefined) {
   });
 }
 
-async function shopifyGraphql<T>(
+export async function shopifyGraphql<T>(
   shop: string,
   accessToken: string,
   query: string,
@@ -118,29 +124,33 @@ async function shopifyGraphql<T>(
   return json ?? {};
 }
 
-function moneyAmount(value: string | null | undefined) {
+export function moneyAmount(value: string | null | undefined) {
   const amount = Number.parseFloat(value ?? "");
   return Number.isFinite(amount) ? amount : 0;
 }
 
-function roundMoney(value: number) {
+export function roundMoney(value: number) {
   return Math.round(value * 100) / 100;
 }
 
-function orderQuerySince(since: Date) {
-  return `created_at:>='${since.toISOString()}' -status:cancelled`;
+function orderQuerySince(since: Date, until?: Date) {
+  const untilClause = until
+    ? ` created_at:<='${until.toISOString()}'`
+    : "";
+  return `created_at:>='${since.toISOString()}'${untilClause} -status:cancelled`;
 }
 
 async function sumOrdersSince(
   shop: string,
   accessToken: string,
   since: Date,
+  until?: Date,
 ): Promise<{ count: number; sales: number; currency: string | null }> {
   let cursor: string | null = null;
   let count = 0;
   let sales = 0;
   let currency: string | null = null;
-  const query = orderQuerySince(since);
+  const query = orderQuerySince(since, until);
 
   for (let page = 0; page < 20; page += 1) {
     const result: GraphQlResponse<OrdersPage> = await shopifyGraphql<OrdersPage>(
@@ -186,6 +196,7 @@ export async function fetchStoreSnapshot(
       name?: string;
       myshopifyDomain?: string;
       currencyCode?: string;
+      ianaTimezone?: string | null;
       primaryDomain?: { url?: string } | null;
       plan?: { displayName?: string } | null;
     };
@@ -199,9 +210,13 @@ export async function fetchStoreSnapshot(
   const shopNode = shopResult.data?.shop;
   const theme = shopResult.data?.themes?.nodes[0];
   const now = new Date();
+  const timeZone = shopNode?.ianaTimezone || "Europe/London";
+  const completeDay = lastCompleteLocalDay(now, timeZone);
   const since7d = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
   const since30d = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
+  let orders1d: number | null = null;
+  let sales1d: number | null = null;
   let orders7d: number | null = null;
   let sales7d: number | null = null;
   let orders30d: number | null = null;
@@ -210,15 +225,23 @@ export async function fetchStoreSnapshot(
   let orderCurrency: string | null = null;
 
   try {
-    const [week, month] = await Promise.all([
+    const [day, week, month] = await Promise.all([
+      sumOrdersSince(
+        shop,
+        accessToken,
+        completeDay.startUtc,
+        completeDay.endUtc,
+      ),
       sumOrdersSince(shop, accessToken, since7d),
       sumOrdersSince(shop, accessToken, since30d),
     ]);
+    orders1d = day.count;
+    sales1d = day.sales;
     orders7d = week.count;
     sales7d = week.sales;
     orders30d = month.count;
     sales30d = month.sales;
-    orderCurrency = month.currency ?? week.currency;
+    orderCurrency = month.currency ?? week.currency ?? day.currency;
   } catch (error) {
     if (error instanceof Error && error.name === "SalesUnavailableError") {
       salesAvailable = false;
@@ -233,6 +256,10 @@ export async function fetchStoreSnapshot(
     primaryDomain: shopNode?.primaryDomain?.url ?? null,
     planName: shopNode?.plan?.displayName ?? null,
     currency: shopNode?.currencyCode ?? orderCurrency,
+    timeZone,
+    orders1d,
+    sales1d,
+    snapshotDate: completeDay.ymd,
     orders7d,
     sales7d,
     orders30d,
@@ -244,6 +271,8 @@ export async function fetchStoreSnapshot(
       shop: shopNode ?? null,
       theme: theme ?? null,
       sales_available: salesAvailable,
+      time_zone: timeZone,
+      snapshot_date: completeDay.ymd,
     },
   };
 }
