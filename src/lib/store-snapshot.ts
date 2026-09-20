@@ -9,7 +9,11 @@ import type { ProjectStoreSnapshot, ScorecardTrend } from "@/types/database";
 export const STORE_SNAPSHOT_FETCH_LIMIT = 60;
 export const STORE_DAILY_HISTORY_LIMIT = 30;
 
-export type SnapshotMetricKey = "orders_1d" | "sales_1d";
+export type SnapshotMetricKey =
+  | "orders_1d"
+  | "sales_1d"
+  | "sessions_1d"
+  | "conversion_rate_1d";
 
 export function snapshotNumber(
   value: number | string | null | undefined,
@@ -35,9 +39,9 @@ export function vsPreviousDayCopy(change: number | null): {
   if (change == null) return null;
   const trend = trendFromChange(change) ?? "flat";
   const abs = formatStoreNumber(Math.abs(round1(change)));
-  if (trend === "up") return { label: `Up ${abs}% vs previous day`, trend };
-  if (trend === "down") return { label: `Down ${abs}% vs previous day`, trend };
-  return { label: "Flat vs previous day", trend: "flat" };
+  if (trend === "up") return { label: `↑ ${abs}%`, trend };
+  if (trend === "down") return { label: `↓ ${abs}%`, trend };
+  return { label: "Flat", trend: "flat" };
 }
 
 export function uniqueDailySnapshots(rows: ProjectStoreSnapshot[]) {
@@ -49,7 +53,7 @@ export function uniqueDailySnapshots(rows: ProjectStoreSnapshot[]) {
       byDate.set(row.snapshot_date, row);
       continue;
     }
-    if (row.source === "scheduled" && existing.source !== "scheduled") {
+    if (row.captured_at > existing.captured_at) {
       byDate.set(row.snapshot_date, row);
     }
   }

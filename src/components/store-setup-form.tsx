@@ -194,7 +194,7 @@ export function StoreSetupForm({
       connection.scopes &&
       !connection.scopes.split(/[,\s]+/).includes("read_reports") ? (
         <p className="mt-3 text-sm text-[var(--muted)]">
-          Store reports on the Reports page use ShopifyQL when{" "}
+          Store reports and the Store cards use ShopifyQL when{" "}
           <code>read_reports</code> is on this app. Add it, then reconnect, so
           sessions and conversion match what Claude can query.
         </p>

@@ -11,6 +11,33 @@ import type {
   StoreSnapshotSource,
 } from "@/types/database";
 
+function snapshotWarning(snapshot: {
+  salesAvailable: boolean;
+  reportsAvailable: boolean;
+}) {
+  const parts: string[] = [];
+  if (!snapshot.salesAvailable) {
+    parts.push("Sales need the read_orders scope.");
+  }
+  if (!snapshot.reportsAvailable) {
+    parts.push(
+      "Sessions and conversion need read_reports. Add it on the custom app, then reconnect.",
+    );
+  }
+  if (!parts.length) return null;
+  return `Shop and theme synced. ${parts.join(" ")}`;
+}
+
+function scopesWithReports(scopes: string | null, reportsAvailable: boolean) {
+  if (!reportsAvailable) return scopes;
+  const parts = (scopes ?? "")
+    .split(/[,\s]+/)
+    .map((scope) => scope.trim())
+    .filter(Boolean);
+  if (!parts.includes("read_reports")) parts.push("read_reports");
+  return parts.join(",") || scopes;
+}
+
 export async function captureShopifySnapshot(
   supabase: SupabaseClient<Database>,
   projectId: string,
@@ -55,10 +82,9 @@ export async function captureShopifySnapshot(
           .from("project_shopify_connections")
           .update({
             status: "connected",
-            last_error: snapshot.salesAvailable
-              ? null
-              : "Shop and theme synced. Sales need the read_orders scope.",
+            last_error: snapshotWarning(snapshot),
             last_synced_at: new Date().toISOString(),
+            scopes: scopesWithReports(row.scopes, snapshot.reportsAvailable),
           })
           .eq("project_id", projectId);
         return { ok: true, skipped: true };
@@ -78,7 +104,14 @@ export async function captureShopifySnapshot(
       sales_7d: snapshot.sales7d,
       orders_30d: snapshot.orders30d,
       sales_30d: snapshot.sales30d,
+      sessions_1d: snapshot.sessions1d,
+      conversion_rate_1d: snapshot.conversionRate1d,
+      sessions_7d: snapshot.sessions7d,
+      conversion_rate_7d: snapshot.conversionRate7d,
+      sessions_30d: snapshot.sessions30d,
+      conversion_rate_30d: snapshot.conversionRate30d,
       sales_available: snapshot.salesAvailable,
+      reports_available: snapshot.reportsAvailable,
       theme_name: snapshot.themeName,
       theme_updated_at: snapshot.themeUpdatedAt,
       snapshot_date: snapshot.snapshotDate,
@@ -97,10 +130,9 @@ export async function captureShopifySnapshot(
       .from("project_shopify_connections")
       .update({
         status: "connected",
-        last_error: snapshot.salesAvailable
-          ? null
-          : "Shop and theme synced. Sales need the read_orders scope.",
+        last_error: snapshotWarning(snapshot),
         last_synced_at: new Date().toISOString(),
+        scopes: scopesWithReports(row.scopes, snapshot.reportsAvailable),
       })
       .eq("project_id", projectId);
 

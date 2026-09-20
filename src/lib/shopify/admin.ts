@@ -1,5 +1,6 @@
 import { lastCompleteLocalDay } from "@/lib/store-report";
 import { shopAdminOrigin } from "@/lib/shopify/domain";
+import { fetchSnapshotTraffic } from "@/lib/shopify/sessions";
 
 export const SHOPIFY_API_VERSION = "2026-04";
 
@@ -38,7 +39,14 @@ export type StoreSnapshotData = {
   sales7d: number | null;
   orders30d: number | null;
   sales30d: number | null;
+  sessions1d: number | null;
+  conversionRate1d: number | null;
+  sessions7d: number | null;
+  conversionRate7d: number | null;
+  sessions30d: number | null;
+  conversionRate30d: number | null;
   salesAvailable: boolean;
+  reportsAvailable: boolean;
   themeName: string | null;
   themeUpdatedAt: string | null;
   payload: Record<string, unknown>;
@@ -250,6 +258,8 @@ export async function fetchStoreSnapshot(
     }
   }
 
+  const traffic = await fetchSnapshotTraffic(shop, accessToken, completeDay.ymd);
+
   return {
     shopName: shopNode?.name ?? null,
     shopDomain: shopNode?.myshopifyDomain ?? shop,
@@ -264,15 +274,33 @@ export async function fetchStoreSnapshot(
     sales7d,
     orders30d,
     sales30d,
+    sessions1d: traffic.sessions1d,
+    conversionRate1d: traffic.conversionRate1d,
+    sessions7d: traffic.sessions7d,
+    conversionRate7d: traffic.conversionRate7d,
+    sessions30d: traffic.sessions30d,
+    conversionRate30d: traffic.conversionRate30d,
     salesAvailable,
+    reportsAvailable: traffic.reportsAvailable,
     themeName: theme?.name ?? null,
     themeUpdatedAt: theme?.updatedAt ?? null,
     payload: {
       shop: shopNode ?? null,
       theme: theme ?? null,
       sales_available: salesAvailable,
+      reports_available: traffic.reportsAvailable,
       time_zone: timeZone,
       snapshot_date: completeDay.ymd,
+      sessions: {
+        "1d": traffic.sessions1d,
+        "7d": traffic.sessions7d,
+        "30d": traffic.sessions30d,
+      },
+      conversion_rate: {
+        "1d": traffic.conversionRate1d,
+        "7d": traffic.conversionRate7d,
+        "30d": traffic.conversionRate30d,
+      },
     },
   };
 }

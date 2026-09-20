@@ -102,7 +102,7 @@ export default async function ProjectStorePage({
       <p className="mt-2 text-sm text-[var(--muted)]">
         {isAdmin
           ? "Connect this project’s Shopify store and refresh the live totals. Daily snapshots run after midnight. Client reports are generated from Reports."
-          : "Live snapshot of this store’s recent orders, sales, and published theme. Daily history is the last complete shop day."}{" "}
+          : "Live snapshot of this store’s recent orders, sales, sessions, conversion, and published theme. Daily history is the last complete shop day."}{" "}
         <Link
           href={`/projects/${id}/reports`}
           className="text-[var(--accent)] hover:underline"
