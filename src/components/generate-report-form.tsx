@@ -67,7 +67,7 @@ export function GenerateReportForm({
           Store reports can run without <code>read_reports</code>, but sessions
           and conversion need that scope. Add it on the custom app and{" "}
           <Link
-            href={`/projects/${projectId}/store`}
+            href={`/projects/${projectId}/settings`}
             className="text-[var(--accent)] hover:underline"
           >
             reconnect
@@ -78,14 +78,14 @@ export function GenerateReportForm({
 
       {!storeConnected ? (
         <p className="text-sm text-[var(--muted)]">
-          Connect Shopify on the{" "}
+          Connect Shopify in{" "}
           <Link
-            href={`/projects/${projectId}/store`}
+            href={`/projects/${projectId}/settings`}
             className="text-[var(--accent)] hover:underline"
           >
-            Store
+            Settings
           </Link>{" "}
-          page to generate store reports.
+          to generate store reports.
         </p>
       ) : null}
 

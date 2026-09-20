@@ -16,8 +16,8 @@ import type { ProjectShopifyConnection } from "@/types/database";
 
 export const maxDuration = 60;
 
-function storeRedirect(projectId: string, params: Record<string, string>) {
-  const url = new URL(`/projects/${projectId}/store`, `${appUrl()}/`);
+function settingsRedirect(projectId: string, params: Record<string, string>) {
+  const url = new URL(`/projects/${projectId}/settings`, `${appUrl()}/`);
   for (const [key, value] of Object.entries(params)) {
     url.searchParams.set(key, value);
   }
@@ -51,7 +51,7 @@ export async function GET(request: Request) {
 
   const fail = (message: string) =>
     clearOauthCookie(
-      NextResponse.redirect(storeRedirect(state.projectId, { error: message })),
+      NextResponse.redirect(settingsRedirect(state.projectId, { error: message })),
     );
 
   if (!shop || shop !== state.shop || !nonce || nonce !== state.nonce || !code) {
@@ -111,7 +111,7 @@ export async function GET(request: Request) {
     }
 
     const snapshot = await captureShopifySnapshot(supabase, state.projectId);
-    const redirectUrl = storeRedirect(
+    const redirectUrl = settingsRedirect(
       state.projectId,
       "error" in snapshot
         ? { connected: "1", error: snapshot.error }

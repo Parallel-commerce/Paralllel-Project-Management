@@ -5,7 +5,6 @@ import { notFound } from "next/navigation";
 import { ActivityFeed } from "@/components/activity-feed";
 import { CreateListForm } from "@/components/create-list-form";
 import { MembersPanel } from "@/components/members-panel";
-import { ProjectSettings } from "@/components/project-settings";
 import { ProjectTypeTag } from "@/components/project-type-tag";
 import { StatusCountTag } from "@/components/status-tag";
 import { requireSessionUser } from "@/lib/auth";
@@ -271,16 +270,12 @@ export default async function ProjectPage({
               Reports
             </Link>
             {isAdmin ? (
-              <ProjectSettings
-                projectId={id}
-                name={project.name}
-                description={project.description}
-                logoUrl={logoUrl}
-                scheduledWeekdays={scheduledWeekdays}
-                projectType={engagement.projectType}
-                monthlyHours={engagement.monthlyHours}
-                canManage
-              />
+              <Link
+                href={`/projects/${id}/settings`}
+                className="min-h-10 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm hover:bg-[var(--surface-2)]"
+              >
+                Settings
+              </Link>
             ) : null}
           </div>
         </div>

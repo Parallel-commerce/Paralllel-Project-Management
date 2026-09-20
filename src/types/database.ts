@@ -158,6 +158,11 @@ export type Task = {
   assigned_to: string | null;
   completed_at: string | null;
   archived_at: string | null;
+  theme_commit_sha: string | null;
+  theme_commit_message: string | null;
+  theme_commit_url: string | null;
+  theme_committed_at: string | null;
+  theme_commit_none: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -442,6 +447,14 @@ export type StoreConnectionPublic = {
   last_error: string | null;
   last_synced_at: string | null;
   scopes: string | null;
+};
+
+export type ProjectThemeGit = {
+  project_id: string;
+  repo: string;
+  branch: string;
+  created_at: string;
+  updated_at: string;
 };
 
 export type StoreSnapshotSource = "manual" | "scheduled";
@@ -796,6 +809,11 @@ export type Database = {
           assigned_to?: string | null;
           completed_at?: string | null;
           archived_at?: string | null;
+          theme_commit_sha?: string | null;
+          theme_commit_message?: string | null;
+          theme_commit_url?: string | null;
+          theme_committed_at?: string | null;
+          theme_commit_none?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -812,6 +830,11 @@ export type Database = {
           project_id?: string;
           completed_at?: string | null;
           archived_at?: string | null;
+          theme_commit_sha?: string | null;
+          theme_commit_message?: string | null;
+          theme_commit_url?: string | null;
+          theme_committed_at?: string | null;
+          theme_commit_none?: boolean;
           updated_at?: string;
         };
         Relationships: [
@@ -1201,6 +1224,30 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "project_shopify_connections_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: true;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      project_theme_git: {
+        Row: ProjectThemeGit;
+        Insert: {
+          project_id: string;
+          repo: string;
+          branch?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          repo?: string;
+          branch?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "project_theme_git_project_id_fkey",
             columns: ["project_id"];
             isOneToOne: true;
             referencedRelation: "projects";

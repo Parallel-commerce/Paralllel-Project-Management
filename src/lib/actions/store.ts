@@ -10,6 +10,10 @@ import {
 } from "@/lib/shopify/crypto";
 import { normalizeShopDomain } from "@/lib/shopify/domain";
 import {
+  normalizeThemeBranch,
+  normalizeThemeRepo,
+} from "@/lib/github/theme";
+import {
   SHOPIFY_OAUTH_COOKIE,
   createOAuthState,
   shopifyAuthorizeUrl,
@@ -21,6 +25,12 @@ import type {
   ProjectShopifyConnection,
   ShopifyConnectionStatus,
 } from "@/types/database";
+
+function revalidateStoreAdminPaths(projectId: string) {
+  revalidatePath(`/projects/${projectId}`);
+  revalidatePath(`/projects/${projectId}/store`);
+  revalidatePath(`/projects/${projectId}/settings`);
+}
 
 export async function saveShopifyCredentials(
   projectId: string,
@@ -91,7 +101,36 @@ export async function saveShopifyCredentials(
     return { error: error.message };
   }
 
-  revalidatePath(`/projects/${projectId}/store`);
+  revalidateStoreAdminPaths(projectId);
+  return { ok: true };
+}
+
+export async function saveThemeGit(
+  projectId: string,
+  formData: FormData,
+): Promise<{ error: string } | { ok: true }> {
+  const admin = await requireStoreAdmin(projectId);
+  if (!admin.ok) return { error: admin.error };
+
+  const repo = normalizeThemeRepo(String(formData.get("theme_repo") ?? ""));
+  if (typeof repo !== "string") return repo;
+  const branch = normalizeThemeBranch(String(formData.get("theme_branch") ?? ""));
+  if (typeof branch !== "string") return branch;
+
+  const { error } = await admin.supabase.from("project_theme_git").upsert(
+    {
+      project_id: projectId,
+      repo,
+      branch,
+    },
+    { onConflict: "project_id" },
+  );
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  revalidateStoreAdminPaths(projectId);
   return { ok: true };
 }
 
@@ -158,7 +197,7 @@ export async function disconnectShopifyStore(
     return { error: error.message };
   }
 
-  revalidatePath(`/projects/${projectId}/store`);
+  revalidateStoreAdminPaths(projectId);
   return { ok: true };
 }
 
@@ -171,8 +210,7 @@ export async function syncShopifySnapshot(
   const result = await captureShopifySnapshot(admin.supabase, projectId);
   if ("error" in result) return result;
 
-  revalidatePath(`/projects/${projectId}/store`);
-  revalidatePath(`/projects/${projectId}`);
+  revalidateStoreAdminPaths(projectId);
   return { ok: true };
 }
 
@@ -185,6 +223,6 @@ export async function syncStoreSpeed(
   const result = await captureStoreSpeed(admin.supabase, projectId);
   if ("error" in result) return result;
 
-  revalidatePath(`/projects/${projectId}/store`);
+  revalidateStoreAdminPaths(projectId);
   return { ok: true };
 }

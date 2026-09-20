@@ -18,7 +18,15 @@ import {
   deleteTask,
   updateTask,
 } from "@/lib/actions/projects";
+import { listThemeDeploys } from "@/lib/actions/theme-deploys";
 import { personDisplayName } from "@/lib/person";
+import {
+  THEME_DEPLOY_REQUIRED_MESSAGE,
+  themeCommitChoiceFromTask,
+  themeDeploysEnabled,
+  type ThemeDeploysState,
+} from "@/lib/theme-deploy";
+import { ThemeDeploySelect } from "@/components/theme-deploy-select";
 import {
   TASK_STATUSES,
   TASK_TYPES,
@@ -68,6 +76,7 @@ export function TaskModal({
   contextHref = null,
   scheduledWeekdays = [],
   defaultDueDate = null,
+  themeDeploys: themeDeploysProp = null,
   onClose,
 }: {
   mode: "create" | "edit";
@@ -85,6 +94,7 @@ export function TaskModal({
   contextHref?: string | null;
   scheduledWeekdays?: number[];
   defaultDueDate?: string | null;
+  themeDeploys?: ThemeDeploysState | null;
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -101,6 +111,12 @@ export function TaskModal({
     () => Boolean(initialReplyCommentId),
   );
   const [commentCount, setCommentCount] = useState<number | null>(null);
+  const [themeDeploys, setThemeDeploys] = useState<ThemeDeploysState | null>(
+    themeDeploysProp,
+  );
+  const [themeCommit, setThemeCommit] = useState(() =>
+    themeCommitChoiceFromTask(task ?? {}),
+  );
 
   function formSnapshot(form: HTMLFormElement) {
     const formData = new FormData(form);
@@ -112,6 +128,7 @@ export function TaskModal({
       task_type: String(formData.get("task_type") ?? ""),
       reported_by: String(formData.get("reported_by") ?? ""),
       assigned_to: String(formData.get("assigned_to") ?? ""),
+      theme_commit: String(formData.get("theme_commit") ?? "").trim(),
     });
   }
 
@@ -124,7 +141,22 @@ export function TaskModal({
   useEffect(() => {
     setCommentCount(null);
     setMobileCommentsOpen(Boolean(initialReplyCommentId));
+    setThemeCommit(themeCommitChoiceFromTask(task ?? {}));
   }, [task?.id, initialReplyCommentId]);
+
+  useEffect(() => {
+    if (themeDeploysProp) {
+      setThemeDeploys(themeDeploysProp);
+      return;
+    }
+    let cancelled = false;
+    void listThemeDeploys(projectId).then((result) => {
+      if (!cancelled) setThemeDeploys(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, themeDeploysProp]);
 
   useEffect(() => {
     return () => {
@@ -144,11 +176,25 @@ export function TaskModal({
       return;
     }
     if (snapshot === lastSavedSnapshotRef.current) {
+      setError(null);
+      setSaveState("idle");
       if (options?.closeAfter) onClose();
       return;
     }
 
     const formData = new FormData(form);
+    const nextStatus = String(formData.get("status") ?? "todo");
+    if (
+      themeDeploysEnabled(themeDeploys) &&
+      nextStatus === "done" &&
+      task.status !== "done" &&
+      !themeCommit
+    ) {
+      setError(THEME_DEPLOY_REQUIRED_MESSAGE);
+      setSaveState("error");
+      return;
+    }
+
     setSaveState("saving");
     startTransition(async () => {
       const result = await updateTask(projectId, listId, task.id, formData);
@@ -313,6 +359,15 @@ export function TaskModal({
                   return;
                 }
                 const formData = new FormData(event.currentTarget);
+                const nextStatus = String(formData.get("status") ?? "todo");
+                if (
+                  themeDeploysEnabled(themeDeploys) &&
+                  nextStatus === "done" &&
+                  !themeCommit
+                ) {
+                  setError(THEME_DEPLOY_REQUIRED_MESSAGE);
+                  return;
+                }
                 startTransition(async () => {
                   const result = await createTask(projectId, listId, formData);
                   if (result?.error) {
@@ -372,20 +427,6 @@ export function TaskModal({
                   }}
                 />
                 <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
-                  Status
-                  <select
-                    name="status"
-                    defaultValue={task?.status ?? "todo"}
-                    className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
-                  >
-                    {TASK_STATUSES.map((status) => (
-                      <option key={status.value} value={status.value}>
-                        {status.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
                   Type
                   <select
                     name="task_type"
@@ -396,6 +437,36 @@ export function TaskModal({
                     {TASK_TYPES.map((type) => (
                       <option key={type.value} value={type.value}>
                         {type.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {themeDeploysEnabled(themeDeploys) ? (
+                  <div className="sm:col-span-2">
+                    <ThemeDeploySelect
+                      value={themeCommit}
+                      commits={themeDeploys.commits}
+                      currentSha={task?.theme_commit_sha}
+                      currentMessage={task?.theme_commit_message}
+                      error={themeDeploys.error}
+                      onChange={setThemeCommit}
+                    />
+                  </div>
+                ) : themeDeploys === null ? (
+                  <input type="hidden" name="theme_commit" value={themeCommit} />
+                ) : (
+                  <input type="hidden" name="theme_commit" value="" />
+                )}
+                <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
+                  Status
+                  <select
+                    name="status"
+                    defaultValue={task?.status ?? "todo"}
+                    className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
+                  >
+                    {TASK_STATUSES.map((status) => (
+                      <option key={status.value} value={status.value}>
+                        {status.label}
                       </option>
                     ))}
                   </select>

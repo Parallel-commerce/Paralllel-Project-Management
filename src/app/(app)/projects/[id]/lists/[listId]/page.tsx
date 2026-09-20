@@ -5,7 +5,9 @@ import { ListSettings } from "@/components/list-settings";
 import { TaskBoard } from "@/components/task-board";
 import type { TimeEntryRow } from "@/components/time-tracking-panel";
 import { requireSessionUser } from "@/lib/auth";
+import { loadThemeDeploys } from "@/lib/load-theme-deploys";
 import { scheduledWeekdaysFromProject } from "@/lib/scheduled-weekdays";
+import { TASK_TABLE_COLUMNS } from "@/lib/task-columns";
 import type { ListVisibility, ProjectRole, Task } from "@/types/database";
 
 export default async function ListBoardPage({
@@ -92,14 +94,15 @@ export default async function ListBoardPage({
     activeMembers.find((member) => member.role === "admin")?.id ??
     null;
 
-  const { data: taskRows } = await supabase
-    .from("tasks")
-    .select(
-      "id, list_id, project_id, title, description, due_date, status, task_type, number, key, created_by, reported_by, assigned_to, completed_at, archived_at, created_at, updated_at",
-    )
-    .eq("list_id", listId)
-    .is("archived_at", null)
-    .order("created_at", { ascending: true });
+  const [{ data: taskRows }, themeDeploys] = await Promise.all([
+    supabase
+      .from("tasks")
+      .select(TASK_TABLE_COLUMNS)
+      .eq("list_id", listId)
+      .is("archived_at", null)
+      .order("created_at", { ascending: true }),
+    loadThemeDeploys(supabase, id),
+  ]);
 
   const personIds = [
     ...new Set(
@@ -224,6 +227,7 @@ export default async function ListBoardPage({
           timeSecondsByTaskId={timeSecondsByTaskId}
           runningEntry={(runningResult.data as TimeEntryRow | null) ?? null}
           scheduledWeekdays={scheduledWeekdaysFromProject(project)}
+          themeDeploys={themeDeploys}
         />
       </div>
     </main>

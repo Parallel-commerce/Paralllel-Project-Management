@@ -15,6 +15,16 @@ import { parseScheduledWeekdays } from "@/lib/scheduled-weekdays";
 import { projectTaskPrefix } from "@/lib/task-key";
 import { parseTaskType } from "@/lib/task-type";
 import { TASK_ATTACHMENT_BUCKET } from "@/lib/task-attachments";
+import { fetchThemeCommit } from "@/lib/github/theme";
+import {
+  emptyThemeCommitSnapshot,
+  hasThemeDeployChoice,
+  noneThemeCommitSnapshot,
+  snapshotFromCommit,
+  THEME_COMMIT_NONE,
+  THEME_DEPLOY_REQUIRED_MESSAGE,
+  type ThemeCommitSnapshot,
+} from "@/lib/theme-deploy";
 import type {
   ListVisibility,
   ProjectRole,
@@ -107,6 +117,83 @@ async function requireUser() {
     redirect("/login");
   }
   return { supabase, user };
+}
+
+const THEME_COMMIT_SELECT =
+  "theme_commit_sha, theme_commit_message, theme_commit_url, theme_committed_at, theme_commit_none";
+
+function snapshotFromRow(row: {
+  theme_commit_sha?: string | null;
+  theme_commit_message?: string | null;
+  theme_commit_url?: string | null;
+  theme_committed_at?: string | null;
+  theme_commit_none?: boolean | null;
+}): ThemeCommitSnapshot {
+  return {
+    theme_commit_sha: row.theme_commit_sha ?? null,
+    theme_commit_message: row.theme_commit_message ?? null,
+    theme_commit_url: row.theme_commit_url ?? null,
+    theme_committed_at: row.theme_committed_at ?? null,
+    theme_commit_none: Boolean(row.theme_commit_none),
+  };
+}
+
+async function projectHasThemeGit(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  projectId: string,
+) {
+  const { data } = await supabase
+    .from("project_theme_git")
+    .select("repo, branch")
+    .eq("project_id", projectId)
+    .maybeSingle();
+  if (!data?.repo) return null;
+  return { repo: data.repo, branch: data.branch || "main" };
+}
+
+async function resolveThemeCommitChoice(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  projectId: string,
+  raw: string,
+): Promise<ThemeCommitSnapshot | { error: string } | { unset: true }> {
+  const value = raw.trim();
+  if (!value) return { unset: true };
+  if (value === THEME_COMMIT_NONE) return noneThemeCommitSnapshot();
+
+  const git = await projectHasThemeGit(supabase, projectId);
+  if (!git) {
+    return { error: "This project has no theme GitHub repo connected." };
+  }
+
+  const commit = await fetchThemeCommit(git, value);
+  if ("error" in commit) return commit;
+  return snapshotFromCommit(commit);
+}
+
+async function themeFieldsForWrite(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  projectId: string,
+  status: TaskStatus,
+  previousStatus: TaskStatus | null,
+  rawChoice: string,
+  existing: ThemeCommitSnapshot,
+): Promise<ThemeCommitSnapshot | { error: string }> {
+  const git = await projectHasThemeGit(supabase, projectId);
+  const resolved = await resolveThemeCommitChoice(
+    supabase,
+    projectId,
+    rawChoice,
+  );
+  if ("error" in resolved) return resolved;
+
+  const next = "unset" in resolved ? existing : resolved;
+  const transitioningToDone = status === "done" && previousStatus !== "done";
+
+  if (git && transitioningToDone && !hasThemeDeployChoice(next)) {
+    return { error: THEME_DEPLOY_REQUIRED_MESSAGE };
+  }
+
+  return next;
 }
 
 async function saveProjectEngagement(
@@ -326,6 +413,7 @@ export async function updateProject(projectId: string, formData: FormData) {
 
   revalidatePath("/projects");
   revalidatePath(`/projects/${projectId}`);
+  revalidatePath(`/projects/${projectId}/settings`);
   revalidatePath("/home");
   revalidatePath("/tasks");
   revalidatePath("/crm");
@@ -731,6 +819,18 @@ export async function createTask(projectId: string, listId: string, formData: Fo
     (await resolveDefaultAssignee(supabase, projectId, user.id)) ||
     "";
 
+  const themeFields = await themeFieldsForWrite(
+    supabase,
+    projectId,
+    status,
+    null,
+    String(formData.get("theme_commit") ?? ""),
+    emptyThemeCommitSnapshot(),
+  );
+  if ("error" in themeFields) {
+    return { error: themeFields.error };
+  }
+
   const visibility = await getListVisibility(supabase, listId);
   const clientVisible = visibility === "public";
 
@@ -774,6 +874,7 @@ export async function createTask(projectId: string, listId: string, formData: Fo
       created_by: user.id,
       reported_by: reporter.reportedBy,
       assigned_to: assignedTo || null,
+      ...themeFields,
     })
     .select("id")
     .single();
@@ -889,7 +990,7 @@ export async function updateTask(
   const { data: before } = await supabase
     .from("tasks")
     .select(
-      "title, description, due_date, status, task_type, assigned_to, reported_by, created_by",
+      `title, description, due_date, status, task_type, assigned_to, reported_by, created_by, ${THEME_COMMIT_SELECT}`,
     )
     .eq("id", taskId)
     .maybeSingle();
@@ -897,6 +998,17 @@ export async function updateTask(
   const nextDescription = description || null;
   const nextDueDate = dueDate || null;
   const nextAssignee = assignedTo || null;
+  const themeFields = await themeFieldsForWrite(
+    supabase,
+    projectId,
+    status,
+    before?.status ?? null,
+    String(formData.get("theme_commit") ?? ""),
+    snapshotFromRow(before ?? {}),
+  );
+  if ("error" in themeFields) {
+    return { error: themeFields.error };
+  }
 
   const unchanged =
     before &&
@@ -906,7 +1018,9 @@ export async function updateTask(
     before.status === status &&
     (before.task_type ?? null) === taskType &&
     (before.assigned_to ?? null) === nextAssignee &&
-    before.reported_by === reporter.reportedBy;
+    before.reported_by === reporter.reportedBy &&
+    (before.theme_commit_sha ?? null) === themeFields.theme_commit_sha &&
+    Boolean(before.theme_commit_none) === themeFields.theme_commit_none;
 
   if (unchanged) {
     return { success: true, unchanged: true as const };
@@ -922,6 +1036,7 @@ export async function updateTask(
       task_type: taskType,
       reported_by: reporter.reportedBy,
       assigned_to: nextAssignee,
+      ...themeFields,
     })
     .eq("id", taskId);
 
@@ -992,6 +1107,8 @@ export async function updateTask(
         from: before?.status ?? null,
         to: status,
         list_visibility: visibility,
+        theme_commit_sha: themeFields.theme_commit_sha,
+        theme_commit_none: themeFields.theme_commit_none,
       },
       clientVisible,
     });
@@ -1011,6 +1128,8 @@ export async function updateTask(
       reported_by: reporter.reportedBy,
       previous_status: before?.status ?? null,
       list_visibility: visibility,
+      theme_commit_sha: themeFields.theme_commit_sha,
+      theme_commit_none: themeFields.theme_commit_none,
     },
     clientVisible,
   });
@@ -1026,6 +1145,7 @@ export async function updateTaskStatus(
   listId: string,
   taskId: string,
   status: TaskStatus,
+  themeCommit?: string | null,
 ) {
   const { supabase, user } = await requireUser();
   const visibility = await getListVisibility(supabase, listId);
@@ -1034,13 +1154,27 @@ export async function updateTaskStatus(
 
   const { data: before } = await supabase
     .from("tasks")
-    .select("title, status, assigned_to, created_by, reported_by")
+    .select(
+      `title, status, assigned_to, created_by, reported_by, ${THEME_COMMIT_SELECT}`,
+    )
     .eq("id", taskId)
     .maybeSingle();
 
+  const themeFields = await themeFieldsForWrite(
+    supabase,
+    projectId,
+    status,
+    before?.status ?? null,
+    themeCommit ?? "",
+    snapshotFromRow(before ?? {}),
+  );
+  if ("error" in themeFields) {
+    return { error: themeFields.error };
+  }
+
   const { error } = await supabase
     .from("tasks")
-    .update({ status })
+    .update({ status, ...themeFields })
     .eq("id", taskId);
 
   if (error) {
@@ -1076,6 +1210,8 @@ export async function updateTaskStatus(
       from: before?.status ?? null,
       to: status,
       list_visibility: visibility,
+      theme_commit_sha: themeFields.theme_commit_sha,
+      theme_commit_none: themeFields.theme_commit_none,
     },
     clientVisible,
   });
@@ -1083,7 +1219,7 @@ export async function updateTaskStatus(
   revalidatePath(`/projects/${projectId}/lists/${listId}`);
   revalidatePath(`/projects/${projectId}`);
   revalidatePath("/tasks");
-  return { success: true };
+  return { success: true, theme: themeFields };
 }
 
 export async function deleteTask(

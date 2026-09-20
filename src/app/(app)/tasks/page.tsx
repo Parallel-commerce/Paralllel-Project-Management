@@ -10,10 +10,10 @@ import type { ProfileOption } from "@/components/task-modal";
 import type { TimeEntryRow } from "@/components/time-tracking-panel";
 import { getCurrentProfile, requireSessionUser } from "@/lib/auth";
 import { scheduledWeekdaysFromProject } from "@/lib/scheduled-weekdays";
+import { TASK_TABLE_COLUMNS } from "@/lib/task-columns";
 import type { ProjectRole, Task } from "@/types/database";
 
-const TASK_COLUMNS =
-  "id, list_id, project_id, title, description, due_date, status, task_type, number, key, created_by, reported_by, assigned_to, completed_at, archived_at, created_at, updated_at, lists(name), projects(name, scheduled_weekdays)";
+const TASK_COLUMNS = `${TASK_TABLE_COLUMNS}, lists(name), projects(name, scheduled_weekdays)`;
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);

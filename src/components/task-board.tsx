@@ -15,6 +15,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 
 import { MyWorkCalendar } from "@/components/my-work-calendar";
 import { TaskTypeTag } from "@/components/task-type-tag";
+import { ThemeDeploySelect } from "@/components/theme-deploy-select";
 import {
   TaskModal,
   type ProfileOption,
@@ -30,6 +31,13 @@ import { personDisplayName } from "@/lib/person";
 import { formatScheduledWeekdays } from "@/lib/scheduled-weekdays";
 import { taskStatusColors } from "@/lib/task-status";
 import { taskTypeLabel } from "@/lib/task-type";
+import {
+  hasThemeDeployChoice,
+  THEME_COMMIT_NONE,
+  THEME_DEPLOY_REQUIRED_MESSAGE,
+  themeDeploysEnabled,
+  type ThemeDeploysState,
+} from "@/lib/theme-deploy";
 import { TASK_STATUSES, TASK_TYPES, type TaskStatus, type TaskType } from "@/types/database";
 
 export type { TaskWithPeople };
@@ -379,6 +387,41 @@ function StatusColumn({
   );
 }
 
+function optimisticDone(
+  task: TaskWithPeople,
+  choice: string,
+  deploys: ThemeDeploysState | null,
+): TaskWithPeople {
+  if (choice === THEME_COMMIT_NONE) {
+    return {
+      ...task,
+      status: "done",
+      completed_at: task.completed_at ?? new Date().toISOString(),
+      theme_commit_sha: null,
+      theme_commit_message: null,
+      theme_commit_url: null,
+      theme_committed_at: null,
+      theme_commit_none: true,
+    };
+  }
+
+  const commit =
+    deploys && deploys.enabled
+      ? deploys.commits.find((item) => item.sha === choice)
+      : undefined;
+
+  return {
+    ...task,
+    status: "done",
+    completed_at: task.completed_at ?? new Date().toISOString(),
+    theme_commit_sha: choice,
+    theme_commit_message: commit?.message ?? task.theme_commit_message,
+    theme_commit_url: commit?.url ?? task.theme_commit_url,
+    theme_committed_at: commit?.committedAt ?? task.theme_committed_at,
+    theme_commit_none: false,
+  };
+}
+
 export function TaskBoard({
   projectId,
   listId,
@@ -393,6 +436,7 @@ export function TaskBoard({
   timeSecondsByTaskId: initialTimeSeconds = {},
   runningEntry = null,
   scheduledWeekdays = [],
+  themeDeploys = null,
 }: {
   projectId: string;
   listId: string;
@@ -407,11 +451,15 @@ export function TaskBoard({
   timeSecondsByTaskId?: Record<string, number>;
   runningEntry?: TimeEntryRow | null;
   scheduledWeekdays?: number[];
+  themeDeploys?: ThemeDeploysState | null;
 }) {
   const [tasks, setTasks] = useState(initialTasks);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<TaskWithPeople | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [pendingDone, setPendingDone] = useState<TaskWithPeople | null>(null);
+  const [pendingChoice, setPendingChoice] = useState("");
+  const [pendingError, setPendingError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -531,6 +579,17 @@ export function TaskBoard({
     const current = tasks.find((task) => task.id === taskId);
     if (!current || current.status === nextStatus) return;
 
+    if (
+      nextStatus === "done" &&
+      themeDeploysEnabled(themeDeploys) &&
+      !hasThemeDeployChoice(current)
+    ) {
+      setPendingDone(current);
+      setPendingChoice("");
+      setPendingError(null);
+      return;
+    }
+
     setTasks((prev) =>
       prev.map((task) => {
         if (task.id !== taskId) return task;
@@ -557,6 +616,55 @@ export function TaskBoard({
       );
       if (result?.error) {
         setTasks(initialTasks);
+      }
+    });
+  }
+
+  function closePendingDone() {
+    setPendingDone(null);
+    setPendingChoice("");
+    setPendingError(null);
+  }
+
+  function confirmPendingDone() {
+    if (!pendingDone) return;
+    const choice = pendingChoice;
+    if (!choice) {
+      setPendingError(THEME_DEPLOY_REQUIRED_MESSAGE);
+      return;
+    }
+
+    const taskId = pendingDone.id;
+    const current = pendingDone;
+    const next = optimisticDone(current, choice, themeDeploys);
+    setTasks((prev) =>
+      prev.map((task) => (task.id === taskId ? next : task)),
+    );
+    closePendingDone();
+
+    startTransition(async () => {
+      const result = await updateTaskStatus(
+        projectId,
+        listId,
+        taskId,
+        "done",
+        choice,
+      );
+      if (result?.error) {
+        setPendingDone(current);
+        setPendingChoice(choice);
+        setPendingError(result.error);
+        setTasks(initialTasks);
+        return;
+      }
+      if (result.theme) {
+        setTasks((prev) =>
+          prev.map((task) =>
+            task.id === taskId
+              ? { ...task, status: "done", ...result.theme }
+              : task,
+          ),
+        );
       }
     });
   }
@@ -858,12 +966,14 @@ export function TaskBoard({
           defaultDueDate={
             viewMode === "calendar" ? selectedDay : null
           }
+          themeDeploys={themeDeploys}
           onClose={() => setCreating(false)}
         />
       ) : null}
 
       {editing ? (
         <TaskModal
+          key={editing.id}
           mode="edit"
           projectId={projectId}
           listId={listId}
@@ -875,8 +985,65 @@ export function TaskBoard({
           runningEntry={runningEntry}
           initialReplyCommentId={initialReplyCommentId}
           scheduledWeekdays={scheduledWeekdays}
+          themeDeploys={themeDeploys}
           onClose={() => setEditing(null)}
         />
+      ) : null}
+
+      {pendingDone && themeDeploysEnabled(themeDeploys) ? (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4"
+          onClick={closePendingDone}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="theme-deploy-done-title"
+            className="w-full max-w-lg rounded-t-2xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-lg sm:rounded-xl sm:p-6"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2
+              id="theme-deploy-done-title"
+              className="font-display text-xl tracking-tight"
+            >
+              Select theme deploy
+            </h2>
+            <p className="mt-1 text-sm text-[var(--muted)]">
+              {pendingDone.key ? `${pendingDone.key} · ` : ""}
+              {pendingDone.title}
+            </p>
+            <div className="mt-4">
+              <ThemeDeploySelect
+                id="kanban-theme-deploy"
+                value={pendingChoice}
+                commits={themeDeploys.commits}
+                currentSha={pendingDone.theme_commit_sha}
+                currentMessage={pendingDone.theme_commit_message}
+                error={pendingError ?? themeDeploys.error}
+                onChange={(value) => {
+                  setPendingChoice(value);
+                  setPendingError(null);
+                }}
+              />
+            </div>
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={closePendingDone}
+                className="rounded-md border border-[var(--border)] px-4 py-2 text-sm hover:bg-[var(--surface-2)]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmPendingDone}
+                className="rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)]"
+              >
+                Mark done
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
     </div>
   );
