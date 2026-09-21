@@ -5,6 +5,7 @@ import {
   shopifyGraphql,
   type GraphQlResponse,
 } from "@/lib/shopify/admin";
+import { isHeadlineOnlineOrder } from "@/lib/shopify/channels";
 import {
   buildScorecard,
   periodMetric,
@@ -170,10 +171,13 @@ function dateRangeClauses(window: StoreMetricWindow, compare: boolean) {
   return `${range}\nCOMPARE TO ${window.previousWeekStart} UNTIL ${window.previousWeekEnd}`;
 }
 
+const ONLINE_STORE_WHERE = `WHERE sales_channel = 'Online Store'`;
+
 function salesTotalsQl(window: StoreMetricWindow) {
   return `
 FROM sales
 SHOW total_sales, orders, average_order_value, discounts, net_sales, new_customers, orders_first_time, orders_returning
+${ONLINE_STORE_WHERE}
 ${dateRangeClauses(window, true)}
 `.trim();
 }
@@ -182,6 +186,7 @@ function salesDailyQl(window: StoreMetricWindow) {
   return `
 FROM sales
 SHOW total_sales, orders
+${ONLINE_STORE_WHERE}
 TIMESERIES day
 ${dateRangeClauses(window, false)}
 ORDER BY day ASC
@@ -231,6 +236,7 @@ function productsQl(window: StoreMetricWindow) {
   return `
 FROM sales
 SHOW net_sales, net_items_sold
+${ONLINE_STORE_WHERE}
 GROUP BY product_title
 ${dateRangeClauses(window, false)}
 ORDER BY net_sales DESC
@@ -242,7 +248,7 @@ function discountedOrdersQl(window: StoreMetricWindow) {
   return `
 FROM sales
 SHOW orders
-WHERE discounts > 0
+WHERE discounts > 0 AND sales_channel = 'Online Store'
 ${dateRangeClauses(window, true)}
 `.trim();
 }
@@ -394,7 +400,7 @@ function firstRow(result: ShopifyQlResult): TableRow | undefined {
   return result.ok ? result.rows[0] : undefined;
 }
 
-async function fetchShop(
+export async function fetchShop(
   shop: string,
   accessToken: string,
 ): Promise<{ name: string | null; currency: string | null; timezone: string }> {
@@ -422,7 +428,7 @@ export async function fetchWeeklyStoreDigest(
     throw new Error(window.error);
   }
   const period: ReportPeriod =
-    range.preset === "last_month"
+    range.preset === "last_month" || range.preset === "month_before_last"
       ? "month"
       : range.preset === "custom"
         ? "custom"
@@ -596,7 +602,7 @@ export async function fetchWeeklyStoreDigest(
       discountOrderPct,
       avgDiscount,
       daily,
-      channels: channels.ok ? mapChannels(channels.rows, totalSales.this_week) : [],
+      channels: channels.ok ? mapChannels(channels.rows, null) : [],
       newCustomers: newCustomers.this_week != null ? newCustomers : null,
       returningCustomers,
       returningRate: returningRate.this_week != null ? returningRate : null,
@@ -623,6 +629,14 @@ async function runWithFallback(
 }
 
 function mapChannels(rows: TableRow[], totalSales: number | null): StoreChannelRow[] {
+  const allSales =
+    totalSales ??
+    rows.reduce((sum, row) => {
+      if ((stringValue(row, "sales_channel", "channel", "order_sales_channel") ?? "").toLowerCase() === "total") {
+        return sum;
+      }
+      return sum + (rowNumber(row, "net_sales", "total_sales") ?? 0);
+    }, 0);
   return rows
     .map((row) => {
       const name =
@@ -638,7 +652,7 @@ function mapChannels(rows: TableRow[], totalSales: number | null): StoreChannelR
         name,
         sales,
         previous_sales: previous,
-        share_pct: ratioPct(sales, totalSales),
+        share_pct: ratioPct(sales, allSales),
         change_pct: periodMetric(sales, previous).change_pct,
       };
     })
@@ -670,6 +684,18 @@ function mapReferrers(
       };
     })
     .filter((row) => row.source.toLowerCase() !== "total");
+}
+
+function allSalesFromChannels(channels: StoreChannelRow[]): PeriodMetric | null {
+  if (channels.length === 0) return null;
+  const thisWeek = roundMoney(
+    channels.reduce((sum, row) => sum + row.sales, 0),
+  );
+  const previousParts = channels.map((row) => row.previous_sales);
+  const lastWeek = previousParts.every((value) => value != null)
+    ? roundMoney(previousParts.reduce((sum, value) => sum + (value ?? 0), 0))
+    : null;
+  return periodMetric(thisWeek, lastWeek);
 }
 
 async function fetchAdminWeekly(
@@ -762,6 +788,11 @@ async function fetchAdminWeekly(
     warnings.push("Previous-week Admin order totals were unavailable.");
   }
 
+  const allChannelSales = Object.values(thisWeek.channels).reduce(
+    (sum, value) => sum + value,
+    0,
+  );
+
   return {
     totalSales,
     orders,
@@ -777,7 +808,7 @@ async function fetchAdminWeekly(
           name,
           sales,
           previous_sales: previous,
-          share_pct: ratioPct(sales, thisWeek.sales),
+          share_pct: ratioPct(sales, allChannelSales),
           change_pct: periodMetric(sales, previous).change_pct,
         } satisfies StoreChannelRow;
       })
@@ -865,9 +896,17 @@ async function paginateWeeklyOrders(
     if (!pageOrders) break;
 
     for (const node of pageOrders.nodes) {
-      orders += 1;
       const amount = moneyAmount(node.currentTotalPriceSet?.shopMoney?.amount);
       const discount = moneyAmount(node.totalDiscountsSet?.shopMoney?.amount);
+      const channel =
+        node.channelInformation?.displayName ||
+        node.channelInformation?.channelDefinition?.channelName;
+      if (channel) {
+        channels[channel] = (channels[channel] ?? 0) + amount;
+      }
+      if (!isHeadlineOnlineOrder(channel)) continue;
+
+      orders += 1;
       sales += amount;
       discounts += discount;
       if (discount > 0.004) discountedOrders += 1;
@@ -879,13 +918,6 @@ async function paginateWeeklyOrders(
         bucket.sales += amount;
         bucket.orders += 1;
         daily.set(created, bucket);
-      }
-
-      const channel =
-        node.channelInformation?.displayName ||
-        node.channelInformation?.channelDefinition?.channelName;
-      if (channel) {
-        channels[channel] = (channels[channel] ?? 0) + amount;
       }
 
       for (const item of node.lineItems?.nodes ?? []) {
@@ -1032,6 +1064,8 @@ function finalizeDigest(input: {
     previous_week_end: input.window.previousWeekEnd,
     unavailable: uniqueUnavailable,
     warnings: input.warnings,
+    sales_scope: "online_store",
+    all_sales: allSalesFromChannels(numbers.channels),
     scorecard: buildScorecard({
       totalSales: numbers.totalSales,
       orders: numbers.orders,

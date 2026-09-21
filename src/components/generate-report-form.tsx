@@ -13,10 +13,18 @@ export function GenerateReportForm({
   projectId,
   storeConnected,
   missingReportsScope,
+  missingWeekComparisonStoreReport,
+  weekComparisonLabel,
+  missingMonthComparisonStoreReport,
+  monthComparisonLabel,
 }: {
   projectId: string;
   storeConnected: boolean;
   missingReportsScope: boolean;
+  missingWeekComparisonStoreReport: boolean;
+  weekComparisonLabel: string | null;
+  missingMonthComparisonStoreReport: boolean;
+  monthComparisonLabel: string | null;
 }) {
   const [range, setRange] = useState<ReportRangeValue>({
     preset: "last_week",
@@ -31,6 +39,12 @@ export function GenerateReportForm({
   const customIncomplete =
     range.preset === "custom" && (!range.start || !range.end);
   const busy = pending || pendingKind !== null;
+  const comparisonPeriodLabel =
+    range.preset === "last_month" ? monthComparisonLabel : weekComparisonLabel;
+  const seedComparison =
+    storeConnected &&
+    ((range.preset === "last_week" && missingWeekComparisonStoreReport) ||
+      (range.preset === "last_month" && missingMonthComparisonStoreReport));
 
   function run(kind: "progress" | "store") {
     setError(null);
@@ -51,12 +65,13 @@ export function GenerateReportForm({
   }
 
   return (
-    <div className="flex flex-col gap-4 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
+    <div className="flex flex-col gap-4 p-5">
       <div>
         <h2 className="font-medium">Generate report</h2>
         <p className="mt-1 text-sm text-[var(--muted)]">
           Choose a date range, then generate a performance report from project
-          activity or a store report from Shopify.
+          activity or a store report from Shopify. Store reports compare the
+          selected period with the one before.
         </p>
       </div>
 
@@ -89,6 +104,15 @@ export function GenerateReportForm({
         </p>
       ) : null}
 
+      {seedComparison ? (
+        <p className="text-sm text-[var(--muted)]">
+          There is no store report for{" "}
+          {comparisonPeriodLabel ?? "the previous period"} yet. Generating this
+          store report will draft that earlier period first so the comparison
+          has a baseline.
+        </p>
+      ) : null}
+
       {error ? (
         <p className="text-sm text-[var(--danger)]" role="alert">
           {error}
@@ -112,7 +136,13 @@ export function GenerateReportForm({
           onClick={() => run("store")}
           className="rounded-md border border-[var(--border)] bg-white px-4 py-2 text-sm font-medium hover:bg-[var(--surface-2)] disabled:opacity-60"
         >
-          {pendingKind === "store" ? "Generating…" : "Generate store report"}
+          {pendingKind === "store"
+            ? seedComparison
+              ? "Generating previous period…"
+              : "Generating…"
+            : seedComparison
+              ? "Generate store report and previous period"
+              : "Generate store report"}
         </button>
       </div>
     </div>

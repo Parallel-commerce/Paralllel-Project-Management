@@ -1,3 +1,4 @@
+import type { ReportRangeInput } from "@/lib/reports";
 import type {
   PeriodMetric,
   ReportPeriod,
@@ -98,7 +99,7 @@ export function buildScorecard(input: {
   const metrics: ScorecardMetric[] = [
     {
       key: "total_sales",
-      label: "Total Sales",
+      label: "Online sales",
       format: "money",
       this_week: input.totalSales.this_week,
       last_week: input.totalSales.last_week,
@@ -366,6 +367,19 @@ export function lastCompleteMonth(now: Date, timeZone: string) {
   );
 }
 
+export function monthBeforeLastCompleteMonth(now: Date, timeZone: string) {
+  const lastMonth = lastCompleteMonth(now, timeZone);
+  const start = parseYmd(lastMonth.previousWeekStart);
+  const end = parseYmd(lastMonth.previousWeekEnd);
+  const previousEnd = addDays(start, -1);
+  const previousStart: ZoneYmd = {
+    year: previousEnd.year,
+    month: previousEnd.month,
+    day: 1,
+  };
+  return metricWindow(start, end, previousStart, previousEnd, timeZone);
+}
+
 export function storeWindowFromYmdRange(
   startYmd: string,
   endYmd: string,
@@ -388,16 +402,144 @@ export function storeWindowFromYmdRange(
 }
 
 export function resolveStoreMetricWindow(
-  range: { preset: "last_week" | "last_month" | "custom"; start?: string | null; end?: string | null },
+  range: {
+    preset:
+      | "last_week"
+      | "week_before_last"
+      | "last_month"
+      | "month_before_last"
+      | "custom";
+    start?: string | null;
+    end?: string | null;
+  },
   timeZone: string,
   now = new Date(),
 ): StoreMetricWindow | { error: string } {
   if (range.preset === "last_week") return lastCompleteWeek(now, timeZone);
+  if (range.preset === "week_before_last") {
+    const lastWeek = lastCompleteWeek(now, timeZone);
+    return storeWindowFromYmdRange(
+      lastWeek.previousWeekStart,
+      lastWeek.previousWeekEnd,
+      timeZone,
+    );
+  }
   if (range.preset === "last_month") return lastCompleteMonth(now, timeZone);
+  if (range.preset === "month_before_last") {
+    return monthBeforeLastCompleteMonth(now, timeZone);
+  }
   if (!range.start || !range.end) {
     return { error: "Choose a start and end date." };
   }
   return storeWindowFromYmdRange(range.start, range.end, timeZone);
+}
+
+export function shouldSeedComparisonReport(
+  preset: ReportRangeInput["preset"],
+) {
+  return preset === "last_week" || preset === "last_month";
+}
+
+function fillMissingPeriodComparison(
+  current: PeriodMetric | null,
+  prior: PeriodMetric | null,
+): PeriodMetric | null {
+  if (!current) return current;
+  if (current.last_week != null) return current;
+  return periodMetric(current.this_week, prior?.this_week ?? null);
+}
+
+export function fillStoreReportComparison(
+  digest: StoreReportDigest,
+  prior: StoreReportDigest,
+): StoreReportDigest {
+  const totalSales = fillMissingPeriodComparison(
+    digest.sales.total_sales,
+    prior.sales.total_sales,
+  ) ?? digest.sales.total_sales;
+  const orders =
+    fillMissingPeriodComparison(digest.sales.orders, prior.sales.orders) ??
+    digest.sales.orders;
+  const aov =
+    fillMissingPeriodComparison(digest.sales.aov, prior.sales.aov) ??
+    digest.sales.aov;
+  const discounts =
+    fillMissingPeriodComparison(digest.sales.discounts, prior.sales.discounts) ??
+    digest.sales.discounts;
+  const discountOrderPct = fillMissingPeriodComparison(
+    digest.sales.discount_order_pct,
+    prior.sales.discount_order_pct,
+  );
+  const conversion = fillMissingPeriodComparison(
+    digest.conversion.rate,
+    prior.conversion.rate,
+  );
+  const sessions = fillMissingPeriodComparison(
+    digest.conversion.sessions,
+    prior.conversion.sessions,
+  );
+  const returningRate = fillMissingPeriodComparison(
+    digest.customers.returning_rate,
+    prior.customers.returning_rate,
+  );
+  const priorByChannel = new Map(
+    prior.channels.map((row) => [row.name, row] as const),
+  );
+  const channels = digest.channels.map((row) => {
+    if (row.previous_sales != null) return row;
+    const previous = priorByChannel.get(row.name)?.sales ?? null;
+    return {
+      ...row,
+      previous_sales: previous,
+      change_pct: periodMetric(row.sales, previous).change_pct,
+    };
+  });
+  const periodNoun =
+    digest.period === "month"
+      ? "month"
+      : digest.period === "custom"
+        ? "period"
+        : "week";
+
+  return {
+    ...digest,
+    sales_scope: digest.sales_scope ?? "online_store",
+    all_sales: fillMissingPeriodComparison(
+      digest.all_sales ?? null,
+      prior.all_sales ?? null,
+    ),
+    sales: {
+      ...digest.sales,
+      total_sales: totalSales,
+      orders,
+      aov,
+      discounts,
+      discount_order_pct: discountOrderPct,
+    },
+    channels,
+    customers: {
+      new: fillMissingPeriodComparison(digest.customers.new, prior.customers.new),
+      returning: fillMissingPeriodComparison(
+        digest.customers.returning,
+        prior.customers.returning,
+      ),
+      returning_rate: returningRate,
+    },
+    conversion: {
+      ...digest.conversion,
+      rate: conversion,
+      sessions,
+    },
+    scorecard: buildScorecard({
+      totalSales,
+      orders,
+      conversionRate: conversion,
+      aov,
+      returningRate,
+      sessions,
+      periodNoun,
+    }),
+  };
 }
 
 function utcDayNumber(parts: ZoneYmd) {

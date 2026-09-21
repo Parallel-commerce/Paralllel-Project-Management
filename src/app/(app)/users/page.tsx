@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 
+import { AdminOnly } from "@/components/admin-only";
 import { AddUserForm } from "@/components/add-user-form";
 import { UsersTable, type UserRow } from "@/components/users-table";
 import { createClient } from "@/lib/supabase/server";
@@ -110,6 +111,8 @@ export default async function UsersPage() {
 
   return (
     <main className="app-container py-6 sm:py-10">
+      <AdminOnly>
+        <div className="p-5">
       <h1 className="font-display text-3xl tracking-tight">Users</h1>
       <p className="mt-2 text-sm text-[var(--muted)]">
         Invite people and choose their access: projects, CRM, both, or
@@ -128,6 +131,8 @@ export default async function UsersPage() {
           currentUserId={user.id}
         />
       </div>
+        </div>
+      </AdminOnly>
     </main>
   );
 }

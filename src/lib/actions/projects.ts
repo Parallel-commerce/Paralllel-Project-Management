@@ -108,6 +108,39 @@ async function resolveDefaultAssignee(
   return (admins?.[0]?.user_id as string | undefined) ?? null;
 }
 
+async function resolveTaskSource(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  projectId: string,
+  sourceReportId: string,
+  sourceActionKey: string,
+): Promise<
+  | { sourceReportId: string | null; sourceActionKey: string | null }
+  | { error: string }
+> {
+  if (!sourceReportId && !sourceActionKey) {
+    return { sourceReportId: null, sourceActionKey: null };
+  }
+  if (!sourceReportId || !sourceActionKey) {
+    return { error: "Report actions need both a report and an action key." };
+  }
+  if (!/^[0-9a-f]{8,16}$/.test(sourceActionKey)) {
+    return { error: "Invalid report action." };
+  }
+
+  const { data: report } = await supabase
+    .from("project_reports")
+    .select("id")
+    .eq("id", sourceReportId)
+    .eq("project_id", projectId)
+    .maybeSingle();
+
+  if (!report) {
+    return { error: "Report not found." };
+  }
+
+  return { sourceReportId, sourceActionKey };
+}
+
 async function requireUser() {
   const supabase = await createClient();
   const {
@@ -794,6 +827,8 @@ export async function createTask(projectId: string, listId: string, formData: Fo
   const taskTypeRaw = String(formData.get("task_type") ?? "").trim();
   const assignedToRaw = String(formData.get("assigned_to") ?? "").trim();
   const reportedByRaw = String(formData.get("reported_by") ?? "").trim();
+  const sourceReportId = String(formData.get("source_report_id") ?? "").trim();
+  const sourceActionKey = String(formData.get("source_action_key") ?? "").trim();
   const taskType = parseTaskType(taskTypeRaw);
 
   if (!title) {
@@ -802,6 +837,16 @@ export async function createTask(projectId: string, listId: string, formData: Fo
 
   if (taskTypeRaw && !taskType) {
     return { error: "Invalid task type." };
+  }
+
+  const source = await resolveTaskSource(
+    supabase,
+    projectId,
+    sourceReportId,
+    sourceActionKey,
+  );
+  if ("error" in source) {
+    return { error: source.error };
   }
 
   const reporter = await resolveReporterId(
@@ -874,10 +919,30 @@ export async function createTask(projectId: string, listId: string, formData: Fo
       created_by: user.id,
       reported_by: reporter.reportedBy,
       assigned_to: assignedTo || null,
+      source_report_id: source.sourceReportId,
+      source_action_key: source.sourceActionKey,
       ...themeFields,
     })
-    .select("id")
+    .select("id, key")
     .single();
+
+  if (error?.code === "23505" && source.sourceReportId && source.sourceActionKey) {
+    const { data: existing } = await supabase
+      .from("tasks")
+      .select("id, key")
+      .eq("project_id", projectId)
+      .eq("source_report_id", source.sourceReportId)
+      .eq("source_action_key", source.sourceActionKey)
+      .maybeSingle();
+    if (existing?.id) {
+      return {
+        success: true,
+        id: existing.id as string,
+        key: (existing.key as string | null) ?? undefined,
+        existing: true,
+      };
+    }
+  }
 
   if (error || !task) {
     return { error: error?.message ?? "Could not create task." };
@@ -945,7 +1010,14 @@ export async function createTask(projectId: string, listId: string, formData: Fo
   revalidatePath(`/projects/${projectId}`);
   revalidatePath("/tasks");
   revalidatePath("/home");
-  return { success: true, id: task.id as string };
+  if (source.sourceReportId) {
+    revalidatePath(`/projects/${projectId}/reports/${source.sourceReportId}`);
+  }
+  return {
+    success: true,
+    id: task.id as string,
+    key: (task.key as string | null) ?? undefined,
+  };
 }
 
 export async function updateTask(

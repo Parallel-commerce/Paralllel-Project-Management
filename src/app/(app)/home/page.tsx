@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 
 import { AdminHomeInsights } from "@/components/admin-home-insights";
+import { AdminOnly } from "@/components/admin-only";
 import {
   HomeQuickTaskForm,
   type HomeListOption,
@@ -118,19 +119,23 @@ export default async function HomeDashboardPage() {
 
       <div className="mt-6 flex flex-col gap-6 lg:mt-8 lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-8">
         {isInternal ? (
-          <div className="order-1 min-w-0 lg:order-none lg:col-start-1 lg:row-start-1">
-            <RecentComments />
-          </div>
+          <AdminOnly className="order-1 min-w-0 lg:order-none lg:col-start-1 lg:row-start-1">
+            <div className="p-5">
+              <RecentComments />
+            </div>
+          </AdminOnly>
         ) : null}
 
         {isPlatformAdmin ? (
-          <div
+          <AdminOnly
             className={`order-5 min-w-0 lg:order-none lg:col-start-1 ${
               isInternal ? "lg:row-start-2" : "lg:row-start-1"
             }`}
           >
-            <AdminHomeInsights />
-          </div>
+            <div className="p-5">
+              <AdminHomeInsights />
+            </div>
+          </AdminOnly>
         ) : null}
 
         <section

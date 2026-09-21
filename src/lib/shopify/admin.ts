@@ -1,4 +1,5 @@
 import { lastCompleteLocalDay } from "@/lib/store-report";
+import { isHeadlineOnlineOrder } from "@/lib/shopify/channels";
 import { shopAdminOrigin } from "@/lib/shopify/domain";
 import { fetchSnapshotTraffic } from "@/lib/shopify/sessions";
 
@@ -21,6 +22,10 @@ type OrdersPage = {
       currentTotalPriceSet?: {
         shopMoney?: { amount?: string; currencyCode?: string };
       };
+      channelInformation?: {
+        displayName?: string | null;
+        channelDefinition?: { channelName?: string | null } | null;
+      } | null;
     }[];
   };
 };
@@ -87,6 +92,12 @@ const ORDERS_PAGE_QUERY = /* GraphQL */ `
           shopMoney {
             amount
             currencyCode
+          }
+        }
+        channelInformation {
+          displayName
+          channelDefinition {
+            channelName
           }
         }
       }
@@ -182,6 +193,10 @@ async function sumOrdersSince(
     if (!orders) break;
 
     for (const node of orders.nodes) {
+      const channel =
+        node.channelInformation?.displayName ||
+        node.channelInformation?.channelDefinition?.channelName;
+      if (!isHeadlineOnlineOrder(channel)) continue;
       count += 1;
       const money = node.currentTotalPriceSet?.shopMoney;
       sales += moneyAmount(money?.amount);
@@ -291,6 +306,7 @@ export async function fetchStoreSnapshot(
       reports_available: traffic.reportsAvailable,
       time_zone: timeZone,
       snapshot_date: completeDay.ymd,
+      sales_scope: "online_store",
       sessions: {
         "1d": traffic.sessions1d,
         "7d": traffic.sessions7d,

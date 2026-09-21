@@ -4,11 +4,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 
+import { AdminOnly } from "@/components/admin-only";
 import { DueDatePicker } from "@/components/due-date-picker";
 import { TaskAttachments } from "@/components/task-attachments";
 import { TaskComments } from "@/components/task-comments";
-import { TaskTypeTag } from "@/components/task-type-tag";
 import { TaskStatusHistory } from "@/components/task-status-history";
+import { TaskTypeTag } from "@/components/task-type-tag";
 import {
   TimeTrackingPanel,
   type TimeEntryRow,
@@ -291,6 +292,14 @@ export function TaskModal({
                   ) : null}
                   <TaskTypeTag taskType={task.task_type} />
                 </div>
+              ) : null}
+              {mode === "edit" && task?.source_report_id ? (
+                <Link
+                  href={`/projects/${projectId}/reports/${task.source_report_id}`}
+                  className="mt-1 block truncate text-sm text-[var(--muted)] hover:text-[var(--accent)]"
+                >
+                  From store report
+                </Link>
               ) : null}
               {contextLabel ? (
                 contextHref ? (
@@ -579,14 +588,18 @@ export function TaskModal({
                   refreshKey={historyKey}
                 />
                 {canTrackTime ? (
-                  <TimeTrackingPanel
-                    projectId={projectId}
-                    listId={listId}
-                    taskId={task.id}
-                    currentUserId={currentUserId}
-                    isAdmin={isTimeAdmin}
-                    runningEntry={runningEntry}
-                  />
+                  <AdminOnly className="mt-5">
+                    <div className="p-3">
+                      <TimeTrackingPanel
+                        projectId={projectId}
+                        listId={listId}
+                        taskId={task.id}
+                        currentUserId={currentUserId}
+                        isAdmin={isTimeAdmin}
+                        runningEntry={runningEntry}
+                      />
+                    </div>
+                  </AdminOnly>
                 ) : null}
                 <TaskAttachments
                   projectId={projectId}

@@ -9,7 +9,17 @@ import { resolveReportWindow, type ReportPreset } from "@/lib/reports";
 
 const PRESETS: { value: ReportPreset; label: string; hint: string }[] = [
   { value: "last_week", label: "Last week", hint: "Previous full week, Monday to Sunday" },
+  {
+    value: "week_before_last",
+    label: "Week before last",
+    hint: "The full week before last week",
+  },
   { value: "last_month", label: "Last month", hint: "Previous calendar month" },
+  {
+    value: "month_before_last",
+    label: "Month before last",
+    hint: "The calendar month before last month",
+  },
   { value: "custom", label: "Custom range", hint: "Pick a start and end date" },
 ];
 
@@ -30,9 +40,17 @@ export function ReportRangePicker({
   const rootRef = useRef<HTMLDivElement>(null);
   const today = useMemo(() => startOfDay(new Date()), []);
   const lastWeek = resolveReportWindow({ preset: "last_week" });
+  const weekBeforeLast = resolveReportWindow({ preset: "week_before_last" });
   const lastMonth = resolveReportWindow({ preset: "last_month" });
+  const monthBeforeLast = resolveReportWindow({ preset: "month_before_last" });
   const lastWeekLabel = "error" in lastWeek ? "Previous full week" : lastWeek.label;
+  const weekBeforeLastLabel =
+    "error" in weekBeforeLast ? "The week before last week" : weekBeforeLast.label;
   const lastMonthLabel = "error" in lastMonth ? "Previous calendar month" : lastMonth.label;
+  const monthBeforeLastLabel =
+    "error" in monthBeforeLast
+      ? "The month before last month"
+      : monthBeforeLast.label;
 
   useEffect(() => {
     function onPointerDown(event: MouseEvent) {
@@ -67,11 +85,13 @@ export function ReportRangePicker({
 
   return (
     <div className="flex flex-col gap-3">
-      <fieldset className="grid gap-2 sm:grid-cols-3">
+      <fieldset className="grid gap-2 sm:grid-cols-2">
         {PRESETS.map((option) => (
           <label
             key={option.value}
             className={`flex cursor-pointer flex-col rounded-lg border px-3 py-2 text-sm ${
+              option.value === "custom" ? "sm:col-span-2" : ""
+            } ${
               value.preset === option.value
                 ? "border-[var(--accent)] bg-[var(--accent-soft)]"
                 : "border-[var(--border)] bg-white"
@@ -95,9 +115,13 @@ export function ReportRangePicker({
             <span className="mt-1 pl-5 text-xs text-[var(--muted)]">
               {option.value === "last_week"
                 ? lastWeekLabel
-                : option.value === "last_month"
-                  ? lastMonthLabel
-                  : option.hint}
+                : option.value === "week_before_last"
+                  ? weekBeforeLastLabel
+                  : option.value === "last_month"
+                    ? lastMonthLabel
+                    : option.value === "month_before_last"
+                      ? monthBeforeLastLabel
+                      : option.hint}
             </span>
           </label>
         ))}

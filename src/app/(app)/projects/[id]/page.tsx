@@ -3,6 +3,7 @@ import Image from "next/image";
 import { notFound } from "next/navigation";
 
 import { ActivityFeed } from "@/components/activity-feed";
+import { AdminOnly } from "@/components/admin-only";
 import { CreateListForm } from "@/components/create-list-form";
 import { MembersPanel } from "@/components/members-panel";
 import { ProjectTypeTag } from "@/components/project-type-tag";
@@ -223,24 +224,28 @@ export default async function ProjectPage({
                   Your role: {role}
                 </p>
                 {canViewCrm && companyRow ? (
-                  <p className="mt-2 text-sm text-[var(--muted)]">
-                    Company:{" "}
-                    <Link
-                      href={`/crm/${companyRow.id}`}
-                      className="text-[var(--accent)] hover:underline"
-                    >
-                      {companyRow.name}
-                    </Link>
-                  </p>
+                  <AdminOnly variant="inline" className="mt-2">
+                    <p className="text-sm text-[var(--muted)]">
+                      Company:{" "}
+                      <Link
+                        href={`/crm/${companyRow.id}`}
+                        className="text-[var(--accent)] hover:underline"
+                      >
+                        {companyRow.name}
+                      </Link>
+                    </p>
+                  </AdminOnly>
                 ) : null}
                 {isInternal &&
                 (engagement.projectType || engagement.monthlyHours != null) ? (
-                  <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-[var(--muted)]">
-                    <ProjectTypeTag projectType={engagement.projectType} />
-                    {engagement.monthlyHours != null ? (
-                      <span>{engagement.monthlyHours}h / month</span>
-                    ) : null}
-                  </div>
+                  <AdminOnly variant="inline" className="mt-2">
+                    <div className="flex flex-wrap items-center gap-2 text-sm text-[var(--muted)]">
+                      <ProjectTypeTag projectType={engagement.projectType} />
+                      {engagement.monthlyHours != null ? (
+                        <span>{engagement.monthlyHours}h / month</span>
+                      ) : null}
+                    </div>
+                  </AdminOnly>
                 ) : null}
                 {scheduledLabel ? (
                   <p className="mt-2 text-sm text-[var(--muted)]">
@@ -270,12 +275,14 @@ export default async function ProjectPage({
               Reports
             </Link>
             {isAdmin ? (
-              <Link
-                href={`/projects/${id}/settings`}
-                className="min-h-10 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm hover:bg-[var(--surface-2)]"
-              >
-                Settings
-              </Link>
+              <AdminOnly variant="inline">
+                <Link
+                  href={`/projects/${id}/settings`}
+                  className="min-h-10 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm hover:bg-[var(--surface-2)]"
+                >
+                  Settings
+                </Link>
+              </AdminOnly>
             ) : null}
           </div>
         </div>

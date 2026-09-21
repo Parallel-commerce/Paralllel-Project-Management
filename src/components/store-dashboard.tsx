@@ -225,7 +225,8 @@ export function StoreDashboard({
       <div className="hidden max-w-3xl overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--surface)] sm:block">
         <table className="w-full min-w-[28rem] text-left">
           <caption className="sr-only">
-            Store metrics for yesterday, the last 7 days, and the last 30 days
+            Online Store metrics for yesterday, the last 7 days, and the last 30
+            days
           </caption>
           <thead>
             <tr className="border-b border-[var(--border)]">
@@ -276,6 +277,10 @@ export function StoreDashboard({
           </tbody>
         </table>
       </div>
+      <p className="text-xs text-[var(--muted)]">
+        Orders and sales are Online Store only. POS and other channels stay in
+        reports.
+      </p>
 
       {(salesHint || reportsHint) && (
         <p className="text-sm text-[var(--muted)]">

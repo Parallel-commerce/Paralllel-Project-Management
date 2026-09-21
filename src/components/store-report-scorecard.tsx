@@ -39,6 +39,7 @@ export function StoreReportScorecard({ digest }: { digest: StoreReportDigest }) 
         {digest.shop_name ?? "Store"} ·{" "}
         {formatStoreRange(digest.week_start, digest.week_end)}
         {digest.currency ? ` · ${digest.currency}` : ""}
+        {" · Online Store"}
       </p>
 
       <div className="mt-4 overflow-x-auto">

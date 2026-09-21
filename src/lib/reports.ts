@@ -1,6 +1,11 @@
 import type { ReportDigest, ReportPeriod } from "@/types/database";
 
-export type ReportPreset = "last_week" | "last_month" | "custom";
+export type ReportPreset =
+  | "last_week"
+  | "week_before_last"
+  | "last_month"
+  | "month_before_last"
+  | "custom";
 
 export type ReportRangeInput = {
   preset: ReportPreset;
@@ -67,10 +72,15 @@ export function parseReportRange(input: {
 }): ReportRangeInput | { error: string } {
   if (
     input.preset !== "last_week" &&
+    input.preset !== "week_before_last" &&
     input.preset !== "last_month" &&
+    input.preset !== "month_before_last" &&
     input.preset !== "custom"
   ) {
-    return { error: "Choose last week, last month, or a custom range." };
+    return {
+      error:
+        "Choose last week, the week before last, last month, the month before last, or a custom range.",
+    };
   }
   if (input.preset === "custom" && (!input.start || !input.end)) {
     return { error: "Choose a start and end date." };
@@ -86,11 +96,13 @@ export function resolveReportWindow(
   input: ReportRangeInput,
   now = new Date(),
 ): ReportWindow | { error: string } {
-  if (input.preset === "last_week") {
+  if (input.preset === "last_week" || input.preset === "week_before_last") {
     const thisWeekStart = startOfWeek(now);
+    const weeksBack = input.preset === "week_before_last" ? 14 : 7;
     const start = new Date(thisWeekStart);
-    start.setDate(start.getDate() - 7);
+    start.setDate(start.getDate() - weeksBack);
     const periodEnd = new Date(thisWeekStart);
+    periodEnd.setDate(periodEnd.getDate() - (weeksBack - 7));
     periodEnd.setMilliseconds(-1);
     return {
       period: "week",
@@ -103,14 +115,19 @@ export function resolveReportWindow(
     };
   }
 
-  if (input.preset === "last_month") {
+  if (input.preset === "last_month" || input.preset === "month_before_last") {
     const thisMonthStart = startOfMonth(now);
+    const monthsBack = input.preset === "month_before_last" ? 2 : 1;
     const start = new Date(
       thisMonthStart.getFullYear(),
-      thisMonthStart.getMonth() - 1,
+      thisMonthStart.getMonth() - monthsBack,
       1,
     );
-    const periodEnd = new Date(thisMonthStart);
+    const periodEnd = new Date(
+      thisMonthStart.getFullYear(),
+      thisMonthStart.getMonth() - (monthsBack - 1),
+      1,
+    );
     periodEnd.setMilliseconds(-1);
     return {
       period: "month",

@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
+import { AdminOnly } from "@/components/admin-only";
 import {
   cancelInvite,
   inviteMember,
@@ -83,55 +84,60 @@ export function MembersPanel({
                 </p>
               </div>
               {m.user_id !== currentUserId ? (
-                <button
-                  type="button"
-                  disabled={pending}
-                  onClick={() => {
-                    startTransition(async () => {
-                      const result = await removeMember(projectId, m.user_id);
-                      setError(result?.error ?? null);
-                      if (!result?.error) {
-                        router.refresh();
-                      }
-                    });
-                  }}
-                  className="text-xs text-[var(--danger)] hover:underline"
-                >
-                  Remove
-                </button>
+                <AdminOnly variant="inline">
+                  <button
+                    type="button"
+                    disabled={pending}
+                    onClick={() => {
+                      startTransition(async () => {
+                        const result = await removeMember(projectId, m.user_id);
+                        setError(result?.error ?? null);
+                        if (!result?.error) {
+                          router.refresh();
+                        }
+                      });
+                    }}
+                    className="text-xs text-[var(--danger)] hover:underline"
+                  >
+                    Remove
+                  </button>
+                </AdminOnly>
               ) : null}
             </div>
-            <select
-              value={m.role}
-              disabled={pending}
-              onChange={(event) => {
-                const role = event.target.value as ProjectRole;
-                startTransition(async () => {
-                  const result = await updateMemberRole(
-                    projectId,
-                    m.user_id,
-                    role,
-                  );
-                  setError(result?.error ?? null);
-                  if (!result?.error) {
-                    router.refresh();
-                  }
-                });
-              }}
-              className="rounded-md border border-[var(--border)] bg-white px-2 py-1.5 text-sm outline-none ring-[var(--accent)] focus:ring-2"
-            >
+            <AdminOnly>
+              <select
+                value={m.role}
+                disabled={pending}
+                onChange={(event) => {
+                  const role = event.target.value as ProjectRole;
+                  startTransition(async () => {
+                    const result = await updateMemberRole(
+                      projectId,
+                      m.user_id,
+                      role,
+                    );
+                    setError(result?.error ?? null);
+                    if (!result?.error) {
+                      router.refresh();
+                    }
+                  });
+                }}
+                className="w-full rounded-md border-0 bg-white px-2 py-1.5 text-sm outline-none ring-[var(--accent)] focus:ring-2"
+              >
               {PROJECT_ROLES.map((role) => (
                 <option key={role.value} value={role.value}>
                   {role.label}
                 </option>
               ))}
             </select>
+            </AdminOnly>
           </li>
         ))}
       </ul>
 
       {invites.length > 0 ? (
-        <div className="mt-4">
+        <AdminOnly className="mt-4">
+          <div className="px-3 pb-3">
           <h3 className="text-sm font-medium text-[var(--muted)]">
             Pending invites
           </h3>
@@ -166,11 +172,13 @@ export function MembersPanel({
               </li>
             ))}
           </ul>
-        </div>
+          </div>
+        </AdminOnly>
       ) : null}
 
+      <AdminOnly className="mt-5">
       <form
-        className="mt-5 flex flex-col gap-2"
+        className="flex flex-col gap-2 p-3"
         onSubmit={(event) => {
           event.preventDefault();
           const form = event.currentTarget;
@@ -218,6 +226,7 @@ export function MembersPanel({
         {error ? <p className="text-sm text-[var(--danger)]">{error}</p> : null}
         {info ? <p className="text-sm text-[var(--accent)]">{info}</p> : null}
       </form>
+      </AdminOnly>
     </section>
   );
 }

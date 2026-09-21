@@ -163,6 +163,8 @@ export type Task = {
   theme_commit_url: string | null;
   theme_committed_at: string | null;
   theme_commit_none: boolean;
+  source_report_id: string | null;
+  source_action_key: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -364,6 +366,10 @@ export type StoreReportDigest = {
   previous_week_end: string;
   unavailable: string[];
   warnings: string[];
+  /** Headline sales, orders, AOV, customers, and products are Online Store only. */
+  sales_scope?: "online_store";
+  /** All-channel sales (POS, Shop, etc.) for Section 3 context. */
+  all_sales?: PeriodMetric | null;
   scorecard: {
     metrics: ScorecardMetric[];
     greens: number;
@@ -397,6 +403,43 @@ export type StoreReportDigest = {
   products: StoreProductRow[];
   referrers: StoreReferrerRow[];
   sessions_daily: StoreReportDay[];
+  /** Latest Lighthouse / Core Web Vitals snapshot as of the period end. */
+  speed?: StoreReportSpeed | null;
+};
+
+export type StoreReportSpeedOrigin = {
+  passed: boolean | null;
+  lcp_ms: number | null;
+  inp_ms: number | null;
+  cls: number | null;
+  category: string | null;
+  url: string | null;
+};
+
+export type StoreReportSpeedPage = {
+  page_kind: SpeedPageKind;
+  title: string;
+  url: string;
+  lab_score: number | null;
+  previous_lab_score: number | null;
+  lab_score_change: number | null;
+  lab_lcp_ms: number | null;
+  lab_tbt_ms: number | null;
+  lab_cls: number | null;
+  field_lcp_ms: number | null;
+  field_inp_ms: number | null;
+  field_cls: number | null;
+  field_passed: boolean | null;
+  field_category: string | null;
+  opportunities: { id?: string; title: string; savings_ms: number }[];
+  error: string | null;
+};
+
+export type StoreReportSpeed = {
+  captured_at: string;
+  previous_captured_at: string | null;
+  origin: StoreReportSpeedOrigin;
+  pages: StoreReportSpeedPage[];
 };
 
 export type ProjectReportDigest = ReportDigest | StoreReportDigest;
@@ -814,6 +857,8 @@ export type Database = {
           theme_commit_url?: string | null;
           theme_committed_at?: string | null;
           theme_commit_none?: boolean;
+          source_report_id?: string | null;
+          source_action_key?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -835,6 +880,8 @@ export type Database = {
           theme_commit_url?: string | null;
           theme_committed_at?: string | null;
           theme_commit_none?: boolean;
+          source_report_id?: string | null;
+          source_action_key?: string | null;
           updated_at?: string;
         };
         Relationships: [

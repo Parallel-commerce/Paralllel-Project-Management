@@ -1,19 +1,27 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import { AdminOnly } from "@/components/admin-only";
+import { ReportActionsToTasks } from "@/components/report-actions-to-tasks";
 import { ReportEditor } from "@/components/report-editor";
-import { StoreReportScorecard } from "@/components/store-report-scorecard";
+import { ReportLetter } from "@/components/report-letter";
+import { StoreReportSpeedcard } from "@/components/store-report-speedcard";
 import { formatDateTime } from "@/lib/format-date";
+import { collectReportActions } from "@/lib/report-actions";
 import { asStoreReportDigest } from "@/lib/store-report";
+import { loadStoreReportSpeed } from "@/lib/store-report-speed";
 import { createClient } from "@/lib/supabase/server";
 import type { ProjectRole, ReportDigest } from "@/types/database";
 
 export default async function ProjectReportDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string; reportId: string }>;
+  searchParams: Promise<{ seeded?: string }>;
 }) {
   const { id, reportId } = await params;
+  const { seeded } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -67,13 +75,52 @@ export default async function ProjectReportDetailPage({
       ? null
       : (report.digest as ReportDigest);
 
-  const { data: clientMembers } = isAdmin
-    ? await supabase
-        .from("project_members")
-        .select("user_id, profiles(email, full_name)")
-        .eq("project_id", id)
-        .eq("role", "client")
-    : { data: [] };
+  const [
+    { data: clientMembers },
+    { data: lists },
+    { data: actionTasks },
+    speedFallback,
+  ] = await Promise.all([
+      isAdmin
+        ? supabase
+            .from("project_members")
+            .select("user_id, profiles(email, full_name)")
+            .eq("project_id", id)
+            .eq("role", "client")
+        : Promise.resolve({ data: [] as { user_id: string; profiles: unknown }[] }),
+      isAdmin
+        ? supabase
+            .from("lists")
+            .select("id, name")
+            .eq("project_id", id)
+            .order("created_at", { ascending: true })
+        : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+      isAdmin
+        ? supabase
+            .from("tasks")
+            .select("id, key, list_id, source_action_key")
+            .eq("project_id", id)
+            .eq("source_report_id", reportId)
+        : Promise.resolve({
+            data: [] as {
+              id: string;
+              key: string;
+              list_id: string;
+              source_action_key: string | null;
+            }[],
+          }),
+      storeDigest && !storeDigest.speed
+        ? loadStoreReportSpeed(
+            supabase,
+            id,
+            storeDigest.week_end,
+            storeDigest.previous_week_end,
+          )
+        : Promise.resolve(storeDigest?.speed ?? null),
+    ]);
+
+  const reportSpeed = storeDigest?.speed ?? speedFallback;
+  const reportActions = collectReportActions(report.narrative, reportSpeed);
 
   const clients =
     clientMembers?.flatMap((member) => {
@@ -101,29 +148,65 @@ export default async function ProjectReportDetailPage({
         >
           ← Reports
         </Link>
-        <h1 className="mt-3 font-display text-3xl tracking-tight">
-          {report.title}
-        </h1>
-        <p className="mt-2 text-sm text-[var(--muted)]">
+        <p className="mt-3 text-sm text-[var(--muted)]">
           {project.name} · Created {formatDateTime(report.created_at)}
           {report.sent_at ? ` · Sent ${formatDateTime(report.sent_at)}` : " · Draft"}
         </p>
 
-        {isAdmin && storeDigest?.warnings.length ? (
-          <p className="mt-4 rounded-lg border border-[var(--border)] px-3 py-2 text-sm text-[var(--danger)]">
-            {storeDigest.warnings.join(" ")}
-          </p>
+        {isAdmin && seeded === "1" ? (
+          <AdminOnly className="mt-4">
+            <p className="px-3 py-2 text-sm text-[var(--muted)]">
+              The previous period was not in the archive, so we drafted that
+              report first. It is in the{" "}
+              <Link
+                href={`/projects/${id}/reports`}
+                className="text-[var(--accent)] hover:underline"
+              >
+                archive
+              </Link>
+              .
+            </p>
+          </AdminOnly>
         ) : null}
 
-        <section className="mt-8 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
-          <h2 className="font-medium">Narrative</h2>
-          <div className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-[var(--foreground)]">
-            {report.narrative || "No narrative yet."}
-          </div>
-        </section>
+        {isAdmin && storeDigest?.warnings.length ? (
+          <AdminOnly className="mt-4">
+            <p className="px-3 py-2 text-sm text-[var(--danger)]">
+              {storeDigest.warnings.join(" ")}
+            </p>
+          </AdminOnly>
+        ) : null}
 
-        {storeDigest ? (
-          <StoreReportScorecard digest={storeDigest} />
+        <ReportLetter
+          projectName={project.name}
+          title={report.title}
+          narrative={report.narrative}
+        />
+
+        {isAdmin && reportActions.length > 0 ? (
+          <AdminOnly className="mt-6">
+            <ReportActionsToTasks
+              projectId={id}
+              reportId={report.id}
+              actions={reportActions}
+              lists={lists ?? []}
+              existingTasks={(actionTasks ?? []).flatMap((task) => {
+                if (!task.source_action_key) return [];
+                return [
+                  {
+                    key: task.source_action_key,
+                    taskId: task.id,
+                    taskKey: task.key,
+                    listId: task.list_id,
+                  },
+                ];
+              })}
+            />
+          </AdminOnly>
+        ) : null}
+
+        {storeDigest && reportSpeed ? (
+          <StoreReportSpeedcard speed={reportSpeed} />
         ) : progressDigest ? (
         <section className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
           <h2 className="font-medium">Snapshot</h2>
@@ -170,17 +253,19 @@ export default async function ProjectReportDetailPage({
         ) : null}
 
         {isAdmin ? (
-          <div className="mt-8">
-            <ReportEditor
-              projectId={id}
-              reportId={report.id}
-              title={report.title}
-              narrative={report.narrative}
-              clients={clients}
-              sentTo={report.sent_to}
-              kind={storeDigest ? "store" : "progress"}
-            />
-          </div>
+          <AdminOnly className="mt-8">
+            <div className="p-5">
+              <ReportEditor
+                projectId={id}
+                reportId={report.id}
+                title={report.title}
+                narrative={report.narrative}
+                clients={clients}
+                sentTo={report.sent_to}
+                kind={storeDigest ? "store" : "progress"}
+              />
+            </div>
+          </AdminOnly>
         ) : null}
       </main>
   );

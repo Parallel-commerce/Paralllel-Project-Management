@@ -203,3 +203,129 @@ body {
   display: none;
 }
 
+.report-prose {
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--foreground);
+}
+
+.report-prose h1,
+.report-prose-doc-title {
+  margin: 0 0 12px;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.report-prose h2 {
+  margin: 24px 0 10px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.report-prose h3 {
+  margin: 18px 0 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.report-prose p {
+  margin: 0 0 12px;
+}
+
+.report-prose a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.report-prose strong {
+  font-weight: 600;
+}
+
+.report-prose code {
+  font-size: 13px;
+  background: var(--surface-2);
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+
+.report-prose hr {
+  border: none;
+  border-top: 1px solid color-mix(in srgb, var(--sand) 70%, var(--border));
+  margin: 20px 0;
+}
+
+.report-prose ul,
+.report-prose ol {
+  margin: 0 0 16px;
+  padding-left: 1.25rem;
+}
+
+.report-prose ul {
+  list-style: disc;
+}
+
+.report-prose ol {
+  list-style: decimal;
+}
+
+.report-prose li {
+  margin-bottom: 6px;
+}
+
+.report-prose-table {
+  overflow-x: auto;
+  margin: 0 0 20px;
+}
+
+.report-prose table {
+  width: 100%;
+  min-width: 28rem;
+  border-collapse: collapse;
+  border: 1px solid color-mix(in srgb, var(--sand) 70%, var(--border));
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.report-prose th {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--sand) 70%, var(--border));
+  background: var(--bone);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.report-prose td {
+  padding: 8px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--sand) 70%, var(--border));
+  font-size: 13px;
+}
+
+.report-prose tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.report-prose-row-label {
+  font-weight: 600;
+}
+
+/* Surfaces the client never sees. Shared UI is left unmarked. */
+.admin-only {
+  border: 1px solid color-mix(in srgb, var(--parallel-red) 48%, var(--sand));
+  border-radius: 0.75rem;
+  background-color: color-mix(in srgb, var(--parallel-red) 4%, var(--surface));
+}
+
+.admin-only-inline {
+  display: flex;
+  width: fit-content;
+  max-width: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0.45rem;
+  border-radius: 0.55rem;
+}
+

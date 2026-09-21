@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { AdminOnly } from "@/components/admin-only";
 import { StoreDashboard } from "@/components/store-dashboard";
 import { StoreSpeedPanel } from "@/components/store-speed-panel";
 import { StoreSyncButton } from "@/components/store-sync-button";
@@ -119,9 +120,9 @@ export default async function ProjectStorePage({
         <div className="min-w-0">
           <h1 className="font-display text-3xl tracking-tight">Store</h1>
           <p className="mt-2 text-sm text-[var(--muted)]">
-            Live snapshot of this store’s recent orders, sales, sessions,
-            conversion, and published theme. Daily history is the last complete
-            shop day.{" "}
+            Live snapshot of this store’s Online Store orders and sales, plus
+            sessions, conversion, and the published theme. Daily history is the
+            last complete shop day.{" "}
             <Link
               href={`/projects/${id}/reports`}
               className="text-[var(--accent)] hover:underline"
@@ -131,17 +132,19 @@ export default async function ProjectStorePage({
           </p>
         </div>
         {isAdmin ? (
-          <div className="flex flex-wrap items-center gap-2">
-            {connection?.has_access_token ? (
-              <StoreSyncButton projectId={id} enabled />
-            ) : null}
-            <Link
-              href={`/projects/${id}/settings`}
-              className="min-h-10 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm hover:bg-[var(--surface-2)]"
-            >
-              Settings
-            </Link>
-          </div>
+          <AdminOnly variant="inline">
+            <div className="flex flex-wrap items-center gap-2">
+              {connection?.has_access_token ? (
+                <StoreSyncButton projectId={id} enabled />
+              ) : null}
+              <Link
+                href={`/projects/${id}/settings`}
+                className="min-h-10 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm hover:bg-[var(--surface-2)]"
+              >
+                Settings
+              </Link>
+            </div>
+          </AdminOnly>
         ) : null}
       </div>
 

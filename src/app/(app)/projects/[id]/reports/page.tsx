@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import { AdminOnly } from "@/components/admin-only";
 import { GenerateReportForm } from "@/components/generate-report-form";
 import { formatDateTime } from "@/lib/format-date";
+import { resolveReportWindow, type ReportWindow } from "@/lib/reports";
 import { toPublicConnection } from "@/lib/shopify/connection";
 import { createClient } from "@/lib/supabase/server";
 import type {
@@ -11,7 +13,7 @@ import type {
   ReportKind,
 } from "@/types/database";
 
-export const maxDuration = 180;
+export const maxDuration = 300;
 
 export default async function ProjectReportsPage({
   params,
@@ -77,6 +79,20 @@ export default async function ProjectReportsPage({
   const missingReportsScope =
     storeConnected &&
     !connection?.scopes?.split(/[,\s]+/).includes("read_reports");
+  const weekBeforeLast = resolveReportWindow({ preset: "week_before_last" });
+  const monthBeforeLast = resolveReportWindow({ preset: "month_before_last" });
+  const weekComparisonLabel =
+    "error" in weekBeforeLast ? null : weekBeforeLast.label;
+  const monthComparisonLabel =
+    "error" in monthBeforeLast ? null : monthBeforeLast.label;
+  const missingWeekComparisonStoreReport = !coversStoreReportPeriod(
+    reports ?? [],
+    weekBeforeLast,
+  );
+  const missingMonthComparisonStoreReport = !coversStoreReportPeriod(
+    reports ?? [],
+    monthBeforeLast,
+  );
 
   return (
     <main className="app-container py-6 sm:py-10">
@@ -103,11 +119,17 @@ export default async function ProjectReportsPage({
 
         <div className="mt-8 space-y-8">
           {isAdmin ? (
-            <GenerateReportForm
-              projectId={id}
-              storeConnected={storeConnected}
-              missingReportsScope={missingReportsScope}
-            />
+            <AdminOnly>
+              <GenerateReportForm
+                projectId={id}
+                storeConnected={storeConnected}
+                missingReportsScope={missingReportsScope}
+                missingWeekComparisonStoreReport={missingWeekComparisonStoreReport}
+                weekComparisonLabel={weekComparisonLabel}
+                missingMonthComparisonStoreReport={missingMonthComparisonStoreReport}
+                monthComparisonLabel={monthComparisonLabel}
+              />
+            </AdminOnly>
           ) : null}
 
           <section>
@@ -152,4 +174,21 @@ export default async function ProjectReportsPage({
 
 function reportKindLabel(kind: ReportKind | string | null | undefined) {
   return kind === "store" ? "Store" : "Performance";
+}
+
+function coversStoreReportPeriod(
+  reports: Array<{
+    kind: string | null;
+    period_start: string | null;
+    period_end: string | null;
+  }>,
+  window: ReportWindow | { error: string },
+) {
+  if ("error" in window) return true;
+  return reports.some(
+    (report) =>
+      report.kind === "store" &&
+      report.period_start?.slice(0, 10) === window.startYmd &&
+      report.period_end?.slice(0, 10) === window.endYmd,
+  );
 }

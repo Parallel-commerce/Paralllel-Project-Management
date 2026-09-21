@@ -162,7 +162,7 @@ export function TimeTrackingPanel({
     "min-h-9 rounded-md border border-[var(--border)] bg-white px-2.5 py-1.5 text-[var(--foreground)] outline-none ring-[var(--accent)] placeholder:text-[var(--muted)] focus:ring-2";
 
   return (
-    <section className="mt-5 border-t border-[var(--border)] pt-4">
+    <section className="pt-1">
       <div className="flex items-baseline justify-between gap-3">
         <h3 className="text-sm font-medium">
           Time

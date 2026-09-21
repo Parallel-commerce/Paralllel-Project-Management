@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { AdminOnly } from "@/components/admin-only";
 import { ProjectDeleteSettings, ProjectSettings } from "@/components/project-settings";
 import { StoreSetupForm } from "@/components/store-setup-form";
 import { requireSessionUser } from "@/lib/auth";
@@ -101,25 +102,27 @@ export default async function ProjectSettingsPage({
         </p>
       ) : null}
 
-      <div className="mt-8 space-y-8">
-        <ProjectSettings
-          projectId={id}
-          name={project.name}
-          description={project.description}
-          logoUrl={projectLogoPublicUrl(project.logo_path)}
-          scheduledWeekdays={normalizeScheduledWeekdays(
-            project.scheduled_weekdays,
-          )}
-          projectType={engagement.projectType}
-          monthlyHours={engagement.monthlyHours}
-        />
-        <StoreSetupForm
-          projectId={id}
-          connection={connection}
-          themeGit={themeGit}
-        />
-        <ProjectDeleteSettings projectId={id} name={project.name} />
-      </div>
+      <AdminOnly className="mt-8">
+        <div className="space-y-8 p-5">
+          <ProjectSettings
+            projectId={id}
+            name={project.name}
+            description={project.description}
+            logoUrl={projectLogoPublicUrl(project.logo_path)}
+            scheduledWeekdays={normalizeScheduledWeekdays(
+              project.scheduled_weekdays,
+            )}
+            projectType={engagement.projectType}
+            monthlyHours={engagement.monthlyHours}
+          />
+          <StoreSetupForm
+            projectId={id}
+            connection={connection}
+            themeGit={themeGit}
+          />
+          <ProjectDeleteSettings projectId={id} name={project.name} />
+        </div>
+      </AdminOnly>
     </main>
   );
 }

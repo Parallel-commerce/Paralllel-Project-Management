@@ -1,3 +1,4 @@
+import { AdminOnly } from "@/components/admin-only";
 import { RefreshStoreSpeedButton } from "@/components/refresh-store-speed-button";
 import { formatDateTime } from "@/lib/format-date";
 import {
@@ -69,7 +70,11 @@ export function StoreSpeedPanel({
             scores are Lighthouse.
           </p>
         </div>
-        {canRefresh ? <RefreshStoreSpeedButton projectId={projectId} /> : null}
+        {canRefresh ? (
+          <AdminOnly variant="inline">
+            <RefreshStoreSpeedButton projectId={projectId} />
+          </AdminOnly>
+        ) : null}
       </div>
 
       {!run ? (
