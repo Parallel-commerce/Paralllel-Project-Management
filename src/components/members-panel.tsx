@@ -97,14 +97,14 @@ export function MembersPanel({
                         }
                       });
                     }}
-                    className="text-xs text-[var(--danger)] hover:underline"
+                    className="rounded-md px-2 py-1 text-xs text-[var(--danger)] hover:bg-[var(--accent-soft)]"
                   >
                     Remove
                   </button>
                 </AdminOnly>
               ) : null}
             </div>
-            <AdminOnly>
+            <AdminOnly variant="inline" className="w-full max-w-none">
               <select
                 value={m.role}
                 disabled={pending}
@@ -122,7 +122,7 @@ export function MembersPanel({
                     }
                   });
                 }}
-                className="w-full rounded-md border-0 bg-white px-2 py-1.5 text-sm outline-none ring-[var(--accent)] focus:ring-2"
+                className="w-full rounded-md border-0 bg-transparent px-2 py-1.5 text-sm outline-none ring-[var(--accent)] focus:ring-2"
               >
               {PROJECT_ROLES.map((role) => (
                 <option key={role.value} value={role.value}>

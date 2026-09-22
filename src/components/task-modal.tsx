@@ -429,6 +429,8 @@ export function TaskModal({
                   name="due_date"
                   defaultValue={task?.due_date ?? defaultDueDate ?? ""}
                   highlightedWeekdays={scheduledWeekdays}
+                  projectId={projectId}
+                  excludeTaskId={task?.id}
                   onChange={() => {
                     if (mode === "edit") {
                       requestAnimationFrame(() => saveEditNow());

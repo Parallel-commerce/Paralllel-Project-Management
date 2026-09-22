@@ -818,6 +818,35 @@ export async function deleteList(projectId: string, listId: string) {
   redirect(`/projects/${projectId}`);
 }
 
+/** Open (not done/archived) tasks already due on each day for this project. */
+export async function getProjectDueDateCounts(
+  projectId: string,
+  excludeTaskId?: string | null,
+): Promise<{ counts: Record<string, number> }> {
+  const { supabase } = await requireUser();
+  if (!projectId) return { counts: {} };
+
+  const { data, error } = await supabase
+    .from("tasks")
+    .select("id, due_date")
+    .eq("project_id", projectId)
+    .is("archived_at", null)
+    .neq("status", "done")
+    .not("due_date", "is", null);
+
+  if (error || !data) return { counts: {} };
+
+  const counts: Record<string, number> = {};
+  for (const row of data) {
+    if (excludeTaskId && row.id === excludeTaskId) continue;
+    const day =
+      typeof row.due_date === "string" ? row.due_date.slice(0, 10) : "";
+    if (!day) continue;
+    counts[day] = (counts[day] ?? 0) + 1;
+  }
+  return { counts };
+}
+
 export async function createTask(projectId: string, listId: string, formData: FormData) {
   const { supabase, user } = await requireUser();
   const title = String(formData.get("title") ?? "").trim();

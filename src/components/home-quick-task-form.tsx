@@ -349,6 +349,7 @@ export function HomeQuickTaskForm({
         label="Due date (optional)"
         defaultValue={defaultDueDate ?? ""}
         highlightedWeekdays={selectedProject?.scheduledWeekdays ?? []}
+        projectId={selectedProject?.id}
       />
 
       <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
