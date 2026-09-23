@@ -70,44 +70,46 @@ export async function captureStoreSpeed(
     snapshot?.primary_domain,
   );
 
-  const pages: SpeedPageResult[] = [];
-  let originField = emptyField();
-
-  for (const target of targets) {
-    try {
-      const result = await runPagespeed(target.url);
-      if (originField.passed == null && result.origin.lcp_ms != null) {
-        originField = result.origin;
+  const measured = await Promise.all(
+    targets.map(async (target) => {
+      try {
+        const result = await runPagespeed(target.url);
+        const page: SpeedPageResult = {
+          page_kind: target.page_kind,
+          url: result.page.url,
+          title: target.title,
+          lab: result.page.lab,
+          field: result.page.field,
+          opportunities: result.page.opportunities,
+          error: null,
+        };
+        return { page, origin: result.origin };
+      } catch (error) {
+        const page: SpeedPageResult = {
+          page_kind: target.page_kind,
+          url: target.url,
+          title: target.title,
+          lab: {
+            performance_score: null,
+            lcp_ms: null,
+            tbt_ms: null,
+            cls: null,
+          },
+          field: emptyField(),
+          opportunities: [],
+          error:
+            error instanceof Error
+              ? error.message
+              : "PageSpeed Insights could not analyse this URL.",
+        };
+        return { page, origin: emptyField() };
       }
-      pages.push({
-        page_kind: target.page_kind,
-        url: result.page.url,
-        title: target.title,
-        lab: result.page.lab,
-        field: result.page.field,
-        opportunities: result.page.opportunities,
-        error: null,
-      });
-    } catch (error) {
-      pages.push({
-        page_kind: target.page_kind,
-        url: target.url,
-        title: target.title,
-        lab: {
-          performance_score: null,
-          lcp_ms: null,
-          tbt_ms: null,
-          cls: null,
-        },
-        field: emptyField(),
-        opportunities: [],
-        error:
-          error instanceof Error
-            ? error.message
-            : "PageSpeed Insights could not analyse this URL.",
-      });
-    }
-  }
+    }),
+  );
+
+  const pages = measured.map((item) => item.page);
+  const originField =
+    measured.find((item) => item.origin.lcp_ms != null)?.origin ?? emptyField();
 
   const digest: SpeedRunDigest = {
     origin_url: origin,

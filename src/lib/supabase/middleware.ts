@@ -2,6 +2,12 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function updateSession(request: NextRequest) {
+  const pathname = request.nextUrl.pathname;
+  // Vercel Cron does not follow redirects. These routes authenticate with CRON_SECRET.
+  if (pathname.startsWith("/api/cron/")) {
+    return NextResponse.next({ request });
+  }
+
   let supabaseResponse = NextResponse.next({
     request,
   });
@@ -53,7 +59,6 @@ export async function updateSession(request: NextRequest) {
     }
   }
 
-  const pathname = request.nextUrl.pathname;
   const isAuthRoute =
     pathname.startsWith("/login") || pathname.startsWith("/auth");
   const isPublicAsset =
