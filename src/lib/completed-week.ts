@@ -9,6 +9,8 @@ import {
   subWeeks,
 } from "date-fns";
 
+import { compareTasksByDueDate } from "@/lib/sort-tasks";
+
 const WEEK_STARTS_ON_MONDAY = { weekStartsOn: 1 as const };
 
 export type CompletedWeekGroup<T> = {
@@ -55,7 +57,12 @@ function weekMeta(date: Date, now = new Date()) {
 }
 
 export function groupTasksByCompletedWeek<
-  T extends { completed_at: string | null; updated_at: string },
+  T extends {
+    completed_at: string | null;
+    updated_at: string;
+    due_date?: string | null;
+    created_at?: string;
+  },
 >(tasks: T[], now = new Date()): CompletedWeekGroup<T>[] {
   const groups = new Map<string, CompletedWeekGroup<T>>();
 
@@ -80,6 +87,8 @@ export function groupTasksByCompletedWeek<
 
   for (const group of sorted) {
     group.tasks.sort((a, b) => {
+      const due = compareTasksByDueDate(a, b);
+      if (due !== 0) return due;
       const aTime = completedDate(a)?.getTime() ?? 0;
       const bTime = completedDate(b)?.getTime() ?? 0;
       return bTime - aTime;

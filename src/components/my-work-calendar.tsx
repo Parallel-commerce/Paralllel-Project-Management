@@ -13,6 +13,7 @@ import {
 } from "date-fns";
 import { useMemo, useState } from "react";
 
+import { TaskCardQuickActions } from "@/components/task-card-actions";
 import { TaskTypeTag } from "@/components/task-type-tag";
 import { taskStatusColors } from "@/lib/task-status";
 import type { TaskStatus, TaskType } from "@/types/database";
@@ -23,8 +24,15 @@ export type CalendarTask = {
   due_date: string | null;
   status: TaskStatus;
   task_type?: TaskType | null;
+  project_id?: string;
+  list_id?: string;
   projectName?: string;
   listName?: string;
+};
+
+type TaskPatch = {
+  status?: TaskStatus;
+  due_date?: string | null;
 };
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -45,12 +53,53 @@ function contextLabel(task: CalendarTask) {
   return task.projectName || task.listName || null;
 }
 
+function CalendarQuickActions({
+  task,
+  todayIso,
+  onOpen,
+  onTaskChange,
+  onBeforeStatusChange,
+}: {
+  task: CalendarTask;
+  todayIso: string;
+  onOpen: () => void;
+  onTaskChange?: (taskId: string, patch: TaskPatch) => void;
+  onBeforeStatusChange?: (task: CalendarTask, next: TaskStatus) => boolean;
+}) {
+  if (!task.project_id || !task.list_id || !onTaskChange) return null;
+
+  return (
+    <span className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+      <TaskCardQuickActions
+        taskId={task.id}
+        projectId={task.project_id}
+        listId={task.list_id}
+        status={task.status}
+        dueDate={task.due_date}
+        todayIso={todayIso}
+        onOpen={onOpen}
+        onStatusChange={(status) => onTaskChange(task.id, { status })}
+        onDueDateChange={(dueDate) =>
+          onTaskChange(task.id, { due_date: dueDate })
+        }
+        onBeforeStatusChange={
+          onBeforeStatusChange
+            ? (status) => onBeforeStatusChange(task, status)
+            : undefined
+        }
+      />
+    </span>
+  );
+}
+
 export function MyWorkCalendar({
   tasks,
   todayIso,
   selectedDay,
   onSelectDay,
   onOpenTask,
+  onTaskChange,
+  onBeforeStatusChange,
   showContext = true,
   highlightedWeekdays = [],
 }: {
@@ -59,6 +108,8 @@ export function MyWorkCalendar({
   selectedDay: string | null;
   onSelectDay: (day: string) => void;
   onOpenTask: (taskId: string) => void;
+  onTaskChange?: (taskId: string, patch: TaskPatch) => void;
+  onBeforeStatusChange?: (task: CalendarTask, next: TaskStatus) => boolean;
   showContext?: boolean;
   /** 0 = Sunday … 6 = Saturday */
   highlightedWeekdays?: number[];
@@ -271,11 +322,14 @@ export function MyWorkCalendar({
               {selectedTasks.map((task) => {
                 const context = showContext ? contextLabel(task) : null;
                 return (
-                  <li key={task.id}>
+                  <li
+                    key={task.id}
+                    className="flex items-start gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2"
+                  >
                     <button
                       type="button"
                       onClick={() => onOpenTask(task.id)}
-                      className="flex w-full items-start gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-left"
+                      className="flex min-w-0 flex-1 items-start gap-2 text-left"
                     >
                       <span
                         aria-hidden
@@ -295,6 +349,13 @@ export function MyWorkCalendar({
                         ) : null}
                       </span>
                     </button>
+                    <CalendarQuickActions
+                      task={task}
+                      todayIso={todayIso}
+                      onOpen={() => onOpenTask(task.id)}
+                      onTaskChange={onTaskChange}
+                      onBeforeStatusChange={onBeforeStatusChange}
+                    />
                   </li>
                 );
               })}
@@ -315,26 +376,36 @@ export function MyWorkCalendar({
             {selectedTasks.map((task) => {
               const context = showContext ? contextLabel(task) : null;
               return (
-                <li key={task.id}>
+                <li
+                  key={task.id}
+                  className="flex items-center justify-between gap-3 px-3 py-2.5 hover:bg-[var(--surface-2)]"
+                >
                   <button
                     type="button"
                     onClick={() => onOpenTask(task.id)}
-                    className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left hover:bg-[var(--surface-2)]"
+                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
                   >
-                    <span className="flex min-w-0 items-center gap-2">
-                      <span
-                        aria-hidden
-                        className={`h-2 w-2 shrink-0 rounded-full ${statusDot(task.status)}`}
-                      />
-                      <span className="min-w-0 truncate font-medium">{task.title}</span>
-                      <TaskTypeTag taskType={task.task_type} className="shrink-0" />
-                    </span>
+                    <span
+                      aria-hidden
+                      className={`h-2 w-2 shrink-0 rounded-full ${statusDot(task.status)}`}
+                    />
+                    <span className="min-w-0 truncate font-medium">{task.title}</span>
+                    <TaskTypeTag taskType={task.task_type} className="shrink-0" />
+                  </button>
+                  <span className="flex shrink-0 items-center gap-3">
                     {context ? (
-                      <span className="shrink-0 truncate text-xs text-[var(--muted)]">
+                      <span className="max-w-48 truncate text-xs text-[var(--muted)]">
                         {context}
                       </span>
                     ) : null}
-                  </button>
+                    <CalendarQuickActions
+                      task={task}
+                      todayIso={todayIso}
+                      onOpen={() => onOpenTask(task.id)}
+                      onTaskChange={onTaskChange}
+                      onBeforeStatusChange={onBeforeStatusChange}
+                    />
+                  </span>
                 </li>
               );
             })}

@@ -16,6 +16,7 @@ import {
   type TaskWithPeople,
 } from "@/components/task-modal";
 import { TaskWorkLink } from "@/components/task-work-link";
+import type { TaskStatus } from "@/types/database";
 import type { TimeEntryRow } from "@/components/time-tracking-panel";
 
 export type WorkView = "mine" | "reported" | "overdue" | "week" | "waiting";
@@ -133,7 +134,7 @@ function emptyCopy(view: WorkView) {
 export function MyWorkView({
   view,
   layout,
-  tasks,
+  tasks: incomingTasks,
   lists,
   currentUserId,
   todayIso,
@@ -152,16 +153,34 @@ export function MyWorkView({
   runningEntry: TimeEntryRow | null;
 }) {
   const router = useRouter();
+  const [tasks, setTasks] = useState(incomingTasks);
+  const [prevIncomingTasks, setPrevIncomingTasks] = useState(incomingTasks);
+  if (incomingTasks !== prevIncomingTasks) {
+    setPrevIncomingTasks(incomingTasks);
+    setTasks(incomingTasks);
+  }
+
+  function patchTask(
+    taskId: string,
+    patch: { status?: TaskStatus; due_date?: string | null },
+  ) {
+    setTasks((current) =>
+      current.map((task) =>
+        task.id === taskId ? { ...task, ...patch } : task,
+      ),
+    );
+  }
+
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(
     initialTaskId ?? null,
   );
   const [cachedEditing, setCachedEditing] = useState<MyWorkTask | null>(() => {
-    return tasks.find((task) => task.id === initialTaskId) ?? null;
+    return incomingTasks.find((task) => task.id === initialTaskId) ?? null;
   });
   const [prevInitialTaskId, setPrevInitialTaskId] = useState(initialTaskId);
   const [selectedDay, setSelectedDay] = useState<string | null>(() => {
-    const match = tasks.find((task) => task.id === initialTaskId);
+    const match = incomingTasks.find((task) => task.id === initialTaskId);
     return match?.due_date?.slice(0, 10) ?? null;
   });
 
@@ -292,6 +311,7 @@ export function MyWorkView({
             todayIso={todayIso}
             selectedDay={selectedDay}
             onSelectDay={setSelectedDay}
+            onTaskChange={patchTask}
             onOpenTask={(taskId) => {
               const match = tasks.find((task) => task.id === taskId);
               if (match) openTask(match);
@@ -316,7 +336,11 @@ export function MyWorkView({
                       projectName={task.projectName}
                       listName={task.listName}
                       todayIso={todayIso}
+                      taskId={task.id}
+                      projectId={task.project_id}
+                      listId={task.list_id}
                       onOpen={() => openTask(task)}
+                      onTaskChange={(patch) => patchTask(task.id, patch)}
                     />
                   </li>
                 ))}
@@ -357,7 +381,11 @@ export function MyWorkView({
                           projectName={task.projectName}
                           listName={task.listName}
                           todayIso={todayIso}
+                          taskId={task.id}
+                          projectId={task.project_id}
+                          listId={task.list_id}
                           onOpen={() => openTask(task)}
+                          onTaskChange={(patch) => patchTask(task.id, patch)}
                         />
                       </li>
                     ))}

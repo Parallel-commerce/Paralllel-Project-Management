@@ -1320,7 +1320,103 @@ export async function updateTaskStatus(
   revalidatePath(`/projects/${projectId}/lists/${listId}`);
   revalidatePath(`/projects/${projectId}`);
   revalidatePath("/tasks");
+  revalidatePath("/home");
   return { success: true, theme: themeFields };
+}
+
+function normalizeDueDate(
+  value: string | null,
+): string | null | { error: string } {
+  if (value == null) return null;
+  const day = value.trim().slice(0, 10);
+  if (!day) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+    return { error: "Enter a valid due date." };
+  }
+  const [year, month, date] = day.split("-").map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, date));
+  if (
+    parsed.getUTCFullYear() !== year ||
+    parsed.getUTCMonth() !== month - 1 ||
+    parsed.getUTCDate() !== date
+  ) {
+    return { error: "Enter a valid due date." };
+  }
+  return day;
+}
+
+function formatDueLabel(day: string) {
+  const [year, month, date] = day.split("-").map(Number);
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(year, month - 1, date));
+}
+
+export async function updateTaskDueDate(
+  projectId: string,
+  listId: string,
+  taskId: string,
+  dueDate: string | null,
+) {
+  const { supabase, user } = await requireUser();
+  const nextDueDate = normalizeDueDate(dueDate);
+  if (nextDueDate && typeof nextDueDate !== "string") {
+    return nextDueDate;
+  }
+
+  const visibility = await getListVisibility(supabase, listId);
+  const clientVisible = visibility === "public";
+
+  const { data: before } = await supabase
+    .from("tasks")
+    .select("title, due_date")
+    .eq("id", taskId)
+    .maybeSingle();
+
+  if (!before) {
+    return { error: "Task not found." };
+  }
+
+  const previous = before.due_date?.slice(0, 10) ?? null;
+  if (previous === nextDueDate) {
+    return { success: true, dueDate: nextDueDate };
+  }
+
+  const { error } = await supabase
+    .from("tasks")
+    .update({ due_date: nextDueDate })
+    .eq("id", taskId);
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  const summary = nextDueDate
+    ? `Set the due date on “${before.title}” to ${formatDueLabel(nextDueDate)}`
+    : `Cleared the due date on “${before.title}”`;
+
+  await logActivity({
+    projectId,
+    actorId: user.id,
+    entityType: "task",
+    entityId: taskId,
+    action: "updated",
+    summary,
+    metadata: {
+      from: previous,
+      to: nextDueDate,
+      list_visibility: visibility,
+    },
+    clientVisible,
+  });
+
+  revalidatePath(`/projects/${projectId}/lists/${listId}`);
+  revalidatePath(`/projects/${projectId}`);
+  revalidatePath("/tasks");
+  revalidatePath("/home");
+  return { success: true, dueDate: nextDueDate };
 }
 
 export async function deleteTask(

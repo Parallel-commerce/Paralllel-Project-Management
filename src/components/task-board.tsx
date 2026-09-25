@@ -11,9 +11,10 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { createContext, useContext, useMemo, useState, useTransition } from "react";
 
 import { MyWorkCalendar } from "@/components/my-work-calendar";
+import { TaskCardQuickActions } from "@/components/task-card-actions";
 import { TaskTypeTag } from "@/components/task-type-tag";
 import { ThemeDeploySelect } from "@/components/theme-deploy-select";
 import {
@@ -28,6 +29,7 @@ import {
 import { updateTaskStatus } from "@/lib/actions/projects";
 import { groupTasksByCompletedWeek } from "@/lib/completed-week";
 import { personDisplayName } from "@/lib/person";
+import { sortTasksByDueDate } from "@/lib/sort-tasks";
 import { formatScheduledWeekdays } from "@/lib/scheduled-weekdays";
 import { taskStatusColors } from "@/lib/task-status";
 import { taskTypeLabel } from "@/lib/task-type";
@@ -54,6 +56,21 @@ function displayName(profile?: ProfileOption | null) {
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
+
+type TaskPatch = {
+  status?: TaskStatus;
+  due_date?: string | null;
+};
+
+type QuickEdit = {
+  projectId: string;
+  listId: string;
+  today: string;
+  patchTask: (taskId: string, patch: TaskPatch) => void;
+  prepareStatusChange: (task: TaskWithPeople, next: TaskStatus) => boolean;
+};
+
+const QuickEditContext = createContext<QuickEdit | null>(null);
 
 function endOfWeekIso() {
   const now = new Date();
@@ -94,6 +111,8 @@ function TaskCard({
     id: task.id,
     data: { status: task.status },
   });
+  const quickEdit = useContext(QuickEditContext);
+  const today = quickEdit?.today ?? todayIso();
 
   return (
     <article
@@ -130,17 +149,6 @@ function TaskCard({
           >
             {task.title}
           </h3>
-          {task.due_date ? (
-            <p
-              className={`mt-1 text-xs ${
-                task.due_date < todayIso() && task.status !== "done"
-                  ? "text-[var(--danger)]"
-                  : "text-[var(--muted)]"
-              }`}
-            >
-              Due {task.due_date}
-            </p>
-          ) : null}
           <p className="mt-2 text-xs text-[var(--muted)]">
             {task.assignee
               ? `Assigned · ${displayName(task.assignee)}`
@@ -158,6 +166,36 @@ function TaskCard({
           ) : null}
         </button>
       </div>
+      {quickEdit && !dragging ? (
+        <div className="mt-2 flex flex-wrap items-center gap-2 pl-6">
+          <TaskCardQuickActions
+            taskId={task.id}
+            projectId={quickEdit.projectId}
+            listId={quickEdit.listId}
+            status={task.status}
+            dueDate={task.due_date}
+            todayIso={today}
+            onOpen={onOpen}
+            onStatusChange={(status) => quickEdit.patchTask(task.id, { status })}
+            onDueDateChange={(dueDate) =>
+              quickEdit.patchTask(task.id, { due_date: dueDate })
+            }
+            onBeforeStatusChange={(status) =>
+              quickEdit.prepareStatusChange(task, status)
+            }
+          />
+        </div>
+      ) : task.due_date ? (
+        <p
+          className={`mt-2 pl-6 text-xs ${
+            task.due_date < today && task.status !== "done"
+              ? "text-[var(--danger)]"
+              : "text-[var(--muted)]"
+          }`}
+        >
+          Due {task.due_date}
+        </p>
+      ) : null}
     </article>
   );
 }
@@ -171,16 +209,14 @@ function TaskListRow({
   onOpen: () => void;
   trackedSeconds?: number;
 }) {
+  const quickEdit = useContext(QuickEditContext);
+  const today = quickEdit?.today ?? todayIso();
   const overdue =
-    !!task.due_date && task.due_date < todayIso() && task.status !== "done";
+    !!task.due_date && task.due_date < today && task.status !== "done";
 
   return (
-    <li>
-      <button
-        type="button"
-        onClick={onOpen}
-        className="flex w-full flex-col gap-1 px-3 py-3 text-left hover:bg-[var(--surface)]/80 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
-      >
+    <li className="flex flex-col gap-2 px-3 py-3 hover:bg-[var(--surface)]/80 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+      <button type="button" onClick={onOpen} className="min-w-0 flex-1 text-left">
         <div className="min-w-0">
           {task.key || task.task_type ? (
             <div className="flex flex-wrap items-center gap-1.5">
@@ -203,25 +239,44 @@ function TaskListRow({
               : ""}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[var(--muted)] sm:shrink-0 sm:justify-end">
-          <span className="hidden sm:inline">
-            {task.assignee ? displayName(task.assignee) : "Unassigned"}
+      </button>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[var(--muted)] sm:shrink-0 sm:justify-end">
+        <span className="hidden sm:inline">
+          {task.assignee ? displayName(task.assignee) : "Unassigned"}
+        </span>
+        <span className="hidden md:inline">
+          {task.reporter
+            ? `Rep. ${displayName(task.reporter)}`
+            : "No reporter"}
+        </span>
+        {trackedSeconds && trackedSeconds > 0 ? (
+          <span className="hidden tabular-nums sm:inline">
+            {formatTaskTime(trackedSeconds)}
           </span>
-          <span className="hidden md:inline">
-            {task.reporter
-              ? `Rep. ${displayName(task.reporter)}`
-              : "No reporter"}
-          </span>
-          {trackedSeconds && trackedSeconds > 0 ? (
-            <span className="hidden tabular-nums sm:inline">
-              {formatTaskTime(trackedSeconds)}
-            </span>
-          ) : null}
+        ) : null}
+        {quickEdit ? (
+          <TaskCardQuickActions
+            taskId={task.id}
+            projectId={quickEdit.projectId}
+            listId={quickEdit.listId}
+            status={task.status}
+            dueDate={task.due_date}
+            todayIso={today}
+            onOpen={onOpen}
+            onStatusChange={(status) => quickEdit.patchTask(task.id, { status })}
+            onDueDateChange={(dueDate) =>
+              quickEdit.patchTask(task.id, { due_date: dueDate })
+            }
+            onBeforeStatusChange={(status) =>
+              quickEdit.prepareStatusChange(task, status)
+            }
+          />
+        ) : (
           <span className={overdue ? "text-[var(--danger)]" : ""}>
             {task.due_date ? `Due ${task.due_date}` : "No due date"}
           </span>
-        </div>
-      </button>
+        )}
+      </div>
     </li>
   );
 }
@@ -455,7 +510,10 @@ export function TaskBoard({
 }) {
   const [tasks, setTasks] = useState(initialTasks);
   const [creating, setCreating] = useState(false);
-  const [editing, setEditing] = useState<TaskWithPeople | null>(null);
+  const [editing, setEditing] = useState<TaskWithPeople | null>(() => {
+    if (!initialTaskId) return null;
+    return initialTasks.find((task) => task.id === initialTaskId) ?? null;
+  });
   const [activeId, setActiveId] = useState<string | null>(null);
   const [pendingDone, setPendingDone] = useState<TaskWithPeople | null>(null);
   const [pendingChoice, setPendingChoice] = useState("");
@@ -470,18 +528,24 @@ export function TaskBoard({
   const [dueFilter, setDueFilter] = useState<DueFilter>("all");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [, startTransition] = useTransition();
+  const [prevInitialTasks, setPrevInitialTasks] = useState(initialTasks);
+  const [prevInitialTaskId, setPrevInitialTaskId] = useState(initialTaskId);
 
-  useEffect(() => {
+  if (initialTasks !== prevInitialTasks) {
+    setPrevInitialTasks(initialTasks);
     setTasks(initialTasks);
-  }, [initialTasks]);
-
-  useEffect(() => {
-    if (!initialTaskId) return;
-    const match = initialTasks.find((task) => task.id === initialTaskId);
-    if (match) {
-      setEditing(match);
+    if (initialTaskId) {
+      const match = initialTasks.find((task) => task.id === initialTaskId);
+      if (match) setEditing(match);
     }
-  }, [initialTaskId, initialTasks]);
+  }
+  if (initialTaskId !== prevInitialTaskId) {
+    setPrevInitialTaskId(initialTaskId);
+    if (initialTaskId) {
+      const match = initialTasks.find((task) => task.id === initialTaskId);
+      if (match) setEditing(match);
+    }
+  }
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -489,7 +553,7 @@ export function TaskBoard({
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return tasks.filter((task) => {
+    const next = tasks.filter((task) => {
       if (assigneeFilter === "unassigned" && task.assigned_to) return false;
       if (
         assigneeFilter !== "all" &&
@@ -521,6 +585,7 @@ export function TaskBoard({
         displayName(task.reporter).toLowerCase().includes(q)
       );
     });
+    return sortTasksByDueDate(next);
   }, [tasks, query, assigneeFilter, reporterFilter, statusFilter, typeFilter, dueFilter]);
 
   const grouped = useMemo(() => {
@@ -669,7 +734,46 @@ export function TaskBoard({
     });
   }
 
+  function patchTask(taskId: string, patch: TaskPatch) {
+    setTasks((prev) =>
+      prev.map((task) => {
+        if (task.id !== taskId) return task;
+        const next = { ...task, ...patch };
+        if (patch.status === "done") {
+          next.completed_at = task.completed_at ?? new Date().toISOString();
+        } else if (patch.status && task.status === "done") {
+          next.completed_at = null;
+        }
+        return next;
+      }),
+    );
+  }
+
+  function prepareStatusChange(task: TaskWithPeople, next: TaskStatus) {
+    if (
+      next === "done" &&
+      themeDeploysEnabled(themeDeploys) &&
+      !hasThemeDeployChoice(task)
+    ) {
+      setPendingDone(task);
+      setPendingChoice("");
+      setPendingError(null);
+      return false;
+    }
+    return true;
+  }
+
+  const today = todayIso();
+  const quickEdit: QuickEdit = {
+    projectId,
+    listId,
+    today,
+    patchTask,
+    prepareStatusChange,
+  };
+
   return (
+    <QuickEditContext.Provider value={quickEdit}>
     <div>
       <div className="mb-4 flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -862,7 +966,7 @@ export function TaskBoard({
           ) : null}
           <MyWorkCalendar
             tasks={filtered}
-            todayIso={todayIso()}
+            todayIso={today}
             selectedDay={selectedDay}
             onSelectDay={setSelectedDay}
             onOpenTask={(taskId) => {
@@ -870,6 +974,12 @@ export function TaskBoard({
               if (!match) return;
               setEditing(match);
               if (match.due_date) setSelectedDay(match.due_date.slice(0, 10));
+            }}
+            onTaskChange={patchTask}
+            onBeforeStatusChange={(task, next) => {
+              const full = tasks.find((item) => item.id === task.id);
+              if (!full) return true;
+              return prepareStatusChange(full, next);
             }}
             showContext={false}
             highlightedWeekdays={scheduledWeekdays}
@@ -1046,5 +1156,6 @@ export function TaskBoard({
         </div>
       ) : null}
     </div>
+    </QuickEditContext.Provider>
   );
 }

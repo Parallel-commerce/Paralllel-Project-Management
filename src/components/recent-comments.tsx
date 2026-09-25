@@ -11,8 +11,10 @@ function nestOne<T>(value: T | T[] | null | undefined): T | null {
 
 export async function RecentComments({
   limit = 8,
+  prioritizeClients = false,
 }: {
   limit?: number;
+  prioritizeClients?: boolean;
 }) {
   const [{ user }, supabase] = await Promise.all([
     getSessionUser(),
@@ -141,11 +143,18 @@ export async function RecentComments({
   }
 
   const sorted = [...comments].sort((a, b) => {
-    if (a.isClient !== b.isClient) return a.isClient ? -1 : 1;
+    if (prioritizeClients && a.isClient !== b.isClient) {
+      return a.isClient ? -1 : 1;
+    }
     return b.created_at.localeCompare(a.created_at);
   });
 
   const visible = sorted.slice(0, limit);
 
-  return <RecentCommentsList comments={visible} />;
+  return (
+    <RecentCommentsList
+      comments={visible}
+      prioritizeClients={prioritizeClients}
+    />
+  );
 }

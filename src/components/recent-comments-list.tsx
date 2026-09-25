@@ -31,13 +31,17 @@ function truncate(text: string, max = 160) {
 
 export function RecentCommentsList({
   comments: initialComments,
+  prioritizeClients = false,
 }: {
   comments: RecentCommentItem[];
+  prioritizeClients?: boolean;
 }) {
   const router = useRouter();
   const [comments, setComments] = useState(initialComments);
   const [pending, startTransition] = useTransition();
-  const clientCount = comments.filter((comment) => comment.isClient).length;
+  const clientCount = prioritizeClients
+    ? comments.filter((comment) => comment.isClient).length
+    : 0;
 
   useEffect(() => {
     setComments(initialComments);
@@ -72,8 +76,13 @@ export function RecentCommentsList({
         <div>
           <h2 className="font-medium">Recent comments</h2>
           <p className="mt-1 hidden text-sm text-[var(--muted)] sm:block">
-            Comments waiting for your reply
-            {clientCount > 0 ? " — client comments are listed first." : "."}
+            {prioritizeClients
+              ? `Comments waiting for your reply${
+                  clientCount > 0
+                    ? " — client comments are listed first."
+                    : "."
+                }`
+              : "New comments on your lists — reply or mark them read so nothing is missed."}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -115,7 +124,7 @@ export function RecentCommentsList({
               >
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="text-sm font-medium">{comment.authorName}</p>
-                  {comment.isClient ? (
+                  {prioritizeClients && comment.isClient ? (
                     <span className="rounded bg-[var(--accent-soft)] px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--accent)]">
                       Client
                     </span>

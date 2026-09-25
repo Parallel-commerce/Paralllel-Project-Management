@@ -325,6 +325,9 @@ export async function AdminHomeInsights() {
               <li key={task.id}>
                 <TaskWorkLink
                   href={`/projects/${task.project_id}/lists/${task.list_id}?task=${task.id}`}
+                  taskId={task.id}
+                  projectId={task.project_id}
+                  listId={task.list_id}
                   title={task.title}
                   status={task.status}
                   taskType={task.task_type}

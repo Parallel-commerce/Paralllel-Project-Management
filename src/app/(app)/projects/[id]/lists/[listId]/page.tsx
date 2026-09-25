@@ -100,6 +100,7 @@ export default async function ListBoardPage({
       .select(TASK_TABLE_COLUMNS)
       .eq("list_id", listId)
       .is("archived_at", null)
+      .order("due_date", { ascending: true, nullsFirst: true })
       .order("created_at", { ascending: true }),
     loadThemeDeploys(supabase, id),
   ]);

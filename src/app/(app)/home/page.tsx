@@ -111,27 +111,18 @@ export default async function HomeDashboardPage() {
         </h1>
         <p className="mt-2 hidden text-sm text-[var(--muted)] sm:block">
           Your projects and upcoming work — plus a quick way to capture a new
-          task
-          {isInternal ? ", recent comments" : ""}
+          task, recent comments
           {isPlatformAdmin ? ", and an operations overview" : ""}.
         </p>
       </div>
 
       <div className="mt-6 flex flex-col gap-6 lg:mt-8 lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-8">
-        {isInternal ? (
-          <AdminOnly className="order-1 min-w-0 lg:order-none lg:col-start-1 lg:row-start-1">
-            <div className="p-5">
-              <RecentComments />
-            </div>
-          </AdminOnly>
-        ) : null}
+        <section className="order-1 min-w-0 lg:order-none lg:col-start-1 lg:row-start-1">
+          <RecentComments prioritizeClients={isInternal} />
+        </section>
 
         {isPlatformAdmin ? (
-          <AdminOnly
-            className={`order-5 min-w-0 lg:order-none lg:col-start-1 ${
-              isInternal ? "lg:row-start-2" : "lg:row-start-1"
-            }`}
-          >
+          <AdminOnly className="order-5 min-w-0 lg:order-none lg:col-start-1 lg:row-start-2">
             <div className="p-5">
               <AdminHomeInsights />
             </div>
@@ -140,11 +131,7 @@ export default async function HomeDashboardPage() {
 
         <section
           className={`order-2 min-w-0 lg:order-none lg:col-start-1 ${
-            isPlatformAdmin && isInternal
-              ? "lg:row-start-3"
-              : isInternal || isPlatformAdmin
-                ? "lg:row-start-2"
-                : "lg:row-start-1"
+            isPlatformAdmin ? "lg:row-start-3" : "lg:row-start-2"
           }`}
         >
           <div className="flex items-end justify-between gap-3">
@@ -178,6 +165,9 @@ export default async function HomeDashboardPage() {
                   <li key={task.id as string}>
                     <TaskWorkLink
                       href={`/projects/${task.project_id}/lists/${task.list_id}?task=${task.id}`}
+                      taskId={task.id as string}
+                      projectId={task.project_id as string}
+                      listId={task.list_id as string}
                       title={task.title as string}
                       status={task.status as TaskStatus}
                       taskType={(task.task_type as TaskType | null) ?? null}
@@ -196,11 +186,7 @@ export default async function HomeDashboardPage() {
 
         <aside
           className={`order-3 relative z-10 lg:order-none lg:col-start-2 lg:row-start-1 lg:sticky lg:top-20 lg:self-start ${
-            isPlatformAdmin
-              ? "lg:row-span-4"
-              : isInternal
-                ? "lg:row-span-3"
-                : "lg:row-span-2"
+            isPlatformAdmin ? "lg:row-span-4" : "lg:row-span-3"
           }`}
         >
           <section className="overflow-visible rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 sm:p-5">
@@ -219,11 +205,7 @@ export default async function HomeDashboardPage() {
 
         <section
           className={`order-4 min-w-0 lg:order-none lg:col-start-1 ${
-            isPlatformAdmin
-              ? "lg:row-start-4"
-              : isInternal
-                ? "lg:row-start-3"
-                : "lg:row-start-2"
+            isPlatformAdmin ? "lg:row-start-4" : "lg:row-start-3"
           }`}
         >
           <div className="flex items-end justify-between gap-3">
