@@ -96,11 +96,15 @@ export function CrmListPlaceRestore() {
 
 export function CrmBackLink() {
   const [href, setHref] = useState("/crm");
+  const [label, setLabel] = useState("Prospects");
 
   useLayoutEffect(() => {
     const place = readPlace();
     if (place?.href.startsWith("/crm")) {
       setHref(place.href);
+      setLabel(
+        place.href.startsWith("/crm/companies") ? "Companies" : "Prospects",
+      );
     }
   }, []);
 
@@ -110,7 +114,7 @@ export function CrmBackLink() {
       scroll={false}
       className="text-sm text-[var(--muted)] hover:text-[var(--foreground)]"
     >
-      ← Prospects
+      ← {label}
     </Link>
   );
 }

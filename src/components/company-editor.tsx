@@ -18,7 +18,12 @@ import {
 } from "@/lib/company-reengage";
 import { dateInputValue } from "@/lib/format-date";
 import type { VerticalOption } from "@/lib/verticals";
-import { COMPANY_KINDS, COMPANY_STATUSES, type Company } from "@/types/database";
+import {
+  COMPANY_KINDS,
+  OPEN_LEAD_STATUSES,
+  type Company,
+  type CompanyKind,
+} from "@/types/database";
 
 function lookupSnapshot(form: HTMLFormElement) {
   const formData = new FormData(form);
@@ -68,10 +73,15 @@ export function CompanyEditor({
   const [assignedVerticals, setAssignedVerticals] =
     useState<VerticalOption[]>(selectedVerticals);
   const [verticalPending, setVerticalPending] = useState(false);
+  const [kind, setKind] = useState<CompanyKind>(company.kind);
 
   useEffect(() => {
     setAssignedVerticals(selectedVerticals);
   }, [selectedVerticals]);
+
+  useEffect(() => {
+    setKind(company.kind);
+  }, [company.kind]);
 
   useEffect(() => {
     const form = formRef.current;
@@ -200,37 +210,24 @@ export function CompanyEditor({
 
   return (
     <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4 sm:p-5">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0">
-          <h2 className="font-medium">Company</h2>
-          <p className="mt-1 text-sm text-[var(--muted)]">
-            Type, sales status, whether they can be re-engaged, the verticals
-            they work in, a company summary, notes, and a follow-up date if they
-            need another pass.
-          </p>
-        </div>
-        <div className="flex flex-col items-end gap-2">
-          <p
-            className={`text-xs ${
-              saveState === "error"
-                ? "text-[var(--danger)]"
-                : "text-[var(--muted)]"
-            }`}
-            aria-live="polite"
-          >
-            {saveState === "saving"
-              ? "Saving…"
-              : saveState === "saved"
-                ? "Saved"
-                : saveState === "error"
-                  ? "Couldn’t save"
-                  : "Changes save automatically"}
-          </p>
-          <CompanyEnrichButton
-            companyId={company.id}
-            enrichedAt={company.enriched_at}
-          />
-        </div>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="font-medium">Company</h2>
+        <p
+          className={`text-xs ${
+            saveState === "error"
+              ? "text-[var(--danger)]"
+              : "text-[var(--muted)]"
+          }`}
+          aria-live="polite"
+        >
+          {saveState === "saving"
+            ? "Saving…"
+            : saveState === "saved"
+              ? "Saved"
+              : saveState === "error"
+                ? "Couldn’t save"
+                : "Autosaves"}
+        </p>
       </div>
 
       <form
@@ -299,46 +296,62 @@ export function CompanyEditor({
             />
           </label>
         </div>
-        <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
-          Summary
+        <div className="flex flex-col gap-1.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-sm text-[var(--muted)]">Summary</span>
+            <CompanyEnrichButton
+              companyId={company.id}
+              enrichedAt={company.enriched_at}
+            />
+          </div>
           <textarea
             name="summary"
             rows={4}
             defaultValue={company.summary ?? ""}
             placeholder="Look up the company to draft this, or write it yourself."
             onBlur={saveLookup}
-            className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
+            className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
           />
-        </label>
+        </div>
         <div className="grid gap-3 sm:grid-cols-3">
           <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
             Type
             <select
               name="kind"
-              defaultValue={company.kind}
+              value={kind}
+              onChange={(event) => {
+                setKind(event.target.value as CompanyKind);
+                scheduleSave();
+              }}
               className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
             >
-              {COMPANY_KINDS.map((kind) => (
-                <option key={kind.value} value={kind.value}>
-                  {kind.label}
+              {COMPANY_KINDS.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
                 </option>
               ))}
             </select>
           </label>
-          <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
-            Status
-            <select
-              name="status"
-              defaultValue={company.status}
-              className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
-            >
-              {COMPANY_STATUSES.map((status) => (
-                <option key={status.value} value={status.value}>
-                  {status.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          {kind === "prospect" ? (
+            <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
+              Lead status
+              <select
+                name="status"
+                defaultValue={company.status ?? "lead"}
+                className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
+              >
+                {OPEN_LEAD_STATUSES.map((status) => (
+                  <option key={status.value} value={status.value}>
+                    {status.label}
+                  </option>
+                ))}
+                <option value="won">Won → customer</option>
+                <option value="lost">Lost → lost opportunity</option>
+              </select>
+            </label>
+          ) : (
+            <input type="hidden" name="status" value="" />
+          )}
           <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
             Can re-engage
             <select
@@ -420,25 +433,27 @@ export function CompanyEditor({
             });
           }}
         />
-        <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
-          Follow up on
-          <input
-            type="date"
-            name="follow_up_at"
-            defaultValue={dateInputValue(company.follow_up_at)}
-            className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
-          />
-        </label>
-        <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
-          Follow-up note
-          <input
-            name="follow_up_note"
-            defaultValue={company.follow_up_note ?? ""}
-            placeholder="Why to follow up, or who to call"
-            onBlur={saveNow}
-            className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
-          />
-        </label>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
+            Follow up on
+            <input
+              type="date"
+              name="follow_up_at"
+              defaultValue={dateInputValue(company.follow_up_at)}
+              className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
+            />
+          </label>
+          <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
+            Follow-up note
+            <input
+              name="follow_up_note"
+              defaultValue={company.follow_up_note ?? ""}
+              placeholder="Why to follow up, or who to call"
+              onBlur={saveNow}
+              className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
+            />
+          </label>
+        </div>
         <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
           Notes
           <textarea

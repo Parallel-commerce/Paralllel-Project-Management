@@ -54,9 +54,29 @@ function normalizeWebsite(raw: string) {
 
 function parseStatus(raw: string): CompanyStatus | { error: string } {
   if (!STATUS_VALUES.has(raw as CompanyStatus)) {
-    return { error: "Choose a valid status." };
+    return { error: "Choose a valid lead status." };
   }
   return raw as CompanyStatus;
+}
+
+function statusForKind(
+  kind: CompanyKind,
+  statusRaw: string,
+):
+  | { status: CompanyStatus | null; kind: CompanyKind }
+  | { error: string } {
+  if (kind !== "prospect") {
+    return { status: null, kind };
+  }
+  const statusResult = parseStatus(statusRaw || "lead");
+  if (typeof statusResult === "object") return statusResult;
+  if (statusResult === "won") {
+    return { status: null, kind: "customer" };
+  }
+  if (statusResult === "lost") {
+    return { status: null, kind: "lost_opportunity" };
+  }
+  return { status: statusResult, kind: "prospect" };
 }
 
 function parseKind(raw: string): CompanyKind | { error: string } {
@@ -238,10 +258,13 @@ export async function createCompany(
   const name = String(formData.get("name") ?? "").trim();
   const website = normalizeWebsite(String(formData.get("website") ?? ""));
   const notes = emptyToNull(String(formData.get("notes") ?? ""));
-  const statusResult = parseStatus(String(formData.get("status") ?? "lead"));
-  if (typeof statusResult === "object") return statusResult;
   const kindResult = parseKind(String(formData.get("kind") ?? "prospect"));
   if (typeof kindResult === "object") return kindResult;
+  const resolved = statusForKind(
+    kindResult,
+    String(formData.get("status") ?? "lead"),
+  );
+  if ("error" in resolved) return resolved;
   const followUp = parseDate(String(formData.get("follow_up_at") ?? ""));
   if (followUp && typeof followUp === "object") return followUp;
   const followUpNote = emptyToNull(String(formData.get("follow_up_note") ?? ""));
@@ -256,8 +279,8 @@ export async function createCompany(
       name,
       website,
       notes,
-      status: statusResult,
-      kind: kindResult,
+      status: resolved.status,
+      kind: resolved.kind,
       follow_up_at: followUp,
       follow_up_note: followUpNote,
       created_by: user.id,
@@ -288,10 +311,13 @@ export async function updateCompany(
   const name = String(formData.get("name") ?? "").trim();
   const website = normalizeWebsite(String(formData.get("website") ?? ""));
   const notes = emptyToNull(String(formData.get("notes") ?? ""));
-  const statusResult = parseStatus(String(formData.get("status") ?? "lead"));
-  if (typeof statusResult === "object") return statusResult;
   const kindResult = parseKind(String(formData.get("kind") ?? "prospect"));
   if (typeof kindResult === "object") return kindResult;
+  const resolved = statusForKind(
+    kindResult,
+    String(formData.get("status") ?? "lead"),
+  );
+  if ("error" in resolved) return resolved;
   const canReengage = parseCanReengage(String(formData.get("can_reengage") ?? ""));
   if (canReengage && typeof canReengage === "object") return canReengage;
   const followUp = parseDate(String(formData.get("follow_up_at") ?? ""));
@@ -308,8 +334,8 @@ export async function updateCompany(
       name,
       website,
       notes,
-      status: statusResult,
-      kind: kindResult,
+      status: resolved.status,
+      kind: resolved.kind,
       can_reengage: canReengage,
       follow_up_at: followUp,
       follow_up_note: followUpNote,
@@ -359,9 +385,14 @@ export async function updateCompanyKind(
   const kindResult = parseKind(kind);
   if (typeof kindResult === "object") return kindResult;
 
+  const patch =
+    kindResult === "prospect"
+      ? { kind: kindResult, status: "lead" as CompanyStatus }
+      : { kind: kindResult, status: null };
+
   const { error } = await supabase
     .from("companies")
-    .update({ kind: kindResult })
+    .update(patch)
     .eq("id", companyId);
 
   if (error) {
@@ -369,6 +400,7 @@ export async function updateCompanyKind(
   }
 
   revalidatePath("/crm");
+  revalidatePath("/crm/companies");
   revalidatePath(`/crm/${companyId}`);
 }
 
@@ -380,9 +412,32 @@ export async function updateCompanyStatus(
   const statusResult = parseStatus(status);
   if (typeof statusResult === "object") return statusResult;
 
+  const { data: company, error: loadError } = await supabase
+    .from("companies")
+    .select("id, kind")
+    .eq("id", companyId)
+    .maybeSingle();
+
+  if (loadError) {
+    return { error: loadError.message };
+  }
+  if (!company) {
+    return { error: "Company not found." };
+  }
+  if (company.kind !== "prospect") {
+    return { error: "Lead status is only used for prospects." };
+  }
+
+  const patch =
+    statusResult === "won"
+      ? { kind: "customer" as CompanyKind, status: null }
+      : statusResult === "lost"
+        ? { kind: "lost_opportunity" as CompanyKind, status: null }
+        : { status: statusResult };
+
   const { error } = await supabase
     .from("companies")
-    .update({ status: statusResult })
+    .update(patch)
     .eq("id", companyId);
 
   if (error) {
@@ -390,6 +445,7 @@ export async function updateCompanyStatus(
   }
 
   revalidatePath("/crm");
+  revalidatePath("/crm/companies");
   revalidatePath(`/crm/${companyId}`);
 }
 
@@ -762,7 +818,8 @@ export async function convertCompanyToProject(
       {
         project_id: project.id,
         project_type: engagement.projectType,
-        monthly_hours: engagement.monthlyHours,
+        schedule_cadence: engagement.scheduleCadence,
+        schedule_anchor_date: engagement.scheduleAnchorDate,
       },
       { onConflict: "project_id" },
     );
@@ -773,10 +830,10 @@ export async function convertCompanyToProject(
     };
   }
 
-  if (company.status !== "won" || company.kind !== "customer") {
+  if (company.kind !== "customer") {
     await supabase
       .from("companies")
-      .update({ status: "won", kind: "customer" })
+      .update({ status: null, kind: "customer" })
       .eq("id", companyId);
   }
 

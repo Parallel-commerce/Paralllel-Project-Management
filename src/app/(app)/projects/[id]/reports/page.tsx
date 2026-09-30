@@ -95,80 +95,76 @@ export default async function ProjectReportsPage({
   );
 
   return (
-    <main className="app-container py-6 sm:py-10">
-        <Link
-          href={`/projects/${id}`}
-          className="text-sm text-[var(--muted)] hover:text-[var(--foreground)]"
-        >
-          ← {project.name}
-        </Link>
-        <h1 className="mt-3 font-display text-3xl tracking-tight">Reports</h1>
-        <p className="mt-2 text-sm text-[var(--muted)]">
-          {isAdmin
-            ? "Generate performance reports from project activity, or store reports from Shopify."
-            : "Shared reports for this project."}{" "}
-          {isAdmin ? (
-            <Link
-              href={`/projects/${id}/store`}
-              className="text-[var(--accent)] hover:underline"
-            >
-              Open Store
-            </Link>
-          ) : null}
-        </p>
+    <div>
+      <h1 className="font-display text-2xl tracking-tight sm:text-3xl">
+        Reports
+      </h1>
+      <p className="mt-1 text-sm text-[var(--muted)]">
+        {isAdmin
+          ? "Generate performance reports from project activity, or store reports from Shopify."
+          : "Shared reports for this project."}{" "}
+        {isAdmin ? (
+          <Link
+            href={`/projects/${id}/store`}
+            className="text-[var(--accent)] hover:underline"
+          >
+            Open Store
+          </Link>
+        ) : null}
+      </p>
 
-        <div className="mt-8 space-y-8">
-          {isAdmin ? (
-            <AdminOnly>
-              <GenerateReportForm
-                projectId={id}
-                storeConnected={storeConnected}
-                missingReportsScope={missingReportsScope}
-                missingWeekComparisonStoreReport={missingWeekComparisonStoreReport}
-                weekComparisonLabel={weekComparisonLabel}
-                missingMonthComparisonStoreReport={missingMonthComparisonStoreReport}
-                monthComparisonLabel={monthComparisonLabel}
-              />
-            </AdminOnly>
-          ) : null}
+      <div className="mt-8 space-y-8">
+        {isAdmin ? (
+          <AdminOnly>
+            <GenerateReportForm
+              projectId={id}
+              storeConnected={storeConnected}
+              missingReportsScope={missingReportsScope}
+              missingWeekComparisonStoreReport={missingWeekComparisonStoreReport}
+              weekComparisonLabel={weekComparisonLabel}
+              missingMonthComparisonStoreReport={missingMonthComparisonStoreReport}
+              monthComparisonLabel={monthComparisonLabel}
+            />
+          </AdminOnly>
+        ) : null}
 
-          <section>
-            <h2 className="font-medium">
-              {isAdmin ? "Archive" : "Shared with you"}
-            </h2>
-            <ul className="mt-4 divide-y divide-[var(--border)] border-y border-[var(--border)]">
-              {(reports ?? []).length === 0 ? (
-                <li className="py-8 text-center text-sm text-[var(--muted)]">
-                  {isAdmin
-                    ? "No reports yet. Generate one above."
-                    : "No reports have been shared with you yet."}
+        <section>
+          <h2 className="font-medium">
+            {isAdmin ? "Archive" : "Shared with you"}
+          </h2>
+          <ul className="mt-4 divide-y divide-[var(--border)] border-y border-[var(--border)]">
+            {(reports ?? []).length === 0 ? (
+              <li className="py-8 text-center text-sm text-[var(--muted)]">
+                {isAdmin
+                  ? "No reports yet. Generate one above."
+                  : "No reports have been shared with you yet."}
+              </li>
+            ) : (
+              (reports ?? []).map((report) => (
+                <li key={report.id}>
+                  <Link
+                    href={`/projects/${id}/reports/${report.id}`}
+                    className="flex items-start justify-between gap-4 px-1 py-4 hover:bg-[var(--surface)]/60"
+                  >
+                    <div>
+                      <p className="font-medium">{report.title}</p>
+                      <p className="mt-1 text-xs text-[var(--muted)]">
+                        {reportKindLabel(report.kind)} · Created{" "}
+                        {formatDateTime(report.created_at)}
+                        {report.sent_at
+                          ? ` · Sent ${formatDateTime(report.sent_at)}`
+                          : " · Draft"}
+                      </p>
+                    </div>
+                    <span className="text-sm text-[var(--accent)]">Open</span>
+                  </Link>
                 </li>
-              ) : (
-                (reports ?? []).map((report) => (
-                  <li key={report.id}>
-                    <Link
-                      href={`/projects/${id}/reports/${report.id}`}
-                      className="flex items-start justify-between gap-4 px-1 py-4 hover:bg-[var(--surface)]/60"
-                    >
-                      <div>
-                        <p className="font-medium">{report.title}</p>
-                        <p className="mt-1 text-xs text-[var(--muted)]">
-                          {reportKindLabel(report.kind)} · Created{" "}
-                          {formatDateTime(report.created_at)}
-                          {report.sent_at
-                            ? ` · Sent ${formatDateTime(report.sent_at)}`
-                            : " · Draft"}
-                        </p>
-                      </div>
-                      <span className="text-sm text-[var(--accent)]">Open</span>
-                    </Link>
-                  </li>
-                ))
-              )}
-            </ul>
-          </section>
-        </div>
-      </main>
+              ))
+            )}
+          </ul>
+        </section>
+      </div>
+    </div>
   );
 }
 

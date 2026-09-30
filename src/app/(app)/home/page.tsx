@@ -198,6 +198,7 @@ export default async function HomeDashboardPage() {
               <HomeQuickTaskForm
                 lists={listOptions}
                 currentUserId={user.id}
+                allowOverbook={isInternal}
               />
             </div>
           </section>

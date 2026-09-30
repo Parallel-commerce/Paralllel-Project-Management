@@ -4,11 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import {
-  crmHref,
+  companiesHref,
   KIND_TABS,
-  STATUS_TABS,
   type KindTab,
-  type StatusTab,
   type VerticalTab,
 } from "@/lib/crm-filters";
 import type { VerticalOption } from "@/lib/verticals";
@@ -78,64 +76,78 @@ function FilterSelect({
 }
 
 export function CrmFilters({
-  status,
   kind,
   vertical,
   verticals,
+  followUps = false,
 }: {
-  status: StatusTab;
   kind: KindTab;
   vertical: VerticalTab;
   verticals: VerticalOption[];
+  followUps?: boolean;
 }) {
   const router = useRouter();
-  const filtered = kind !== "all" || status !== "all" || vertical !== "all";
-  const verticalOptions = [
-    { id: "all", label: "All" },
-    ...verticals.map((item) => ({ id: item.id, label: item.name })),
-  ];
+
+  function go(next: {
+    kind?: KindTab;
+    vertical?: VerticalTab;
+    followUps?: boolean;
+  }) {
+    router.push(
+      companiesHref(
+        next.kind ?? kind,
+        next.vertical ?? vertical,
+        next.followUps ?? followUps,
+      ),
+    );
+  }
 
   return (
-    <div className="mt-5 flex flex-wrap items-center gap-2 sm:mt-6">
-      <div className="grid w-full min-w-0 grid-cols-1 overflow-hidden rounded-lg border border-[var(--border)] sm:inline-grid sm:w-auto sm:grid-cols-3">
+    <div className="mt-5 overflow-hidden rounded-xl border border-[var(--border)]">
+      <div className="flex flex-col divide-y divide-[var(--border)] sm:flex-row sm:divide-x sm:divide-y-0">
         <FilterSelect
           label="Type"
           value={kind}
           options={KIND_TABS}
           active={kind !== "all"}
-          onChange={(value) =>
-            router.push(crmHref(status, value as KindTab, vertical))
-          }
-        />
-        <FilterSelect
-          label="Stage"
-          value={status}
-          options={STATUS_TABS}
-          active={status !== "all"}
-          className="border-t border-[var(--border)] sm:border-l sm:border-t-0"
-          onChange={(value) =>
-            router.push(crmHref(value as StatusTab, kind, vertical))
-          }
+          onChange={(value) => go({ kind: value as KindTab })}
+          className="sm:flex-1"
         />
         <FilterSelect
           label="Vertical"
           value={vertical}
-          options={verticalOptions}
+          options={[
+            { id: "all", label: "All" },
+            ...verticals.map((item) => ({ id: item.id, label: item.name })),
+          ]}
           active={vertical !== "all"}
-          className="border-t border-[var(--border)] sm:border-l sm:border-t-0"
-          onChange={(value) =>
-            router.push(crmHref(status, kind, value as VerticalTab))
-          }
+          onChange={(value) => go({ vertical: value })}
+          className="sm:flex-1"
         />
       </div>
-      {filtered ? (
+      <div className="flex items-center justify-between gap-3 border-t border-[var(--border)] bg-[var(--surface-2)]/50 px-3 py-2">
         <Link
-          href="/crm"
-          className="text-sm text-[var(--muted)] hover:text-[var(--foreground)] hover:underline"
+          href={companiesHref(kind, vertical, !followUps)}
+          className={`text-sm ${
+            followUps
+              ? "font-medium text-[var(--accent)]"
+              : "text-[var(--muted)] hover:text-[var(--foreground)]"
+          }`}
         >
-          Clear
+          {followUps ? "Showing follow-ups due" : "Show follow-ups due"}
         </Link>
-      ) : null}
+        {kind !== "all" || vertical !== "all" || followUps ? (
+          <button
+            type="button"
+            onClick={() =>
+              go({ kind: "all", vertical: "all", followUps: false })
+            }
+            className="text-sm text-[var(--muted)] hover:text-[var(--foreground)]"
+          >
+            Clear
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }

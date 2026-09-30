@@ -29,10 +29,20 @@ import {
 } from "@/lib/theme-deploy";
 import { ThemeDeploySelect } from "@/components/theme-deploy-select";
 import {
+  nearestImportanceLevel,
+  TASK_IMPORTANCE_LEVELS,
+} from "@/lib/task-importance";
+import {
+  taskTypeHint,
+  taskTypeOmitsDueDate,
+  taskTypePrefersFirstAvailable,
+} from "@/lib/task-type";
+import {
   TASK_STATUSES,
   TASK_TYPES,
   type ProjectRole,
   type Task,
+  type TaskType,
 } from "@/types/database";
 
 export type ProfileOption = {
@@ -78,6 +88,8 @@ export function TaskModal({
   scheduledWeekdays = [],
   defaultDueDate = null,
   themeDeploys: themeDeploysProp = null,
+  allowOverbook = false,
+  canSchedule = false,
   onClose,
 }: {
   mode: "create" | "edit";
@@ -96,6 +108,10 @@ export function TaskModal({
   scheduledWeekdays?: number[];
   defaultDueDate?: string | null;
   themeDeploys?: ThemeDeploysState | null;
+  /** Admins may put more than one open task on the same day. */
+  allowOverbook?: boolean;
+  /** Only admins can pick or change due dates. */
+  canSchedule?: boolean;
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -118,6 +134,13 @@ export function TaskModal({
   const [themeCommit, setThemeCommit] = useState(() =>
     themeCommitChoiceFromTask(task ?? {}),
   );
+  const [selectedType, setSelectedType] = useState<TaskType | "">(
+    () => task?.task_type ?? "",
+  );
+  const omitsDueDate = taskTypeOmitsDueDate(selectedType || null);
+  const prefersFirstAvailable = taskTypePrefersFirstAvailable(
+    selectedType || null,
+  );
 
   function formSnapshot(form: HTMLFormElement) {
     const formData = new FormData(form);
@@ -127,6 +150,7 @@ export function TaskModal({
       due_date: String(formData.get("due_date") ?? "").trim(),
       status: String(formData.get("status") ?? "todo"),
       task_type: String(formData.get("task_type") ?? ""),
+      importance: String(formData.get("importance") ?? "0"),
       reported_by: String(formData.get("reported_by") ?? ""),
       assigned_to: String(formData.get("assigned_to") ?? ""),
       theme_commit: String(formData.get("theme_commit") ?? "").trim(),
@@ -143,7 +167,8 @@ export function TaskModal({
     setCommentCount(null);
     setMobileCommentsOpen(Boolean(initialReplyCommentId));
     setThemeCommit(themeCommitChoiceFromTask(task ?? {}));
-  }, [task?.id, initialReplyCommentId]);
+    setSelectedType(task?.task_type ?? "");
+  }, [task?.id, initialReplyCommentId, task?.task_type]);
 
   useEffect(() => {
     if (themeDeploysProp) {
@@ -245,6 +270,9 @@ export function TaskModal({
   }
 
   const editing = mode === "edit" && !!task;
+  const currentMember = members.find((member) => member.id === currentUserId);
+  const isClient = currentMember?.role === "client";
+  const typeHint = taskTypeHint(selectedType || null);
 
   return (
     <div
@@ -267,7 +295,7 @@ export function TaskModal({
             ? `max-h-[92dvh] max-w-3xl lg:h-[min(92dvh,56rem)] lg:max-w-6xl lg:overflow-hidden ${
                 mobileCommentsOpen ? "h-[92dvh] overflow-hidden" : "overflow-y-auto"
               }`
-            : "max-h-[92dvh] max-w-3xl overflow-y-auto"
+            : "max-h-[92dvh] max-w-xl overflow-y-auto"
         }`}
         style={
           editing
@@ -276,13 +304,20 @@ export function TaskModal({
         }
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="sticky top-0 z-[5] shrink-0 bg-[var(--surface)] px-5 pt-5 pb-1 sm:px-6 sm:pt-6 md:px-7 md:pt-7">
+        <div className="sticky top-0 z-[5] shrink-0 border-b border-[var(--border)] bg-[var(--surface)] px-5 pt-5 pb-4 sm:px-6 sm:pt-6">
           <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-[var(--border)] sm:hidden" />
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <h2 className="font-display text-xl tracking-tight">
                 {mode === "create" ? "New task" : "Edit task"}
               </h2>
+              {mode === "create" ? (
+                <p className="mt-1 text-sm text-[var(--muted)]">
+                  {isClient
+                    ? "Tell us what you need. Pick a type, add a short title, and we’ll schedule it."
+                    : "Choose a type, describe the work, then set scheduling and ownership."}
+                </p>
+              ) : null}
               {mode === "edit" && task ? (
                 <div className="mt-1 flex flex-wrap items-center gap-2">
                   {task.key ? (
@@ -349,8 +384,8 @@ export function TaskModal({
           }
         >
           <div
-            className={`px-5 pb-5 sm:px-6 sm:pb-6 md:px-7 md:pb-7 ${
-              editing ? "min-h-0 lg:flex-1 lg:overflow-y-auto" : ""
+            className={`px-5 pb-5 sm:px-6 sm:pb-6 ${
+              editing ? "min-h-0 lg:flex-1 lg:overflow-y-auto md:px-7 md:pb-7" : ""
             }`}
             style={
               editing
@@ -360,7 +395,7 @@ export function TaskModal({
           >
             <form
               ref={formRef}
-              className="mt-4 flex flex-col gap-3"
+              className="mt-5 flex flex-col gap-6"
               onSubmit={(event) => {
                 event.preventDefault();
                 if (mode === "edit") {
@@ -379,8 +414,8 @@ export function TaskModal({
                 }
                 startTransition(async () => {
                   const result = await createTask(projectId, listId, formData);
-                  if (result?.error) {
-                    setError(result.error);
+                  if (result && "error" in result) {
+                    setError(result.error ?? "Could not create task.");
                   } else {
                     onClose();
                   }
@@ -400,126 +435,283 @@ export function TaskModal({
                 }
               }}
             >
-              <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
-                Title
-                <input
-                  name="title"
-                  required
-                  defaultValue={task?.title ?? ""}
-                  onBlur={() => {
-                    if (mode === "edit") saveEditNow();
-                  }}
-                  className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
-                />
-              </label>
-              <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
-                Description
-                <textarea
-                  name="description"
-                  rows={4}
-                  defaultValue={task?.description ?? ""}
-                  onBlur={() => {
-                    if (mode === "edit") saveEditNow();
-                  }}
-                  className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
-                />
-              </label>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <DueDatePicker
-                  name="due_date"
-                  defaultValue={task?.due_date ?? defaultDueDate ?? ""}
-                  highlightedWeekdays={scheduledWeekdays}
-                  projectId={projectId}
-                  excludeTaskId={task?.id}
-                  onChange={() => {
-                    if (mode === "edit") {
-                      requestAnimationFrame(() => saveEditNow());
-                    }
-                  }}
-                />
-                <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
-                  Type
-                  <select
-                    name="task_type"
-                    defaultValue={task?.task_type ?? ""}
-                    className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
-                  >
-                    <option value="">No type</option>
-                    {TASK_TYPES.map((type) => (
-                      <option key={type.value} value={type.value}>
+              <section className="space-y-3">
+                <div>
+                  <h3 className="text-sm font-medium">
+                    {mode === "create" ? "1. What kind of work is this?" : "Type"}
+                  </h3>
+                  {mode === "create" ? (
+                    <p className="mt-0.5 text-xs text-[var(--muted)]">
+                      This decides how we schedule it.
+                    </p>
+                  ) : null}
+                </div>
+                <input type="hidden" name="task_type" value={selectedType} />
+                <div className="flex flex-wrap gap-2">
+                  {TASK_TYPES.map((type) => {
+                    const active = selectedType === type.value;
+                    return (
+                      <button
+                        key={type.value}
+                        type="button"
+                        onClick={() => {
+                          setSelectedType(type.value);
+                          if (mode === "edit") {
+                            requestAnimationFrame(() => saveEditNow());
+                          }
+                        }}
+                        className={`rounded-md border px-3 py-2 text-sm transition ${
+                          active
+                            ? "border-[var(--accent)] bg-[var(--accent-soft)] font-medium text-[var(--accent)]"
+                            : "border-[var(--border)] bg-white text-[var(--foreground)] hover:bg-[var(--surface-2)]"
+                        }`}
+                      >
                         {type.label}
-                      </option>
-                    ))}
-                  </select>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-[var(--muted)]">{typeHint}</p>
+              </section>
+
+              <section className="space-y-3">
+                <div>
+                  <h3 className="text-sm font-medium">
+                    {mode === "create" ? "2. Describe it" : "Details"}
+                  </h3>
+                  {mode === "create" ? (
+                    <p className="mt-0.5 text-xs text-[var(--muted)]">
+                      A clear title is enough. Add detail if it helps.
+                    </p>
+                  ) : null}
+                </div>
+                <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
+                  Title
+                  <input
+                    name="title"
+                    required
+                    autoFocus={mode === "create"}
+                    placeholder={
+                      selectedType === "bug"
+                        ? "e.g. Checkout button missing on mobile"
+                        : selectedType === "question"
+                          ? "e.g. Can we change the homepage banner?"
+                          : "Short summary of the request"
+                    }
+                    defaultValue={task?.title ?? ""}
+                    onBlur={() => {
+                      if (mode === "edit") saveEditNow();
+                    }}
+                    className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
+                  />
                 </label>
-                {themeDeploysEnabled(themeDeploys) ? (
-                  <div className="sm:col-span-2">
-                    <ThemeDeploySelect
-                      value={themeCommit}
-                      commits={themeDeploys.commits}
-                      currentSha={task?.theme_commit_sha}
-                      currentMessage={task?.theme_commit_message}
-                      error={themeDeploys.error}
-                      onChange={setThemeCommit}
+                <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
+                  Details{" "}
+                  <span className="font-normal opacity-70">(optional)</span>
+                  <textarea
+                    name="description"
+                    rows={mode === "create" ? 3 : 4}
+                    placeholder="Links, screenshots context, or anything else we should know"
+                    defaultValue={task?.description ?? ""}
+                    onBlur={() => {
+                      if (mode === "edit") saveEditNow();
+                    }}
+                    className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
+                  />
+                </label>
+              </section>
+
+              <section className="space-y-3">
+                <div>
+                  <h3 className="text-sm font-medium">
+                    {mode === "create" ? "3. When should it happen?" : "Schedule"}
+                  </h3>
+                  <p className="mt-0.5 text-xs text-[var(--muted)]">
+                    {!canSchedule
+                      ? omitsDueDate
+                        ? "Questions don’t need a date."
+                        : prefersFirstAvailable
+                          ? "Bugs are put on the next free work day automatically."
+                          : "An admin will schedule this on a free work day."
+                      : omitsDueDate
+                        ? "Questions don’t need a date."
+                        : prefersFirstAvailable
+                          ? "Bugs are put on the next free work day unless you pick one."
+                          : "Leave empty and we’ll place it on the next free work day."}
+                  </p>
+                </div>
+                {!canSchedule ? (
+                  <>
+                    <input
+                      type="hidden"
+                      name="due_date"
+                      value={
+                        mode === "edit" && task?.due_date && !omitsDueDate
+                          ? task.due_date.slice(0, 10)
+                          : ""
+                      }
                     />
+                    {mode === "edit" && task?.due_date && !omitsDueDate ? (
+                      <p className="rounded-md border border-[var(--border)] bg-[var(--surface-2)]/50 px-3 py-3 text-sm">
+                        Due {task.due_date.slice(0, 10)}
+                      </p>
+                    ) : omitsDueDate ? (
+                      <div className="rounded-md border border-dashed border-[var(--border)] bg-[var(--surface-2)]/50 px-3 py-3 text-sm text-[var(--muted)]">
+                        No due date needed for questions.
+                      </div>
+                    ) : (
+                      <div className="rounded-md border border-dashed border-[var(--border)] bg-[var(--surface-2)]/50 px-3 py-3 text-sm text-[var(--muted)]">
+                        Scheduling is managed by an admin.
+                      </div>
+                    )}
+                  </>
+                ) : omitsDueDate ? (
+                  <div className="rounded-md border border-dashed border-[var(--border)] bg-[var(--surface-2)]/50 px-3 py-3 text-sm text-[var(--muted)]">
+                    No due date needed for questions.
+                    <input type="hidden" name="due_date" value="" />
                   </div>
+                ) : (
+                  <DueDatePicker
+                    key={`due-${selectedType || "none"}`}
+                    name="due_date"
+                    label={mode === "create" ? "Due date (optional)" : "Due date"}
+                    defaultValue={
+                      task?.due_date ??
+                      (prefersFirstAvailable ? "" : defaultDueDate ?? "")
+                    }
+                    highlightedWeekdays={scheduledWeekdays}
+                    projectId={projectId}
+                    excludeTaskId={task?.id}
+                    allowOverbook={allowOverbook}
+                    onChange={() => {
+                      if (mode === "edit") {
+                        requestAnimationFrame(() => saveEditNow());
+                      }
+                    }}
+                  />
+                )}
+                {!isClient ? (
+                  <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
+                    Importance
+                    <select
+                      name="importance"
+                      defaultValue={nearestImportanceLevel(task?.importance)}
+                      className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
+                    >
+                      {TASK_IMPORTANCE_LEVELS.map((level) => (
+                        <option key={level.value} value={level.value}>
+                          {level.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : (
+                  <input type="hidden" name="importance" value="0" />
+                )}
+              </section>
+
+              <section className="space-y-3">
+                <div>
+                  <h3 className="text-sm font-medium">
+                    {mode === "create" ? "4. Who’s involved?" : "People"}
+                  </h3>
+                  {mode === "create" && isClient ? (
+                    <p className="mt-0.5 text-xs text-[var(--muted)]">
+                      You’re listed as the reporter. We’ll assign the work.
+                    </p>
+                  ) : null}
+                </div>
+                {isClient && mode === "create" ? (
+                  <>
+                    <input type="hidden" name="reported_by" value={currentUserId} />
+                    <input
+                      type="hidden"
+                      name="assigned_to"
+                      value={defaultAssigneeId ?? ""}
+                    />
+                    <input type="hidden" name="status" value="todo" />
+                    <div className="rounded-md border border-[var(--border)] bg-[var(--surface-2)]/40 px-3 py-3 text-sm">
+                      <p>
+                        <span className="text-[var(--muted)]">Reporter · </span>
+                        {displayName(currentMember)}
+                      </p>
+                      <p className="mt-1 text-xs text-[var(--muted)]">
+                        Assigned to Parallel after you create it.
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
+                      Reporter
+                      <select
+                        name="reported_by"
+                        defaultValue={task?.reported_by ?? currentUserId}
+                        className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
+                      >
+                        {members.map((member) => (
+                          <option key={member.id} value={member.id}>
+                            {displayName(member)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
+                      Assignee
+                      <select
+                        name="assigned_to"
+                        defaultValue={
+                          task?.assigned_to ??
+                          (mode === "create" ? (defaultAssigneeId ?? "") : "")
+                        }
+                        className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
+                      >
+                        <option value="">Unassigned</option>
+                        {members.map((member) => (
+                          <option key={member.id} value={member.id}>
+                            {displayName(member)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    {mode === "edit" || !isClient ? (
+                      <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)] sm:col-span-2">
+                        Status
+                        <select
+                          name="status"
+                          defaultValue={task?.status ?? "todo"}
+                          className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
+                        >
+                          {TASK_STATUSES.map((status) => (
+                            <option key={status.value} value={status.value}>
+                              {status.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : (
+                      <input type="hidden" name="status" value="todo" />
+                    )}
+                  </div>
+                )}
+                {themeDeploysEnabled(themeDeploys) && !isClient ? (
+                  <ThemeDeploySelect
+                    value={themeCommit}
+                    commits={themeDeploys.commits}
+                    currentSha={task?.theme_commit_sha}
+                    currentMessage={task?.theme_commit_message}
+                    error={themeDeploys.error}
+                    onChange={setThemeCommit}
+                  />
                 ) : themeDeploys === null ? (
                   <input type="hidden" name="theme_commit" value={themeCommit} />
                 ) : (
                   <input type="hidden" name="theme_commit" value="" />
                 )}
-                <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
-                  Status
-                  <select
-                    name="status"
-                    defaultValue={task?.status ?? "todo"}
-                    className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
-                  >
-                    {TASK_STATUSES.map((status) => (
-                      <option key={status.value} value={status.value}>
-                        {status.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
-                  Reporter
-                  <select
-                    name="reported_by"
-                    defaultValue={task?.reported_by ?? currentUserId}
-                    className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
-                  >
-                    {members.map((member) => (
-                      <option key={member.id} value={member.id}>
-                        {displayName(member)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
-                  Assignee
-                  <select
-                    name="assigned_to"
-                    defaultValue={
-                      task?.assigned_to ??
-                      (mode === "create" ? (defaultAssigneeId ?? "") : "")
-                    }
-                    className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
-                  >
-                    <option value="">Unassigned</option>
-                    {members.map((member) => (
-                      <option key={member.id} value={member.id}>
-                        {displayName(member)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
+              </section>
 
               {mode === "edit" && task ? (
-                <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--border)] pt-3">
                   <p className="text-xs text-[var(--muted)]">
                     Created by {displayName(task.creator)}
                   </p>
@@ -537,23 +729,25 @@ export function TaskModal({
                         ? "Saved"
                         : saveState === "error"
                           ? "Couldn’t save"
-                          : "Changes save automatically"}
+                          : "Autosaves"}
                   </p>
                 </div>
               ) : null}
 
               {error ? (
-                <p className="text-sm text-[var(--danger)]">{error}</p>
+                <p className="text-sm text-[var(--danger)]" role="alert">
+                  {error}
+                </p>
               ) : null}
 
-              <div className="mt-2 flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2">
                 {mode === "create" ? (
                   <button
                     type="submit"
                     disabled={pending}
-                    className="rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-60"
+                    className="min-h-10 rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-60"
                   >
-                    {pending ? "Saving…" : "Save task"}
+                    {pending ? "Creating…" : "Create task"}
                   </button>
                 ) : null}
                 {mode === "edit" && task ? (

@@ -14,7 +14,7 @@ import {
 import { companyStatusColors } from "@/lib/company-status";
 import {
   COMPANY_KINDS,
-  COMPANY_STATUSES,
+  OPEN_LEAD_STATUSES,
   type CompanyKind,
   type CompanyReengage,
   type CompanyStatus,
@@ -126,9 +126,13 @@ export function CompanyStatusSelect({
 
   return (
     <TagSelect
-      label="Status"
+      label="Lead status"
       value={value}
-      options={COMPANY_STATUSES}
+      options={[
+        ...OPEN_LEAD_STATUSES,
+        { value: "won", label: "Won → customer" },
+        { value: "lost", label: "Lost → lost opportunity" },
+      ]}
       accent={colors.accent}
       tag={colors.tag}
       disabled={pending}

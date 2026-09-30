@@ -14,12 +14,46 @@ export function parseTaskType(raw: string): TaskType | null {
     : null;
 }
 
+/** Questions are never scheduled and never require a due date. */
+export function taskTypeOmitsDueDate(type: TaskType | null | undefined) {
+  return type === "question";
+}
+
+/** Bugs take the first free scheduled work day when no date is set. */
+export function taskTypePrefersFirstAvailable(
+  type: TaskType | null | undefined,
+) {
+  return type === "bug";
+}
+
+export function taskTypeHint(type: TaskType | null | undefined) {
+  switch (type) {
+    case "bug":
+      return "Goes on the first free work day.";
+    case "question":
+      return "No due date — we’ll answer when we can.";
+    case "new_feature":
+      return "New work for the store. Leave the date empty to auto-schedule.";
+    case "improvement":
+      return "An upgrade to something that already exists. Auto-schedules if empty.";
+    case "shopify_admin":
+      return "Admin / settings work in Shopify. Auto-schedules if empty.";
+    default:
+      return "Optional. Choosing a type helps us schedule it correctly.";
+  }
+}
+
 export function taskTypeColors(type: TaskType) {
   switch (type) {
     case "bug":
       return {
         accent: "bg-[var(--type-bug-border)]",
         tag: "bg-[var(--type-bug-bg)] text-[var(--type-bug-label)] ring-[var(--type-bug-border)]/25",
+      };
+    case "question":
+      return {
+        accent: "bg-[var(--type-question-border)]",
+        tag: "bg-[var(--type-question-bg)] text-[var(--type-question-label)] ring-[var(--type-question-border)]/25",
       };
     case "new_feature":
       return {
@@ -31,35 +65,10 @@ export function taskTypeColors(type: TaskType) {
         accent: "bg-[var(--type-improvement-border)]",
         tag: "bg-[var(--type-improvement-bg)] text-[var(--type-improvement-label)] ring-[var(--type-improvement-border)]/25",
       };
-    case "data":
+    case "shopify_admin":
       return {
-        accent: "bg-[var(--type-data-border)]",
-        tag: "bg-[var(--type-data-bg)] text-[var(--type-data-label)] ring-[var(--type-data-border)]/25",
-      };
-    case "documentation":
-      return {
-        accent: "bg-[var(--type-docs-border)]",
-        tag: "bg-[var(--type-docs-bg)] text-[var(--type-docs-label)] ring-[var(--type-docs-border)]/25",
-      };
-    case "design":
-      return {
-        accent: "bg-[var(--type-design-border)]",
-        tag: "bg-[var(--type-design-bg)] text-[var(--type-design-label)] ring-[var(--type-design-border)]/25",
-      };
-    case "research":
-      return {
-        accent: "bg-[var(--type-research-border)]",
-        tag: "bg-[var(--type-research-bg)] text-[var(--type-research-label)] ring-[var(--type-research-border)]/25",
-      };
-    case "maintenance":
-      return {
-        accent: "bg-[var(--type-maintenance-border)]",
-        tag: "bg-[var(--type-maintenance-bg)] text-[var(--type-maintenance-label)] ring-[var(--type-maintenance-border)]/25",
-      };
-    case "other":
-      return {
-        accent: "bg-[var(--type-other-border)]",
-        tag: "bg-[var(--type-other-bg)] text-[var(--type-other-label)] ring-[var(--type-other-border)]/25",
+        accent: "bg-[var(--type-shopify-border)]",
+        tag: "bg-[var(--type-shopify-bg)] text-[var(--type-shopify-label)] ring-[var(--type-shopify-border)]/25",
       };
   }
 }

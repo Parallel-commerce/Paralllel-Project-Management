@@ -4,6 +4,7 @@ import {
   DndContext,
   DragOverlay,
   PointerSensor,
+  closestCenter,
   useDraggable,
   useDroppable,
   useSensor,
@@ -11,11 +12,19 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { createContext, useContext, useMemo, useState, useTransition } from "react";
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { createContext, useContext, useMemo, useState, useTransition, type ReactNode } from "react";
 
 import { MyWorkCalendar } from "@/components/my-work-calendar";
 import { TaskCardQuickActions } from "@/components/task-card-actions";
 import { TaskTypeTag } from "@/components/task-type-tag";
+import { taskTypeLabel, taskTypeOmitsDueDate } from "@/lib/task-type";
 import { ThemeDeploySelect } from "@/components/theme-deploy-select";
 import {
   TaskModal,
@@ -26,13 +35,16 @@ import {
   formatTaskTime,
   type TimeEntryRow,
 } from "@/components/time-tracking-panel";
-import { updateTaskStatus } from "@/lib/actions/projects";
+import {
+  reorderAndRescheduleTodos,
+  updateTaskStatus,
+} from "@/lib/actions/projects";
 import { groupTasksByCompletedWeek } from "@/lib/completed-week";
 import { personDisplayName } from "@/lib/person";
-import { sortTasksByDueDate } from "@/lib/sort-tasks";
+import { sortTasksByImportance } from "@/lib/sort-tasks";
 import { formatScheduledWeekdays } from "@/lib/scheduled-weekdays";
+import { importanceLabel } from "@/lib/task-importance";
 import { taskStatusColors } from "@/lib/task-status";
-import { taskTypeLabel } from "@/lib/task-type";
 import {
   hasThemeDeployChoice,
   THEME_COMMIT_NONE,
@@ -60,12 +72,14 @@ function todayIso() {
 type TaskPatch = {
   status?: TaskStatus;
   due_date?: string | null;
+  importance?: number;
 };
 
 type QuickEdit = {
   projectId: string;
   listId: string;
   today: string;
+  canSchedule: boolean;
   patchTask: (taskId: string, patch: TaskPatch) => void;
   prepareStatusChange: (task: TaskWithPeople, next: TaskStatus) => boolean;
 };
@@ -132,7 +146,7 @@ function TaskCard({
           ⋮⋮
         </button>
         <button type="button" onClick={onOpen} className="min-w-0 flex-1 text-left">
-          {task.key || task.task_type ? (
+          {task.key || task.task_type || (task.importance ?? 0) > 0 ? (
             <div className="flex flex-wrap items-center gap-1.5">
               {task.key ? (
                 <p className="text-[11px] font-medium tabular-nums tracking-wide text-[var(--muted)]">
@@ -140,11 +154,18 @@ function TaskCard({
                 </p>
               ) : null}
               <TaskTypeTag taskType={task.task_type} />
+              {(task.importance ?? 0) > 0 ? (
+                <span className="rounded-md bg-[var(--surface-2)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--muted)] ring-1 ring-inset ring-[var(--border)]">
+                  {importanceLabel(task.importance)}
+                </span>
+              ) : null}
             </div>
           ) : null}
           <h3
             className={`font-medium leading-snug ${
-              task.key || task.task_type ? "mt-0.5" : ""
+              task.key || task.task_type || (task.importance ?? 0) > 0
+                ? "mt-0.5"
+                : ""
             }`}
           >
             {task.title}
@@ -176,6 +197,9 @@ function TaskCard({
             dueDate={task.due_date}
             todayIso={today}
             onOpen={onOpen}
+            allowDueDate={
+              quickEdit.canSchedule && !taskTypeOmitsDueDate(task.task_type)
+            }
             onStatusChange={(status) => quickEdit.patchTask(task.id, { status })}
             onDueDateChange={(dueDate) =>
               quickEdit.patchTask(task.id, { due_date: dueDate })
@@ -200,14 +224,16 @@ function TaskCard({
   );
 }
 
-function TaskListRow({
+function TaskListRowContent({
   task,
   onOpen,
   trackedSeconds,
+  dragHandle = null,
 }: {
   task: TaskWithPeople;
   onOpen: () => void;
   trackedSeconds?: number;
+  dragHandle?: ReactNode;
 }) {
   const quickEdit = useContext(QuickEditContext);
   const today = quickEdit?.today ?? todayIso();
@@ -215,31 +241,39 @@ function TaskListRow({
     !!task.due_date && task.due_date < today && task.status !== "done";
 
   return (
-    <li className="flex flex-col gap-2 px-3 py-3 hover:bg-[var(--surface)]/80 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-      <button type="button" onClick={onOpen} className="min-w-0 flex-1 text-left">
-        <div className="min-w-0">
-          {task.key || task.task_type ? (
-            <div className="flex flex-wrap items-center gap-1.5">
-              {task.key ? (
-                <p className="text-[11px] font-medium tabular-nums tracking-wide text-[var(--muted)]">
-                  {task.key}
-                </p>
-              ) : null}
-              <TaskTypeTag taskType={task.task_type} />
-            </div>
-          ) : null}
-          <p className="font-medium leading-snug">{task.title}</p>
-          <p className="mt-1 text-xs text-[var(--muted)] sm:hidden">
-            {task.assignee
-              ? displayName(task.assignee)
-              : "Unassigned"}
-            {task.reporter ? ` · Rep. ${displayName(task.reporter)}` : ""}
-            {trackedSeconds && trackedSeconds > 0
-              ? ` · ${formatTaskTime(trackedSeconds)}`
-              : ""}
-          </p>
-        </div>
-      </button>
+    <>
+      <div className="flex min-w-0 flex-1 items-start gap-2">
+        {dragHandle}
+        <button type="button" onClick={onOpen} className="min-w-0 flex-1 text-left">
+          <div className="min-w-0">
+            {task.key || task.task_type || (task.importance ?? 0) > 0 ? (
+              <div className="flex flex-wrap items-center gap-1.5">
+                {task.key ? (
+                  <p className="text-[11px] font-medium tabular-nums tracking-wide text-[var(--muted)]">
+                    {task.key}
+                  </p>
+                ) : null}
+                <TaskTypeTag taskType={task.task_type} />
+                {(task.importance ?? 0) > 0 ? (
+                  <span className="rounded-md bg-[var(--surface-2)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--muted)] ring-1 ring-inset ring-[var(--border)]">
+                    {importanceLabel(task.importance)}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+            <p className="font-medium leading-snug">{task.title}</p>
+            <p className="mt-1 text-xs text-[var(--muted)] sm:hidden">
+              {task.assignee
+                ? displayName(task.assignee)
+                : "Unassigned"}
+              {task.reporter ? ` · Rep. ${displayName(task.reporter)}` : ""}
+              {trackedSeconds && trackedSeconds > 0
+                ? ` · ${formatTaskTime(trackedSeconds)}`
+                : ""}
+            </p>
+          </div>
+        </button>
+      </div>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[var(--muted)] sm:shrink-0 sm:justify-end">
         <span className="hidden sm:inline">
           {task.assignee ? displayName(task.assignee) : "Unassigned"}
@@ -263,6 +297,9 @@ function TaskListRow({
             dueDate={task.due_date}
             todayIso={today}
             onOpen={onOpen}
+            allowDueDate={
+              quickEdit.canSchedule && !taskTypeOmitsDueDate(task.task_type)
+            }
             onStatusChange={(status) => quickEdit.patchTask(task.id, { status })}
             onDueDateChange={(dueDate) =>
               quickEdit.patchTask(task.id, { due_date: dueDate })
@@ -277,6 +314,75 @@ function TaskListRow({
           </span>
         )}
       </div>
+    </>
+  );
+}
+
+function TaskListRow({
+  task,
+  onOpen,
+  trackedSeconds,
+}: {
+  task: TaskWithPeople;
+  onOpen: () => void;
+  trackedSeconds?: number;
+}) {
+  return (
+    <li className="flex flex-col gap-2 px-3 py-3 hover:bg-[var(--surface)]/80 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+      <TaskListRowContent
+        task={task}
+        onOpen={onOpen}
+        trackedSeconds={trackedSeconds}
+      />
+    </li>
+  );
+}
+
+function SortableTaskListRow({
+  task,
+  onOpen,
+  trackedSeconds,
+}: {
+  task: TaskWithPeople;
+  onOpen: () => void;
+  trackedSeconds?: number;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: task.id });
+
+  return (
+    <li
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+      }}
+      className={`flex flex-col gap-2 px-3 py-3 hover:bg-[var(--surface)]/80 sm:flex-row sm:items-center sm:justify-between sm:gap-4 ${
+        isDragging ? "relative z-10 bg-[var(--surface)] opacity-80 shadow-md" : ""
+      }`}
+    >
+      <TaskListRowContent
+        task={task}
+        onOpen={onOpen}
+        trackedSeconds={trackedSeconds}
+        dragHandle={
+          <button
+            type="button"
+            className="mt-0.5 cursor-grab touch-none text-[var(--muted)] active:cursor-grabbing"
+            aria-label="Drag to reorder"
+            {...listeners}
+            {...attributes}
+          >
+            ⋮⋮
+          </button>
+        }
+      />
     </li>
   );
 }
@@ -287,59 +393,144 @@ function StatusListSection({
   tasks,
   onOpen,
   timeSecondsByTaskId,
+  sortable = false,
+  onReorder,
+  reorderHint = null,
 }: {
   status: TaskStatus;
   label: string;
   tasks: TaskWithPeople[];
   onOpen: (task: TaskWithPeople) => void;
   timeSecondsByTaskId?: Record<string, number>;
+  sortable?: boolean;
+  onReorder?: (orderedIds: string[]) => void;
+  reorderHint?: string | null;
 }) {
   const colors = taskStatusColors(status);
+  const [expanded, setExpanded] = useState(status !== "done");
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+  );
+
+  function handleSortEnd(event: DragEndEvent) {
+    const activeId = String(event.active.id);
+    const overId = event.over?.id ? String(event.over.id) : null;
+    if (!overId || activeId === overId || !onReorder) return;
+    const oldIndex = tasks.findIndex((task) => task.id === activeId);
+    const newIndex = tasks.findIndex((task) => task.id === overId);
+    if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return;
+    onReorder(arrayMove(tasks, oldIndex, newIndex).map((task) => task.id));
+  }
+
+  const collapsible = status === "done";
 
   return (
     <section
       className={`overflow-hidden rounded-xl border ${colors.border} ${colors.bg}`}
     >
-      <div
-        className={`flex items-center gap-2.5 border-b ${colors.border} px-4 py-3`}
-      >
-        <span
-          className={`h-2.5 w-2.5 shrink-0 rounded-full ${colors.accent}`}
-          aria-hidden
-        />
-        <h2 className={`text-sm font-medium tracking-tight ${colors.label}`}>
-          {label}
-          <span className="ml-2 font-normal opacity-70">{tasks.length}</span>
-        </h2>
-      </div>
-      {tasks.length === 0 ? (
-        <p className="px-4 py-6 text-sm text-[var(--muted)]">No tasks</p>
-      ) : status === "done" ? (
-        <div className="bg-[var(--surface)]/70">
-          {groupTasksByCompletedWeek(tasks).map((week, index) => (
-            <div key={week.key}>
-              <div
-                className={`flex items-baseline justify-between gap-3 px-4 pb-1.5 pt-3 ${
-                  index > 0 ? "mt-1 border-t border-[var(--border)]" : ""
-                }`}
-              >
-                <div className="min-w-0">
-                  <p className={`text-xs font-medium ${colors.label}`}>
-                    {week.title}
-                  </p>
-                  {week.range ? (
-                    <p className="text-[11px] text-[var(--muted)]">
-                      {week.range}
+      {collapsible ? (
+        <button
+          type="button"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((open) => !open)}
+          className={`flex w-full flex-wrap items-center gap-2.5 px-4 py-3 text-left outline-none ring-[var(--accent)] focus-visible:ring-2 ${
+            expanded ? `border-b ${colors.border}` : ""
+          }`}
+        >
+          <span
+            className={`h-2.5 w-2.5 shrink-0 rounded-full ${colors.accent}`}
+            aria-hidden
+          />
+          <h2 className={`text-sm font-medium tracking-tight ${colors.label}`}>
+            {label}
+            <span className="ml-2 font-normal opacity-70">{tasks.length}</span>
+          </h2>
+          <span
+            aria-hidden
+            className={`ml-auto text-xs text-[var(--muted)] transition ${
+              expanded ? "rotate-90" : ""
+            }`}
+          >
+            ›
+          </span>
+        </button>
+      ) : (
+        <div
+          className={`flex flex-wrap items-center gap-2.5 border-b ${colors.border} px-4 py-3`}
+        >
+          <span
+            className={`h-2.5 w-2.5 shrink-0 rounded-full ${colors.accent}`}
+            aria-hidden
+          />
+          <h2 className={`text-sm font-medium tracking-tight ${colors.label}`}>
+            {label}
+            <span className="ml-2 font-normal opacity-70">{tasks.length}</span>
+          </h2>
+          {sortable ? (
+            <p className="w-full text-xs text-[var(--muted)] sm:ml-auto sm:w-auto">
+              Drag to set priority — due dates reschedule automatically
+            </p>
+          ) : reorderHint ? (
+            <p className="w-full text-xs text-[var(--muted)] sm:ml-auto sm:w-auto">
+              {reorderHint}
+            </p>
+          ) : null}
+        </div>
+      )}
+      {expanded ? (
+        tasks.length === 0 ? (
+          <p className="px-4 py-6 text-sm text-[var(--muted)]">No tasks</p>
+        ) : status === "done" ? (
+          <div className="bg-[var(--surface)]/70">
+            {groupTasksByCompletedWeek(tasks).map((week, index) => (
+              <div key={week.key}>
+                <div
+                  className={`flex items-baseline justify-between gap-3 px-4 pb-1.5 pt-3 ${
+                    index > 0 ? "mt-1 border-t border-[var(--border)]" : ""
+                  }`}
+                >
+                  <div className="min-w-0">
+                    <p className={`text-xs font-medium ${colors.label}`}>
+                      {week.title}
                     </p>
-                  ) : null}
+                    {week.range ? (
+                      <p className="text-[11px] text-[var(--muted)]">
+                        {week.range}
+                      </p>
+                    ) : null}
+                  </div>
+                  <span
+                    className={`text-xs tabular-nums ${colors.label} opacity-70`}
+                  >
+                    {week.tasks.length}
+                  </span>
                 </div>
-                <span className={`text-xs tabular-nums ${colors.label} opacity-70`}>
-                  {week.tasks.length}
-                </span>
+                <ul className="divide-y divide-[var(--border)]">
+                  {week.tasks.map((task) => (
+                    <TaskListRow
+                      key={task.id}
+                      task={task}
+                      onOpen={() => onOpen(task)}
+                      trackedSeconds={timeSecondsByTaskId?.[task.id]}
+                    />
+                  ))}
+                </ul>
               </div>
-              <ul className="divide-y divide-[var(--border)]">
-                {week.tasks.map((task) => (
-                  <TaskListRow
+            ))}
+          </div>
+        ) : sortable ? (
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleSortEnd}
+          >
+            <SortableContext
+              items={tasks.map((task) => task.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <ul className="divide-y divide-[var(--border)] bg-[var(--surface)]/70">
+                {tasks.map((task) => (
+                  <SortableTaskListRow
                     key={task.id}
                     task={task}
                     onOpen={() => onOpen(task)}
@@ -347,21 +538,21 @@ function StatusListSection({
                   />
                 ))}
               </ul>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <ul className="divide-y divide-[var(--border)] bg-[var(--surface)]/70">
-          {tasks.map((task) => (
-            <TaskListRow
-              key={task.id}
-              task={task}
-              onOpen={() => onOpen(task)}
-              trackedSeconds={timeSecondsByTaskId?.[task.id]}
-            />
-          ))}
-        </ul>
-      )}
+            </SortableContext>
+          </DndContext>
+        ) : (
+          <ul className="divide-y divide-[var(--border)] bg-[var(--surface)]/70">
+            {tasks.map((task) => (
+              <TaskListRow
+                key={task.id}
+                task={task}
+                onOpen={() => onOpen(task)}
+                trackedSeconds={timeSecondsByTaskId?.[task.id]}
+              />
+            ))}
+          </ul>
+        )
+      ) : null}
     </section>
   );
 }
@@ -492,6 +683,7 @@ export function TaskBoard({
   runningEntry = null,
   scheduledWeekdays = [],
   themeDeploys = null,
+  allowOverbook = false,
 }: {
   projectId: string;
   listId: string;
@@ -507,6 +699,7 @@ export function TaskBoard({
   runningEntry?: TimeEntryRow | null;
   scheduledWeekdays?: number[];
   themeDeploys?: ThemeDeploysState | null;
+  allowOverbook?: boolean;
 }) {
   const [tasks, setTasks] = useState(initialTasks);
   const [creating, setCreating] = useState(false);
@@ -585,7 +778,7 @@ export function TaskBoard({
         displayName(task.reporter).toLowerCase().includes(q)
       );
     });
-    return sortTasksByDueDate(next);
+    return sortTasksByImportance(next);
   }, [tasks, query, assigneeFilter, reporterFilter, statusFilter, typeFilter, dueFilter]);
 
   const grouped = useMemo(() => {
@@ -613,6 +806,8 @@ export function TaskBoard({
     typeFilter !== "all" ||
     dueFilter !== "all";
 
+  const canReorderTodos = allowOverbook && !filtersActive;
+
   function clearFilters() {
     setQuery("");
     setAssigneeFilter("all");
@@ -620,6 +815,50 @@ export function TaskBoard({
     setStatusFilter("all");
     setTypeFilter("all");
     setDueFilter("all");
+  }
+
+  function applyTodoReorder(orderedIds: string[]) {
+    const previous = tasks;
+    const total = orderedIds.length;
+    const byId = new Map(orderedIds.map((id, index) => [id, index]));
+
+    // Optimistic: new rank + temporary order; dates refresh from the server.
+    setTasks((prev) =>
+      prev.map((task) => {
+        const index = byId.get(task.id);
+        if (index == null) return task;
+        return {
+          ...task,
+          importance: total - index,
+        };
+      }),
+    );
+
+    startTransition(async () => {
+      const result = await reorderAndRescheduleTodos(
+        projectId,
+        listId,
+        orderedIds,
+      );
+      if ("error" in result) {
+        setTasks(previous);
+        return;
+      }
+      const updates = new Map(
+        result.updates.map((row) => [row.id, row] as const),
+      );
+      setTasks((prev) =>
+        prev.map((task) => {
+          const update = updates.get(task.id);
+          if (!update) return task;
+          return {
+            ...task,
+            importance: update.importance,
+            due_date: update.due_date,
+          };
+        }),
+      );
+    });
   }
 
   const activeTask = activeId
@@ -768,6 +1007,7 @@ export function TaskBoard({
     projectId,
     listId,
     today,
+    canSchedule: allowOverbook,
     patchTask,
     prepareStatusChange,
   };
@@ -1025,6 +1265,17 @@ export function TaskBoard({
               tasks={grouped[status.value]}
               onOpen={setEditing}
               timeSecondsByTaskId={timeSecondsByTaskId}
+              sortable={status.value === "todo" && canReorderTodos}
+              onReorder={
+                status.value === "todo" ? applyTodoReorder : undefined
+              }
+              reorderHint={
+                status.value === "todo" && !canReorderTodos
+                  ? allowOverbook
+                    ? "Clear filters to drag-reorder and reschedule to-dos"
+                    : "Only an admin can drag-reorder and reschedule to-dos"
+                  : null
+              }
             />
           ))}
         </div>
@@ -1077,6 +1328,8 @@ export function TaskBoard({
             viewMode === "calendar" ? selectedDay : null
           }
           themeDeploys={themeDeploys}
+          allowOverbook={allowOverbook}
+          canSchedule={allowOverbook}
           onClose={() => setCreating(false)}
         />
       ) : null}
@@ -1096,6 +1349,8 @@ export function TaskBoard({
           initialReplyCommentId={initialReplyCommentId}
           scheduledWeekdays={scheduledWeekdays}
           themeDeploys={themeDeploys}
+          allowOverbook={allowOverbook}
+          canSchedule={allowOverbook}
           onClose={() => setEditing(null)}
         />
       ) : null}

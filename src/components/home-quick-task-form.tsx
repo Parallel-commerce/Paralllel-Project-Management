@@ -4,7 +4,12 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import { DueDatePicker } from "@/components/due-date-picker";
 import { createTask } from "@/lib/actions/projects";
-import { TASK_TYPES } from "@/types/database";
+import { TASK_IMPORTANCE_LEVELS } from "@/lib/task-importance";
+import {
+  taskTypeOmitsDueDate,
+  taskTypePrefersFirstAvailable,
+} from "@/lib/task-type";
+import { TASK_TYPES, type TaskType } from "@/types/database";
 
 export type HomeListOption = {
   id: string;
@@ -86,11 +91,13 @@ export function HomeQuickTaskForm({
   lists,
   currentUserId,
   defaultDueDate = null,
+  allowOverbook = false,
   onCreated,
 }: {
   lists: HomeListOption[];
   currentUserId: string;
   defaultDueDate?: string | null;
+  allowOverbook?: boolean;
   onCreated?: (taskId: string) => void;
 }) {
   const projects = useMemo(() => {
@@ -114,11 +121,16 @@ export function HomeQuickTaskForm({
   const [projectOpen, setProjectOpen] = useState(false);
   const [listOpen, setListOpen] = useState(false);
   const [formKey, setFormKey] = useState(0);
+  const [selectedType, setSelectedType] = useState<TaskType | "">("");
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const projectPickerRef = useRef<HTMLDivElement>(null);
   const listPickerRef = useRef<HTMLDivElement>(null);
+  const omitsDueDate = taskTypeOmitsDueDate(selectedType || null);
+  const prefersFirstAvailable = taskTypePrefersFirstAvailable(
+    selectedType || null,
+  );
 
   const listsForProject = useMemo(
     () =>
@@ -206,6 +218,7 @@ export function HomeQuickTaskForm({
     const nextProjectId = initialProjectId(lists);
     setProjectId(nextProjectId);
     setListId(initialListId(lists, nextProjectId));
+    setSelectedType("");
     setProjectOpen(false);
     setListOpen(false);
   }
@@ -237,8 +250,8 @@ export function HomeQuickTaskForm({
             selectedList.id,
             formData,
           );
-          if (result?.error) {
-            setError(result.error);
+          if (result && "error" in result) {
+            setError(result.error ?? "Could not create task.");
             return;
           }
           if (result && "id" in result && result.id && onCreated) {
@@ -344,19 +357,54 @@ export function HomeQuickTaskForm({
         </OptionPicker>
       </div>
 
-      <DueDatePicker
-        name="due_date"
-        label="Due date (optional)"
-        defaultValue={defaultDueDate ?? ""}
-        highlightedWeekdays={selectedProject?.scheduledWeekdays ?? []}
-        projectId={selectedProject?.id}
-      />
+      {omitsDueDate || !allowOverbook ? (
+        <div className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
+          <span>Due date</span>
+          <p className="rounded-md border border-dashed border-[var(--border)] bg-[var(--surface-2)]/50 px-3 py-2 text-[var(--foreground)]">
+            {omitsDueDate
+              ? "Questions are not scheduled"
+              : "Scheduling is managed by an admin"}
+          </p>
+          <input type="hidden" name="due_date" value="" />
+        </div>
+      ) : (
+        <DueDatePicker
+          name="due_date"
+          label={
+            prefersFirstAvailable
+              ? "Due date (first available if empty)"
+              : "Due date (auto if empty)"
+          }
+          defaultValue={prefersFirstAvailable ? "" : defaultDueDate ?? ""}
+          highlightedWeekdays={selectedProject?.scheduledWeekdays ?? []}
+          projectId={selectedProject?.id}
+          allowOverbook={allowOverbook}
+        />
+      )}
+
+      <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
+        Importance
+        <select
+          name="importance"
+          defaultValue="0"
+          className="min-h-10 rounded-md border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
+        >
+          {TASK_IMPORTANCE_LEVELS.map((level) => (
+            <option key={level.value} value={level.value}>
+              {level.label}
+            </option>
+          ))}
+        </select>
+      </label>
 
       <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
         Type
         <select
           name="task_type"
-          defaultValue=""
+          value={selectedType}
+          onChange={(event) =>
+            setSelectedType((event.target.value || "") as TaskType | "")
+          }
           className="min-h-10 rounded-md border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
         >
           <option value="">No type</option>

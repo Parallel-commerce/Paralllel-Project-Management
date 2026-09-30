@@ -1,14 +1,11 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 import { ListSettings } from "@/components/list-settings";
 import { TaskBoard } from "@/components/task-board";
-import type { TimeEntryRow } from "@/components/time-tracking-panel";
 import { requireSessionUser } from "@/lib/auth";
-import { loadThemeDeploys } from "@/lib/load-theme-deploys";
-import { scheduledWeekdaysFromProject } from "@/lib/scheduled-weekdays";
-import { TASK_TABLE_COLUMNS } from "@/lib/task-columns";
-import type { ListVisibility, ProjectRole, Task } from "@/types/database";
+import { loadListBoardPayload } from "@/lib/load-list-board";
+import type { ProjectRole } from "@/types/database";
 
 export default async function ListBoardPage({
   params,
@@ -18,7 +15,8 @@ export default async function ListBoardPage({
   searchParams: Promise<{ task?: string; reply?: string }>;
 }) {
   const { id, listId } = await params;
-  const { task: initialTaskId, reply: initialReplyCommentId } = await searchParams;
+  const { task: initialTaskId, reply: initialReplyCommentId } =
+    await searchParams;
   const { supabase, user } = await requireSessionUser();
 
   const [
@@ -26,7 +24,7 @@ export default async function ListBoardPage({
     { data: project },
     { data: membership },
     { data: profile },
-    { data: memberRows },
+    { data: firstList },
   ] = await Promise.all([
     supabase
       .from("lists")
@@ -34,7 +32,11 @@ export default async function ListBoardPage({
       .eq("id", listId)
       .eq("project_id", id)
       .maybeSingle(),
-    supabase.from("projects").select("id, name, scheduled_weekdays").eq("id", id).maybeSingle(),
+    supabase
+      .from("projects")
+      .select("id, name, scheduled_weekdays")
+      .eq("id", id)
+      .maybeSingle(),
     supabase
       .from("project_members")
       .select("role")
@@ -47,152 +49,54 @@ export default async function ListBoardPage({
       .eq("id", user.id)
       .maybeSingle(),
     supabase
-      .from("project_members")
-      .select("user_id, role, profiles(id, email, full_name, deleted_at)")
-      .eq("project_id", id),
+      .from("lists")
+      .select("id")
+      .eq("project_id", id)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle(),
   ]);
 
   if (!list) {
     notFound();
   }
 
-  // Archive in the background — don't block board paint
-  void supabase.rpc("archive_eligible_tasks", {
-    p_list_id: listId,
-    p_project_id: id,
-  });
+  // Primary list lives on the project page — keep deep links working.
+  if (firstList?.id === listId) {
+    const qs = new URLSearchParams();
+    if (initialTaskId) qs.set("task", initialTaskId);
+    if (initialReplyCommentId) qs.set("reply", initialReplyCommentId);
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    redirect(`/projects/${id}${suffix}`);
+  }
 
   const role = (membership?.role ?? "client") as ProjectRole;
   const isPlatformAdmin = !!profile?.is_platform_admin;
-  const isAdmin = role === "admin" || isPlatformAdmin;
-  const canTrackTime =
-    isPlatformAdmin || role === "admin" || role === "member";
-  const canManageList =
-    role === "admin" || isPlatformAdmin || list.created_by === user.id;
-  const canDeleteList =
-    isPlatformAdmin || role === "admin" || role === "member";
 
-  const members =
-    memberRows?.map((row) => {
-      const profileRow = Array.isArray(row.profiles)
-        ? row.profiles[0]
-        : row.profiles;
-      return {
-        id: (profileRow?.id as string) ?? row.user_id,
-        email: (profileRow?.email as string) ?? "",
-        full_name: (profileRow?.full_name as string | null) ?? null,
-        deleted_at: (profileRow?.deleted_at as string | null) ?? null,
-        role: row.role as ProjectRole,
-      };
-    }) ?? [];
-
-  const activeMembers = members.filter((member) => !member.deleted_at);
-  const defaultAssigneeId =
-    activeMembers.find(
-      (member) => member.role === "admin" && member.id === user.id,
-    )?.id ??
-    activeMembers.find((member) => member.role === "admin")?.id ??
-    null;
-
-  const [{ data: taskRows }, themeDeploys] = await Promise.all([
-    supabase
-      .from("tasks")
-      .select(TASK_TABLE_COLUMNS)
-      .eq("list_id", listId)
-      .is("archived_at", null)
-      .order("due_date", { ascending: true, nullsFirst: true })
-      .order("created_at", { ascending: true }),
-    loadThemeDeploys(supabase, id),
-  ]);
-
-  const personIds = [
-    ...new Set(
-      (taskRows ?? []).flatMap((task) =>
-        [task.created_by, task.reported_by, task.assigned_to].filter(
-          (value): value is string => !!value,
-        ),
-      ),
-    ),
-  ];
-
-  const taskIds = (taskRows ?? []).map((task) => task.id as string);
-
-  const [{ data: personRows }, timeTotalsResult, runningResult] =
-    await Promise.all([
-      personIds.length > 0
-        ? supabase
-            .from("profiles")
-            .select("id, email, full_name, deleted_at")
-            .in("id", personIds)
-        : Promise.resolve({ data: [] as {
-            id: string;
-            email: string;
-            full_name: string | null;
-            deleted_at: string | null;
-          }[] }),
-      canTrackTime && taskIds.length > 0
-        ? supabase
-            .from("time_entries")
-            .select("task_id, duration_seconds")
-            .in("task_id", taskIds)
-            .not("ended_at", "is", null)
-        : Promise.resolve({ data: [] as { task_id: string; duration_seconds: number | null }[] }),
-      canTrackTime
-        ? supabase
-            .from("time_entries")
-            .select(
-              "id, project_id, user_id, task_id, description, started_at, ended_at, duration_seconds, source, created_at, updated_at, profiles(full_name, email, deleted_at)",
-            )
-            .eq("user_id", user.id)
-            .is("ended_at", null)
-            .maybeSingle()
-        : Promise.resolve({ data: null }),
-    ]);
-
-  const profileById = Object.fromEntries(
-    (personRows ?? []).map((person) => [
-      person.id,
-      {
-        id: person.id as string,
-        email: person.email as string,
-        full_name: (person.full_name as string | null) ?? null,
-        deleted_at: (person.deleted_at as string | null) ?? null,
-      },
-    ]),
-  );
-
-  const tasks =
-    (taskRows as Task[] | null)?.map((task) => ({
-      ...task,
-      creator: profileById[task.created_by] ?? null,
-      reporter: profileById[task.reported_by] ?? null,
-      assignee: task.assigned_to
-        ? (profileById[task.assigned_to] ?? null)
-        : null,
-    })) ?? [];
-
-  const timeSecondsByTaskId: Record<string, number> = {};
-  for (const row of timeTotalsResult.data ?? []) {
-    const taskId = row.task_id as string;
-    timeSecondsByTaskId[taskId] =
-      (timeSecondsByTaskId[taskId] ?? 0) + (row.duration_seconds ?? 0);
-  }
+  const board = await loadListBoardPayload(supabase, {
+    projectId: id,
+    listId,
+    userId: user.id,
+    list: {
+      id: list.id,
+      name: list.name,
+      visibility: list.visibility,
+      created_by: list.created_by,
+    },
+    role,
+    isPlatformAdmin,
+    scheduledWeekdaysSource: project,
+  });
 
   return (
-    <main className="app-container py-6 sm:py-10">
-      <Link
-        href={`/projects/${id}`}
-        className="text-sm text-[var(--muted)] hover:text-[var(--foreground)]"
-      >
-        ← {project?.name ?? "Project"}
-      </Link>
-      <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
+    <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
         <div className="min-w-0">
           <h1 className="font-display text-2xl tracking-tight sm:text-3xl">
-            {list.name}
+            {board.list.name}
           </h1>
           <p className="mt-1 text-xs uppercase tracking-wide text-[var(--muted)]">
-            {list.visibility} list
+            {board.list.visibility} list
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -205,10 +109,10 @@ export default async function ListBoardPage({
           <ListSettings
             projectId={id}
             listId={listId}
-            name={list.name}
-            visibility={list.visibility as ListVisibility}
-            canManage={canManageList}
-            canDelete={canDeleteList}
+            name={board.list.name}
+            visibility={board.list.visibility}
+            canManage={board.canManageList}
+            canDelete={board.canDeleteList}
           />
         </div>
       </div>
@@ -217,20 +121,21 @@ export default async function ListBoardPage({
         <TaskBoard
           projectId={id}
           listId={listId}
-          tasks={tasks}
-          members={activeMembers}
-          defaultAssigneeId={defaultAssigneeId}
+          tasks={board.tasks}
+          members={board.members}
+          defaultAssigneeId={board.defaultAssigneeId}
           currentUserId={user.id}
           initialTaskId={initialTaskId ?? null}
           initialReplyCommentId={initialReplyCommentId ?? null}
-          canTrackTime={canTrackTime}
-          isTimeAdmin={isAdmin}
-          timeSecondsByTaskId={timeSecondsByTaskId}
-          runningEntry={(runningResult.data as TimeEntryRow | null) ?? null}
-          scheduledWeekdays={scheduledWeekdaysFromProject(project)}
-          themeDeploys={themeDeploys}
+          canTrackTime={board.canTrackTime}
+          isTimeAdmin={board.isAdmin}
+          timeSecondsByTaskId={board.timeSecondsByTaskId}
+          runningEntry={board.runningEntry}
+          scheduledWeekdays={board.scheduledWeekdays}
+          themeDeploys={board.themeDeploys}
+          allowOverbook={board.isAdmin}
         />
       </div>
-    </main>
+    </div>
   );
 }

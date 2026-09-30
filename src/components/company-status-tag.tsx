@@ -5,9 +5,10 @@ export function CompanyStatusTag({
   status,
   className = "",
 }: {
-  status: CompanyStatus;
+  status: CompanyStatus | null | undefined;
   className?: string;
 }) {
+  if (!status) return null;
   const colors = companyStatusColors(status);
 
   return (

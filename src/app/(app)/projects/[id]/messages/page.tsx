@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { MessagesInbox } from "@/components/messages-inbox";
@@ -67,26 +66,18 @@ export default async function ProjectMessagesPage({
   ]);
 
   return (
-    <main className="app-container py-6 sm:py-10">
-        <Link
-          href={`/projects/${projectId}`}
-          className="text-sm text-[var(--muted)] hover:text-[var(--foreground)]"
-        >
-          ← {project.name}
-        </Link>
-        <div className="mt-3">
-          {error ? (
-            <p className="mb-4 text-sm text-[var(--danger)]">{error}</p>
-          ) : null}
-          <MessagesInbox
-            title={`Messages · ${project.name}`}
-            conversations={conversations}
-            projectId={projectId}
-            startableClients={clients}
-            canDelete
-            emptyCopy="Start a conversation with a client below, or wait for them to message you."
-          />
-        </div>
-      </main>
+    <div>
+      {error ? (
+        <p className="mb-4 text-sm text-[var(--danger)]">{error}</p>
+      ) : null}
+      <MessagesInbox
+        title="Messages"
+        conversations={conversations}
+        projectId={projectId}
+        startableClients={clients}
+        canDelete
+        emptyCopy="Start a conversation with a client below, or wait for them to message you."
+      />
+    </div>
   );
 }

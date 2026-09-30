@@ -141,17 +141,17 @@ export default async function ProjectReportDetailPage({
     }) ?? [];
 
   return (
-    <main className="app-container py-6 sm:py-10">
-        <Link
-          href={`/projects/${id}/reports`}
-          className="text-sm text-[var(--muted)] hover:text-[var(--foreground)]"
-        >
-          ← Reports
-        </Link>
-        <p className="mt-3 text-sm text-[var(--muted)]">
-          {project.name} · Created {formatDateTime(report.created_at)}
-          {report.sent_at ? ` · Sent ${formatDateTime(report.sent_at)}` : " · Draft"}
-        </p>
+    <div>
+      <Link
+        href={`/projects/${id}/reports`}
+        className="text-sm text-[var(--muted)] hover:text-[var(--foreground)]"
+      >
+        ← Reports
+      </Link>
+      <p className="mt-2 text-sm text-[var(--muted)]">
+        Created {formatDateTime(report.created_at)}
+        {report.sent_at ? ` · Sent ${formatDateTime(report.sent_at)}` : " · Draft"}
+      </p>
 
         {isAdmin && seeded === "1" ? (
           <AdminOnly className="mt-4">
@@ -267,6 +267,6 @@ export default async function ProjectReportDetailPage({
             </div>
           </AdminOnly>
         ) : null}
-      </main>
+    </div>
   );
 }

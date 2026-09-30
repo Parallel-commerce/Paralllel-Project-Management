@@ -41,18 +41,23 @@
   --type-bug-bg: color-mix(in srgb, var(--parallel-red) 12%, white);
   --type-bug-border: var(--parallel-red);
   --type-bug-label: var(--deep-red);
+  --type-question-bg: #eef1f4;
+  --type-question-border: #5a7388;
+  --type-question-label: #334656;
   --type-feature-bg: #eaf5f7;
   --type-feature-border: #3d8a9a;
   --type-feature-label: #1f5864;
   --type-improvement-bg: #eef6f0;
   --type-improvement-border: #5a9a6e;
   --type-improvement-label: #2f5d3d;
+  --type-shopify-bg: #eeeaf7;
+  --type-shopify-border: #6e5aa0;
+  --type-shopify-label: #43356a;
+
+  /* Shared by project-type tags */
   --type-data-bg: #eeeaf7;
   --type-data-border: #6e5aa0;
   --type-data-label: #43356a;
-  --type-docs-bg: #eef1f4;
-  --type-docs-border: #5a7388;
-  --type-docs-label: #334656;
   --type-design-bg: #fceef4;
   --type-design-border: #c45a86;
   --type-design-label: #7a3254;
@@ -62,9 +67,6 @@
   --type-maintenance-bg: color-mix(in srgb, white 50%, var(--bone));
   --type-maintenance-border: var(--warm-grey);
   --type-maintenance-label: color-mix(in srgb, var(--charcoal) 50%, var(--warm-grey));
-  --type-other-bg: var(--bone);
-  --type-other-border: var(--sand);
-  --type-other-label: color-mix(in srgb, var(--charcoal) 48%, var(--warm-grey));
 }
 
 @theme inline {

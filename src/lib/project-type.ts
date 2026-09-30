@@ -1,13 +1,20 @@
-import type { ProjectEngagement, ProjectType } from "@/types/database";
+import { cadenceForPlan, planCadenceLabel } from "@/lib/plan-cadence";
+import type {
+  ProjectEngagement,
+  ProjectType,
+  ScheduleCadence,
+} from "@/types/database";
 import { PROJECT_TYPES } from "@/types/database";
 
 export type ProjectEngagementFields = {
   projectType: ProjectType | null;
-  monthlyHours: number | null;
+  scheduleCadence: ScheduleCadence;
+  scheduleAnchorDate: string;
 };
 
 export function projectTypeLabel(type: ProjectType | null | undefined) {
   if (!type) return "";
+  if (type === "enterprise_b2b") return "Enterprise & B2B";
   return PROJECT_TYPES.find((item) => item.value === type)?.label ?? type;
 }
 
@@ -19,19 +26,21 @@ export function parseProjectType(raw: string): ProjectType | null {
     : null;
 }
 
-export function parseMonthlyHours(
+export function parseScheduleAnchorDate(
   raw: string,
-): { hours: number | null } | { error: string } {
+): { date: string } | { error: string } {
   const value = raw.trim();
-  if (!value) return { hours: null };
-  if (!/^\d+$/.test(value)) {
-    return { error: "Hours per month must be a whole number of 0 or more." };
+  if (!value) {
+    return { date: new Date().toISOString().slice(0, 10) };
   }
-  const hours = Number(value);
-  if (!Number.isSafeInteger(hours) || hours < 0 || hours > 10_000) {
-    return { error: "Hours per month must be a whole number of 0 or more." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return { error: "Anchor date must be YYYY-MM-DD." };
   }
-  return { hours };
+  const parsed = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) {
+    return { error: "Anchor date must be a valid date." };
+  }
+  return { date: value };
 }
 
 export function parseProjectEngagement(
@@ -39,41 +48,59 @@ export function parseProjectEngagement(
 ): ProjectEngagementFields | { error: string } {
   const typeRaw = String(formData.get("project_type") ?? "").trim();
   if (typeRaw && !PROJECT_TYPES.some((item) => item.value === typeRaw)) {
-    return { error: "Choose a valid project type." };
+    return { error: "Choose a valid plan." };
   }
 
-  const hoursResult = parseMonthlyHours(
-    String(formData.get("monthly_hours") ?? ""),
+  const projectType = parseProjectType(typeRaw);
+  const scheduleCadence = cadenceForPlan(projectType);
+
+  const anchorResult = parseScheduleAnchorDate(
+    String(formData.get("schedule_anchor_date") ?? ""),
   );
-  if ("error" in hoursResult) return hoursResult;
+  if ("error" in anchorResult) return anchorResult;
 
   return {
-    projectType: parseProjectType(typeRaw),
-    monthlyHours: hoursResult.hours,
+    projectType,
+    scheduleCadence,
+    scheduleAnchorDate: anchorResult.date,
   };
 }
 
 export function projectEngagementFromRow(
   row:
-    | Pick<ProjectEngagement, "project_type" | "monthly_hours">
-    | Pick<ProjectEngagement, "project_type" | "monthly_hours">[]
+    | Partial<
+        Pick<
+          ProjectEngagement,
+          "project_type" | "schedule_cadence" | "schedule_anchor_date"
+        >
+      >
+    | Partial<
+        Pick<
+          ProjectEngagement,
+          "project_type" | "schedule_cadence" | "schedule_anchor_date"
+        >
+      >[]
     | null
     | undefined,
 ): ProjectEngagementFields {
   const engagement = Array.isArray(row) ? row[0] : row;
+  const projectType = engagement?.project_type ?? null;
   return {
-    projectType: engagement?.project_type ?? null,
-    monthlyHours: engagement?.monthly_hours ?? null,
+    projectType,
+    scheduleCadence: cadenceForPlan(projectType),
+    scheduleAnchorDate:
+      engagement?.schedule_anchor_date?.slice(0, 10) ??
+      new Date().toISOString().slice(0, 10),
   };
 }
 
 export function projectEngagementSummary(
   projectType: ProjectType | null | undefined,
-  monthlyHours: number | null | undefined,
+  _scheduleCadence?: ScheduleCadence | null,
 ) {
   const parts = [
     projectTypeLabel(projectType) || null,
-    monthlyHours == null ? null : `${monthlyHours}h/mo`,
+    planCadenceLabel(projectType),
   ].filter(Boolean);
   return parts.join(" · ");
 }
@@ -99,6 +126,11 @@ export function projectTypeColors(type: ProjectType) {
       return {
         accent: "bg-[var(--type-research-border)]",
         tag: "bg-[var(--type-research-bg)] text-[var(--type-research-label)] ring-[var(--type-research-border)]/25",
+      };
+    case "growth":
+      return {
+        accent: "bg-[var(--type-design-border)]",
+        tag: "bg-[var(--type-design-bg)] text-[var(--type-design-label)] ring-[var(--type-design-border)]/25",
       };
     case "enterprise_b2b":
       return {

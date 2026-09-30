@@ -1,19 +1,33 @@
+"use client";
+
+import { planCadenceLabel, planHasScheduleCadence } from "@/lib/plan-cadence";
+import { planChangeAllowanceLabel } from "@/lib/plan-changes";
 import { PROJECT_TYPES, type ProjectType } from "@/types/database";
+import { useState } from "react";
 
 export function ProjectEngagementFields({
   projectType,
-  monthlyHours,
+  scheduleAnchorDate,
 }: {
   projectType?: ProjectType | null;
-  monthlyHours?: number | null;
+  scheduleAnchorDate?: string | null;
 }) {
+  const [selectedType, setSelectedType] = useState<string>(projectType ?? "");
+  const plan = (selectedType || null) as ProjectType | null;
+  const allowance = planChangeAllowanceLabel(plan);
+  const cadenceLabel = planCadenceLabel(plan);
+  const showAnchor = planHasScheduleCadence(plan);
+  const defaultAnchor =
+    scheduleAnchorDate?.slice(0, 10) ?? new Date().toISOString().slice(0, 10);
+
   return (
     <div className="flex flex-col gap-3">
       <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
-        Project type
+        Plan
         <select
           name="project_type"
-          defaultValue={projectType ?? ""}
+          value={selectedType}
+          onChange={(event) => setSelectedType(event.target.value)}
           className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
         >
           <option value="">Not set</option>
@@ -24,25 +38,27 @@ export function ProjectEngagementFields({
           ))}
         </select>
         <span className="text-xs text-[var(--muted)]">
-          What this client is currently engaged with. Only visible to Parallel.
+          {[allowance, cadenceLabel ? `Cadence: ${cadenceLabel}` : "No cadence"]
+            .filter(Boolean)
+            .join(" · ")}
         </span>
       </label>
-      <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
-        Hours per month
-        <input
-          name="monthly_hours"
-          type="number"
-          inputMode="numeric"
-          min={0}
-          step={1}
-          defaultValue={monthlyHours ?? ""}
-          placeholder="e.g. 8"
-          className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
-        />
-        <span className="text-xs text-[var(--muted)]">
-          Retainer hours this client gets each month. Only visible to Parallel.
-        </span>
-      </label>
+      {showAnchor ? (
+        <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
+          Schedule anchor date
+          <input
+            name="schedule_anchor_date"
+            type="date"
+            defaultValue={defaultAnchor}
+            className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
+          />
+          <span className="text-xs text-[var(--muted)]">
+            Starting point for the plan’s cadence cycle.
+          </span>
+        </label>
+      ) : (
+        <input type="hidden" name="schedule_anchor_date" value={defaultAnchor} />
+      )}
     </div>
   );
 }

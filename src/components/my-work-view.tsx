@@ -475,6 +475,8 @@ export function MyWorkView({
           contextLabel={`${editing.projectName} · ${editing.listName}`}
           contextHref={`/projects/${editing.project_id}/lists/${editing.list_id}?task=${editing.id}`}
           scheduledWeekdays={editingContext?.scheduledWeekdays ?? []}
+          allowOverbook={editingContext?.isTimeAdmin ?? false}
+          canSchedule={editingContext?.isTimeAdmin ?? false}
           onClose={closeTask}
         />
       ) : null}

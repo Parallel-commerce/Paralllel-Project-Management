@@ -50,7 +50,7 @@ export default async function CompanyPage({
         .order("full_name", { ascending: true }),
       supabase
         .from("projects")
-        .select("id, name, project_engagement(project_type, monthly_hours)")
+        .select("id, name, project_engagement(project_type, schedule_anchor_date)")
         .eq("company_id", id)
         .order("created_at", { ascending: false }),
       supabase
@@ -86,7 +86,9 @@ export default async function CompanyPage({
               {companyRow.name}
             </h1>
             <CompanyKindTag kind={companyRow.kind} />
-            <CompanyStatusTag status={companyRow.status} />
+            {companyRow.kind === "prospect" ? (
+              <CompanyStatusTag status={companyRow.status} />
+            ) : null}
             <CompanyReengageTag canReengage={companyRow.can_reengage} />
             {selectedVerticals.map((item) => (
               <CompanyVerticalTag
@@ -156,7 +158,6 @@ export default async function CompanyPage({
                   );
                   const summary = projectEngagementSummary(
                     engagement.projectType,
-                    engagement.monthlyHours,
                   );
                   return (
                     <li

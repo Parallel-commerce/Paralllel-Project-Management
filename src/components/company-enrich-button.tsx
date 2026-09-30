@@ -23,6 +23,11 @@ export function CompanyEnrichButton({
       <button
         type="button"
         disabled={pending}
+        title={
+          enrichedAt
+            ? `Last looked up ${formatDateTime(enrichedAt)}`
+            : "Adds a summary and LinkedIn links"
+        }
         onClick={() => {
           setError(null);
           setStatus(null);
@@ -45,30 +50,28 @@ export function CompanyEnrichButton({
             router.refresh();
           });
         }}
-        className="rounded-md border border-[var(--border)] px-3 py-1.5 text-sm hover:bg-[var(--surface-2)] disabled:opacity-60"
+        className="rounded-md border border-[var(--border)] px-2.5 py-1 text-xs font-medium hover:bg-[var(--surface-2)] disabled:opacity-60"
       >
         {pending
           ? "Looking up…"
           : enrichedAt
             ? "Refresh lookup"
-            : "Look up company"}
+            : "Look up"}
       </button>
-      <p
-        className={`max-w-xs text-right text-xs ${
-          error ? "text-[var(--danger)]" : "text-[var(--muted)]"
-        }`}
-        aria-live="polite"
-      >
-        {pending
-          ? "Searching for a summary and LinkedIn pages. This can take a moment."
-          : error
-            ? error
-            : status
-              ? status
-              : enrichedAt
-                ? `Last looked up ${formatDateTime(enrichedAt)}`
-                : "Adds a summary and LinkedIn links"}
-      </p>
+      {error || status || pending ? (
+        <p
+          className={`max-w-[14rem] text-right text-[11px] leading-snug ${
+            error ? "text-[var(--danger)]" : "text-[var(--muted)]"
+          }`}
+          aria-live="polite"
+        >
+          {pending
+            ? "Searching…"
+            : error
+              ? error
+              : status}
+        </p>
+      ) : null}
     </div>
   );
 }

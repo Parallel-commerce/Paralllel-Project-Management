@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { AdminOnly } from "@/components/admin-only";
@@ -31,7 +30,7 @@ export default async function ProjectSettingsPage({
       supabase
         .from("projects")
         .select(
-          "id, name, description, logo_path, scheduled_weekdays, project_engagement(project_type, monthly_hours)",
+          "id, name, description, logo_path, scheduled_weekdays, project_engagement(project_type, schedule_anchor_date)",
         )
         .eq("id", id)
         .maybeSingle(),
@@ -78,15 +77,9 @@ export default async function ProjectSettingsPage({
   const themeGit = (themeGitRow as ProjectThemeGit | null) ?? null;
 
   return (
-    <main className="app-container py-6 sm:py-10">
-      <Link
-        href={`/projects/${id}`}
-        className="text-sm text-[var(--muted)] hover:text-[var(--foreground)]"
-      >
-        ← {project.name}
-      </Link>
-      <h1 className="mt-3 font-display text-3xl tracking-tight">Settings</h1>
-      <p className="mt-2 text-sm text-[var(--muted)]">
+    <div>
+      <h1 className="font-display text-2xl tracking-tight sm:text-3xl">Settings</h1>
+      <p className="mt-1 text-sm text-[var(--muted)]">
         Project details, Shopify connection, and the live theme git repo.
         Clients never see this page.
       </p>
@@ -113,7 +106,7 @@ export default async function ProjectSettingsPage({
               project.scheduled_weekdays,
             )}
             projectType={engagement.projectType}
-            monthlyHours={engagement.monthlyHours}
+            scheduleAnchorDate={engagement.scheduleAnchorDate}
           />
           <StoreSetupForm
             projectId={id}
@@ -123,6 +116,6 @@ export default async function ProjectSettingsPage({
           <ProjectDeleteSettings projectId={id} name={project.name} />
         </div>
       </AdminOnly>
-    </main>
+    </div>
   );
 }

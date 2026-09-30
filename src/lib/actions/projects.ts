@@ -8,12 +8,24 @@ import {
   removeMemberFromProject,
   updateMemberRole as updateMemberRoleAction,
 } from "@/lib/actions/users";
+import {
+  allocateNextAvailableDay,
+  allocateSequentialDueDates,
+  dayIsOccupied,
+  hasActiveCadence,
+  type ScheduleConfig,
+} from "@/lib/allocate-due-dates";
 import { logActivity, notifyUser, sendSignInCode } from "@/lib/notify";
 import { PROJECT_LOGO_BUCKET } from "@/lib/project-logo";
 import { parseProjectEngagement } from "@/lib/project-type";
 import { parseScheduledWeekdays } from "@/lib/scheduled-weekdays";
+import { parseImportance } from "@/lib/task-importance";
 import { projectTaskPrefix } from "@/lib/task-key";
-import { parseTaskType } from "@/lib/task-type";
+import {
+  parseTaskType,
+  taskTypeOmitsDueDate,
+  taskTypePrefersFirstAvailable,
+} from "@/lib/task-type";
 import { TASK_ATTACHMENT_BUCKET } from "@/lib/task-attachments";
 import { fetchThemeCommit } from "@/lib/github/theme";
 import {
@@ -29,8 +41,10 @@ import type {
   ListVisibility,
   ProjectRole,
   ProjectType,
+  ScheduleCadence,
   TaskAttachment,
   TaskStatus,
+  TaskType,
 } from "@/types/database";
 
 const LOGO_MIME_TYPES = new Set([
@@ -232,13 +246,18 @@ async function themeFieldsForWrite(
 async function saveProjectEngagement(
   supabase: Awaited<ReturnType<typeof createClient>>,
   projectId: string,
-  input: { projectType: ProjectType | null; monthlyHours: number | null },
+  input: {
+    projectType: ProjectType | null;
+    scheduleCadence: import("@/types/database").ScheduleCadence;
+    scheduleAnchorDate: string;
+  },
 ) {
   const { error } = await supabase.from("project_engagement").upsert(
     {
       project_id: projectId,
       project_type: input.projectType,
-      monthly_hours: input.monthlyHours,
+      schedule_cadence: input.scheduleCadence,
+      schedule_anchor_date: input.scheduleAnchorDate,
     },
     { onConflict: "project_id" },
   );
@@ -847,11 +866,206 @@ export async function getProjectDueDateCounts(
   return { counts };
 }
 
+async function loadDueDateOccupancy(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  projectId: string,
+  excludeTaskId?: string | null,
+): Promise<Record<string, number>> {
+  const { data } = await supabase
+    .from("tasks")
+    .select("id, due_date")
+    .eq("project_id", projectId)
+    .is("archived_at", null)
+    .neq("status", "done")
+    .not("due_date", "is", null);
+
+  const counts: Record<string, number> = {};
+  for (const row of data ?? []) {
+    if (excludeTaskId && row.id === excludeTaskId) continue;
+    const day =
+      typeof row.due_date === "string" ? row.due_date.slice(0, 10) : "";
+    if (!day) continue;
+    counts[day] = (counts[day] ?? 0) + 1;
+  }
+  return counts;
+}
+
+async function loadProjectSchedule(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  projectId: string,
+): Promise<ScheduleConfig> {
+  const { data } = await supabase.rpc("project_schedule_config", {
+    p_project_id: projectId,
+  });
+
+  const row = Array.isArray(data) ? data[0] : data;
+  const weekdays = Array.isArray(row?.scheduled_weekdays)
+    ? (row.scheduled_weekdays as number[])
+    : [];
+
+  return {
+    weekdays,
+    cadence: (row?.schedule_cadence as ScheduleCadence) ?? "weekly",
+    anchorDate:
+      typeof row?.schedule_anchor_date === "string"
+        ? row.schedule_anchor_date.slice(0, 10)
+        : new Date().toISOString().slice(0, 10),
+  };
+}
+
+async function getProjectAccess(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  projectId: string,
+  userId: string,
+): Promise<{
+  role: ProjectRole;
+  isPlatformAdmin: boolean;
+  isAdmin: boolean;
+  isInternal: boolean;
+  isClient: boolean;
+}> {
+  const [{ data: membership }, { data: profile }] = await Promise.all([
+    supabase
+      .from("project_members")
+      .select("role")
+      .eq("project_id", projectId)
+      .eq("user_id", userId)
+      .maybeSingle(),
+    supabase
+      .from("profiles")
+      .select("is_platform_admin")
+      .eq("id", userId)
+      .maybeSingle(),
+  ]);
+
+  const role = (membership?.role ?? "client") as ProjectRole;
+  const isPlatformAdmin = !!profile?.is_platform_admin;
+  const isAdmin = role === "admin" || isPlatformAdmin;
+  const isInternal = isPlatformAdmin || role === "admin" || role === "member";
+  return {
+    role,
+    isPlatformAdmin,
+    isAdmin,
+    isInternal,
+    isClient: !isInternal,
+  };
+}
+
+async function assertClientChangeQuota(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  projectId: string,
+  isClient: boolean,
+): Promise<{ error: string } | null> {
+  if (!isClient) return null;
+
+  const { data: limit, error: limitError } = await supabase.rpc(
+    "project_monthly_change_limit",
+    { p_project_id: projectId },
+  );
+
+  if (limitError) {
+    return { error: limitError.message };
+  }
+
+  if (limit === null || limit === undefined) return null;
+
+  const now = new Date();
+  const monthStart = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
+  ).toISOString();
+
+  const { count, error } = await supabase
+    .from("tasks")
+    .select("*", { count: "exact", head: true })
+    .eq("project_id", projectId)
+    .is("archived_at", null)
+    .gte("created_at", monthStart);
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  const numericLimit = Number(limit);
+  if ((count ?? 0) >= numericLimit) {
+    if (numericLimit === 0) {
+      return {
+        error:
+          "This Maintain plan does not include change requests. Ask Parallel to log billable work for you.",
+      };
+    }
+    return {
+      error: `This plan includes ${numericLimit} change${numericLimit === 1 ? "" : "s"} per month, and that allowance has been used. Ask Parallel if you need another change.`,
+    };
+  }
+
+  return null;
+}
+
+async function resolveTaskDueDate(options: {
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  projectId: string;
+  requestedDueDate: string;
+  isAdmin: boolean;
+  excludeTaskId?: string | null;
+  /** When true, empty requested date auto-allocates. */
+  autoAllocate: boolean;
+  taskType?: TaskType | null;
+}): Promise<{ dueDate: string | null } | { error: string }> {
+  const {
+    supabase,
+    projectId,
+    requestedDueDate,
+    isAdmin,
+    excludeTaskId,
+    autoAllocate,
+    taskType,
+  } = options;
+
+  if (taskTypeOmitsDueDate(taskType)) {
+    return { dueDate: null };
+  }
+
+  // Only admins may pick a specific day; everyone else is auto-scheduled.
+  const effectiveRequested = isAdmin ? requestedDueDate : "";
+
+  const occupancy = await loadDueDateOccupancy(
+    supabase,
+    projectId,
+    excludeTaskId,
+  );
+  const schedule = await loadProjectSchedule(supabase, projectId);
+  const shouldAutoAllocate =
+    autoAllocate || taskTypePrefersFirstAvailable(taskType);
+
+  if (!effectiveRequested) {
+    if (!shouldAutoAllocate || !hasActiveCadence(schedule.cadence)) {
+      return { dueDate: null };
+    }
+    const allocated = allocateNextAvailableDay(schedule, occupancy);
+    if (!allocated) {
+      return {
+        error:
+          "Could not find an available work day to schedule this task. Ask an admin to set a due date.",
+      };
+    }
+    return { dueDate: allocated };
+  }
+
+  if (!isAdmin && dayIsOccupied(effectiveRequested, occupancy)) {
+    return {
+      error:
+        "That day already has an open task. Only an admin can schedule more than one task on the same day.",
+    };
+  }
+
+  return { dueDate: effectiveRequested };
+}
+
 export async function createTask(projectId: string, listId: string, formData: FormData) {
   const { supabase, user } = await requireUser();
   const title = String(formData.get("title") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim();
-  const dueDate = String(formData.get("due_date") ?? "").trim();
+  const dueDateRaw = String(formData.get("due_date") ?? "").trim();
   const status = String(formData.get("status") ?? "todo") as TaskStatus;
   const taskTypeRaw = String(formData.get("task_type") ?? "").trim();
   const assignedToRaw = String(formData.get("assigned_to") ?? "").trim();
@@ -859,6 +1073,9 @@ export async function createTask(projectId: string, listId: string, formData: Fo
   const sourceReportId = String(formData.get("source_report_id") ?? "").trim();
   const sourceActionKey = String(formData.get("source_action_key") ?? "").trim();
   const taskType = parseTaskType(taskTypeRaw);
+  const importanceResult = parseImportance(
+    String(formData.get("importance") ?? ""),
+  );
 
   if (!title) {
     return { error: "Title is required." };
@@ -866,6 +1083,32 @@ export async function createTask(projectId: string, listId: string, formData: Fo
 
   if (taskTypeRaw && !taskType) {
     return { error: "Invalid task type." };
+  }
+
+  if (typeof importanceResult === "object" && "error" in importanceResult) {
+    return { error: importanceResult.error };
+  }
+
+  const access = await getProjectAccess(supabase, projectId, user.id);
+  const quotaError = await assertClientChangeQuota(
+    supabase,
+    projectId,
+    access.isClient,
+  );
+  if (quotaError) {
+    return quotaError;
+  }
+
+  const dueResolved = await resolveTaskDueDate({
+    supabase,
+    projectId,
+    requestedDueDate: dueDateRaw,
+    isAdmin: access.isAdmin,
+    autoAllocate: true,
+    taskType,
+  });
+  if ("error" in dueResolved) {
+    return { error: dueResolved.error };
   }
 
   const source = await resolveTaskSource(
@@ -940,9 +1183,10 @@ export async function createTask(projectId: string, listId: string, formData: Fo
       project_id: projectId,
       title,
       description: description || null,
-      due_date: dueDate || null,
+      due_date: dueResolved.dueDate,
       status,
       task_type: taskType,
+      importance: importanceResult,
       number: allocation.task_number,
       key: allocation.task_key,
       created_by: user.id,
@@ -1016,6 +1260,8 @@ export async function createTask(projectId: string, listId: string, formData: Fo
       task_number: allocation.task_number,
       status,
       task_type: taskType,
+      importance: importanceResult,
+      due_date: dueResolved.dueDate,
     },
     clientVisible,
   });
@@ -1059,12 +1305,15 @@ export async function updateTask(
 
   const title = String(formData.get("title") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim();
-  const dueDate = String(formData.get("due_date") ?? "").trim();
+  const dueDateRaw = String(formData.get("due_date") ?? "").trim();
   const status = String(formData.get("status") ?? "todo") as TaskStatus;
   const taskTypeRaw = String(formData.get("task_type") ?? "").trim();
   const assignedTo = String(formData.get("assigned_to") ?? "").trim();
   const reportedByRaw = String(formData.get("reported_by") ?? "").trim();
   const taskType = parseTaskType(taskTypeRaw);
+  const importanceResult = parseImportance(
+    String(formData.get("importance") ?? ""),
+  );
 
   if (!title) {
     return { error: "Title is required." };
@@ -1072,6 +1321,10 @@ export async function updateTask(
 
   if (taskTypeRaw && !taskType) {
     return { error: "Invalid task type." };
+  }
+
+  if (typeof importanceResult === "object" && "error" in importanceResult) {
+    return { error: importanceResult.error };
   }
 
   const reporter = await resolveReporterId(
@@ -1084,21 +1337,67 @@ export async function updateTask(
     return { error: reporter.error };
   }
 
-  const visibility = await getListVisibility(supabase, listId);
-  const clientVisible = visibility === "public";
-  const deepLink = taskDeepLink(projectId, listId, taskId);
+  const access = await getProjectAccess(supabase, projectId, user.id);
 
   const { data: before } = await supabase
     .from("tasks")
     .select(
-      `title, description, due_date, status, task_type, assigned_to, reported_by, created_by, ${THEME_COMMIT_SELECT}`,
+      `title, description, due_date, status, task_type, importance, assigned_to, reported_by, created_by, ${THEME_COMMIT_SELECT}`,
     )
     .eq("id", taskId)
     .maybeSingle();
 
+  if (!before) {
+    return { error: "Task not found." };
+  }
+
+  let nextDueDate: string | null;
+  if (!access.isAdmin) {
+    if (taskTypeOmitsDueDate(taskType)) {
+      nextDueDate = null;
+    } else if (
+      taskTypePrefersFirstAvailable(taskType) &&
+      !before.due_date
+    ) {
+      const dueResolved = await resolveTaskDueDate({
+        supabase,
+        projectId,
+        requestedDueDate: "",
+        isAdmin: false,
+        excludeTaskId: taskId,
+        autoAllocate: true,
+        taskType,
+      });
+      if ("error" in dueResolved) {
+        return { error: dueResolved.error };
+      }
+      nextDueDate = dueResolved.dueDate;
+    } else {
+      nextDueDate = before.due_date?.slice(0, 10) ?? null;
+    }
+  } else {
+    const dueResolved = await resolveTaskDueDate({
+      supabase,
+      projectId,
+      requestedDueDate: dueDateRaw,
+      isAdmin: true,
+      excludeTaskId: taskId,
+      autoAllocate: taskTypePrefersFirstAvailable(taskType),
+      taskType,
+    });
+    if ("error" in dueResolved) {
+      return { error: dueResolved.error };
+    }
+    nextDueDate = dueResolved.dueDate;
+  }
+
+  const visibility = await getListVisibility(supabase, listId);
+  const clientVisible = visibility === "public";
+  const deepLink = taskDeepLink(projectId, listId, taskId);
+
   const nextDescription = description || null;
-  const nextDueDate = dueDate || null;
   const nextAssignee = assignedTo || null;
+  const nextImportance = importanceResult;
   const themeFields = await themeFieldsForWrite(
     supabase,
     projectId,
@@ -1118,6 +1417,7 @@ export async function updateTask(
     (before.due_date ?? null) === nextDueDate &&
     before.status === status &&
     (before.task_type ?? null) === taskType &&
+    (before.importance ?? 0) === nextImportance &&
     (before.assigned_to ?? null) === nextAssignee &&
     before.reported_by === reporter.reportedBy &&
     (before.theme_commit_sha ?? null) === themeFields.theme_commit_sha &&
@@ -1135,6 +1435,7 @@ export async function updateTask(
       due_date: nextDueDate,
       status,
       task_type: taskType,
+      importance: nextImportance,
       reported_by: reporter.reportedBy,
       assigned_to: nextAssignee,
       ...themeFields,
@@ -1225,6 +1526,7 @@ export async function updateTask(
     metadata: {
       status,
       task_type: taskType,
+      importance: nextImportance,
       assigned_to: nextAssignee,
       reported_by: reporter.reportedBy,
       previous_status: before?.status ?? null,
@@ -1371,7 +1673,7 @@ export async function updateTaskDueDate(
 
   const { data: before } = await supabase
     .from("tasks")
-    .select("title, due_date")
+    .select("title, due_date, task_type")
     .eq("id", taskId)
     .maybeSingle();
 
@@ -1379,9 +1681,39 @@ export async function updateTaskDueDate(
     return { error: "Task not found." };
   }
 
+  const taskType = (before.task_type as TaskType | null) ?? null;
+  if (taskTypeOmitsDueDate(taskType)) {
+    if (!nextDueDate) {
+      return { success: true, dueDate: null };
+    }
+    return {
+      error: "Questions are not scheduled and cannot have a due date.",
+    };
+  }
+
+  const access = await getProjectAccess(supabase, projectId, user.id);
+  if (!access.isAdmin) {
+    return { error: "Only an admin can change due dates." };
+  }
+
   const previous = before.due_date?.slice(0, 10) ?? null;
   if (previous === nextDueDate) {
     return { success: true, dueDate: nextDueDate };
+  }
+
+  if (nextDueDate) {
+    const dueResolved = await resolveTaskDueDate({
+      supabase,
+      projectId,
+      requestedDueDate: nextDueDate,
+      isAdmin: true,
+      excludeTaskId: taskId,
+      autoAllocate: false,
+      taskType,
+    });
+    if ("error" in dueResolved) {
+      return { error: dueResolved.error };
+    }
   }
 
   const { error } = await supabase
@@ -1417,6 +1749,166 @@ export async function updateTaskDueDate(
   revalidatePath("/tasks");
   revalidatePath("/home");
   return { success: true, dueDate: nextDueDate };
+}
+
+/**
+ * Reorder todo tasks by drag order, then reschedule each onto the next free
+ * allocated work day (one open todo per day). Non-todo open tasks keep their
+ * dates and still occupy capacity.
+ */
+export async function reorderAndRescheduleTodos(
+  projectId: string,
+  listId: string,
+  orderedTaskIds: string[],
+): Promise<
+  | {
+      success: true;
+      updates: { id: string; importance: number; due_date: string | null }[];
+    }
+  | { error: string }
+> {
+  const { supabase, user } = await requireUser();
+
+  if (orderedTaskIds.length === 0) {
+    return { error: "No tasks to reorder." };
+  }
+  if (new Set(orderedTaskIds).size !== orderedTaskIds.length) {
+    return { error: "Duplicate tasks in reorder." };
+  }
+
+  const access = await getProjectAccess(supabase, projectId, user.id);
+  if (!access.isAdmin) {
+    return { error: "Only an admin can reorder and reschedule to-dos." };
+  }
+
+  const { data: rows, error: loadError } = await supabase
+    .from("tasks")
+    .select("id, status, due_date, archived_at, task_type")
+    .eq("project_id", projectId)
+    .eq("list_id", listId)
+    .is("archived_at", null);
+
+  if (loadError) {
+    return { error: loadError.message };
+  }
+
+  const byId = new Map((rows ?? []).map((row) => [row.id as string, row]));
+  for (const id of orderedTaskIds) {
+    const row = byId.get(id);
+    if (!row) {
+      return { error: "A task in the order was not found on this list." };
+    }
+    if (row.status !== "todo") {
+      return { error: "Only To do tasks can be reordered this way." };
+    }
+  }
+
+  const orderedSet = new Set(orderedTaskIds);
+  const missingTodos = (rows ?? []).filter(
+    (row) => row.status === "todo" && !orderedSet.has(row.id as string),
+  );
+  if (missingTodos.length > 0) {
+    return {
+      error:
+        "Reorder must include every To do task on this list. Clear filters and try again.",
+    };
+  }
+
+  const schedule = await loadProjectSchedule(supabase, projectId);
+  const shouldReschedule = hasActiveCadence(schedule.cadence);
+  const occupancy: Record<string, number> = {};
+  if (shouldReschedule) {
+    for (const row of rows ?? []) {
+      if (row.status === "todo" || row.status === "done") continue;
+      const day =
+        typeof row.due_date === "string" ? row.due_date.slice(0, 10) : "";
+      if (!day) continue;
+      occupancy[day] = (occupancy[day] ?? 0) + 1;
+    }
+  }
+
+  // Bugs first (earliest free days), then other scheduled todos in drag order.
+  // Questions stay unscheduled.
+  const scheduleIds = shouldReschedule
+    ? [
+        ...orderedTaskIds.filter((id) => {
+          const type = (byId.get(id)?.task_type as TaskType | null) ?? null;
+          return taskTypePrefersFirstAvailable(type);
+        }),
+        ...orderedTaskIds.filter((id) => {
+          const type = (byId.get(id)?.task_type as TaskType | null) ?? null;
+          return (
+            !taskTypeOmitsDueDate(type) &&
+            !taskTypePrefersFirstAvailable(type)
+          );
+        }),
+      ]
+    : [];
+
+  const datesById = new Map<string, string | null>();
+  if (shouldReschedule) {
+    const dates = allocateSequentialDueDates(
+      schedule,
+      scheduleIds.length,
+      occupancy,
+    );
+    scheduleIds.forEach((id, index) => {
+      datesById.set(id, dates[index] ?? null);
+    });
+  }
+
+  const updates: { id: string; importance: number; due_date: string | null }[] =
+    [];
+  const total = orderedTaskIds.length;
+
+  for (let index = 0; index < orderedTaskIds.length; index++) {
+    const id = orderedTaskIds[index];
+    const importance = total - index;
+    const existing = byId.get(id);
+    const type = (existing?.task_type as TaskType | null) ?? null;
+    const dueDate = taskTypeOmitsDueDate(type)
+      ? null
+      : shouldReschedule
+        ? (datesById.get(id) ?? null)
+        : (existing?.due_date?.slice(0, 10) ?? null);
+    updates.push({ id, importance, due_date: dueDate });
+
+    const { error } = await supabase
+      .from("tasks")
+      .update(
+        shouldReschedule || taskTypeOmitsDueDate(type)
+          ? { importance, due_date: dueDate }
+          : { importance },
+      )
+      .eq("id", id)
+      .eq("project_id", projectId)
+      .eq("list_id", listId);
+
+    if (error) {
+      return { error: error.message };
+    }
+  }
+
+  const visibility = await getListVisibility(supabase, listId);
+  await logActivity({
+    projectId,
+    actorId: user.id,
+    entityType: "list",
+    entityId: listId,
+    action: "updated",
+    summary: `Reordered and rescheduled ${updates.length} to-do task${updates.length === 1 ? "" : "s"}`,
+    metadata: {
+      task_ids: orderedTaskIds,
+      list_visibility: visibility,
+    },
+    clientVisible: visibility === "public",
+  });
+
+  revalidatePath(`/projects/${projectId}/lists/${listId}`);
+  revalidatePath(`/projects/${projectId}`);
+  revalidatePath("/tasks");
+  revalidatePath("/home");
+  return { success: true, updates };
 }
 
 export async function deleteTask(

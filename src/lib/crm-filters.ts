@@ -1,22 +1,10 @@
 import {
   COMPANY_KINDS,
-  COMPANY_STATUSES,
   type CompanyKind,
-  type CompanyStatus,
 } from "@/types/database";
 
-export type StatusTab = CompanyStatus | "all" | "follow_ups";
 export type KindTab = CompanyKind | "all";
 export type VerticalTab = "all" | string;
-
-export const STATUS_TABS: { id: StatusTab; label: string }[] = [
-  { id: "all", label: "All" },
-  ...COMPANY_STATUSES.map((status) => ({
-    id: status.value,
-    label: status.label,
-  })),
-  { id: "follow_ups", label: "Follow-ups" },
-];
 
 export const KIND_TABS: { id: KindTab; label: string }[] = [
   { id: "all", label: "All" },
@@ -26,15 +14,26 @@ export const KIND_TABS: { id: KindTab; label: string }[] = [
   })),
 ];
 
+/** @deprecated Prefer companiesHref / prospects board. Kept for existing detail links. */
+export type StatusTab = "all" | "follow_ups" | string;
+
+export function companiesHref(
+  kind: KindTab,
+  vertical: VerticalTab = "all",
+  followUps = false,
+) {
+  const params = new URLSearchParams();
+  if (kind !== "all") params.set("kind", kind);
+  if (vertical !== "all") params.set("vertical", vertical);
+  if (followUps) params.set("follow_ups", "1");
+  const query = params.toString();
+  return query ? `/crm/companies?${query}` : "/crm/companies";
+}
+
 export function crmHref(
-  status: StatusTab,
+  _status: StatusTab,
   kind: KindTab,
   vertical: VerticalTab = "all",
 ) {
-  const params = new URLSearchParams();
-  if (status !== "all") params.set("status", status);
-  if (kind !== "all") params.set("kind", kind);
-  if (vertical !== "all") params.set("vertical", vertical);
-  const query = params.toString();
-  return query ? `/crm?${query}` : "/crm";
+  return companiesHref(kind, vertical, _status === "follow_ups");
 }

@@ -23,7 +23,7 @@ export default async function ProjectsPage() {
         .in("role", ["admin", "member"]),
       supabase
         .from("projects")
-        .select("id, name, logo_path, sort_order, created_at, project_engagement(project_type, monthly_hours)")
+        .select("id, name, logo_path, sort_order, created_at, project_engagement(project_type, schedule_anchor_date)")
         .order("sort_order", { ascending: true })
         .order("created_at", { ascending: false }),
     ]);
@@ -100,14 +100,17 @@ export default async function ProjectsPage() {
               projects={(projects ?? []).map((project) => {
                 const engagement = canCreateProjects
                   ? projectEngagementFromRow(project.project_engagement)
-                  : { projectType: null, monthlyHours: null };
+                  : {
+                      projectType: null,
+                      scheduleCadence: "none" as const,
+                      scheduleAnchorDate: new Date().toISOString().slice(0, 10),
+                    };
                 return {
                   id: project.id,
                   name: project.name,
                   logoUrl: projectLogoPublicUrl(project.logo_path),
                   todoCount: todoByProject[project.id] ?? 0,
                   projectType: engagement.projectType,
-                  monthlyHours: engagement.monthlyHours,
                 };
               })}
             />

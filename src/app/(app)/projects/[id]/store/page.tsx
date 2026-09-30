@@ -109,17 +109,11 @@ export default async function ProjectStorePage({
     : null;
 
   return (
-    <main className="app-container py-6 sm:py-10">
-      <Link
-        href={`/projects/${id}`}
-        className="text-sm text-[var(--muted)] hover:text-[var(--foreground)]"
-      >
-        ← {project.name}
-      </Link>
-      <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
+    <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
         <div className="min-w-0">
-          <h1 className="font-display text-3xl tracking-tight">Store</h1>
-          <p className="mt-2 text-sm text-[var(--muted)]">
+          <h1 className="font-display text-2xl tracking-tight sm:text-3xl">Store</h1>
+          <p className="mt-1 text-sm text-[var(--muted)]">
             Live snapshot of this store’s Online Store orders and sales, plus
             sessions, conversion, and the published theme. Daily history is the
             last complete shop day.{" "}
@@ -131,19 +125,9 @@ export default async function ProjectStorePage({
             </Link>
           </p>
         </div>
-        {isAdmin ? (
+        {isAdmin && connection?.has_access_token ? (
           <AdminOnly variant="inline">
-            <div className="flex flex-wrap items-center gap-2">
-              {connection?.has_access_token ? (
-                <StoreSyncButton projectId={id} enabled />
-              ) : null}
-              <Link
-                href={`/projects/${id}/settings`}
-                className="min-h-10 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm hover:bg-[var(--surface-2)]"
-              >
-                Settings
-              </Link>
-            </div>
+            <StoreSyncButton projectId={id} enabled />
           </AdminOnly>
         ) : null}
       </div>
@@ -200,6 +184,6 @@ export default async function ProjectStorePage({
           canRefresh={isAdmin && Boolean(connection?.has_access_token)}
         />
       </div>
-    </main>
+    </div>
   );
 }

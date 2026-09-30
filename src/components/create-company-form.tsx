@@ -5,18 +5,29 @@ import { useState, useTransition } from "react";
 import { CompanyVerticalField } from "@/components/company-vertical-field";
 import { createCompany } from "@/lib/actions/crm";
 import { verticalNamesEqual, type VerticalOption } from "@/lib/verticals";
-import { COMPANY_KINDS, COMPANY_STATUSES } from "@/types/database";
+import {
+  COMPANY_KINDS,
+  OPEN_LEAD_STATUSES,
+  type CompanyKind,
+} from "@/types/database";
 
 export function CreateCompanyForm({
   verticals = [],
+  defaultKind = "prospect",
+  lockKind = false,
 }: {
   verticals?: VerticalOption[];
+  defaultKind?: CompanyKind;
+  /** Hide the type select and always create as defaultKind. */
+  lockKind?: boolean;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [kind, setKind] = useState<CompanyKind>(defaultKind);
   const [selectedVerticals, setSelectedVerticals] = useState<VerticalOption[]>(
     [],
   );
+  const showStatus = kind === "prospect";
 
   return (
     <form
@@ -24,6 +35,12 @@ export function CreateCompanyForm({
       onSubmit={(event) => {
         event.preventDefault();
         const formData = new FormData(event.currentTarget);
+        if (lockKind) {
+          formData.set("kind", defaultKind);
+        }
+        if (kind !== "prospect") {
+          formData.delete("status");
+        }
         setError(null);
         startTransition(async () => {
           const result = await createCompany(formData);
@@ -47,34 +64,41 @@ export function CreateCompanyForm({
           className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
         />
       </label>
-      <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
-        Type
-        <select
-          name="kind"
-          defaultValue="prospect"
-          className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
-        >
-          {COMPANY_KINDS.map((kind) => (
-            <option key={kind.value} value={kind.value}>
-              {kind.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
-        Status
-        <select
-          name="status"
-          defaultValue="lead"
-          className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
-        >
-          {COMPANY_STATUSES.map((status) => (
-            <option key={status.value} value={status.value}>
-              {status.label}
-            </option>
-          ))}
-        </select>
-      </label>
+      {lockKind ? (
+        <input type="hidden" name="kind" value={defaultKind} />
+      ) : (
+        <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
+          Type
+          <select
+            name="kind"
+            value={kind}
+            onChange={(event) => setKind(event.target.value as CompanyKind)}
+            className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
+          >
+            {COMPANY_KINDS.map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {showStatus ? (
+        <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
+          Lead status
+          <select
+            name="status"
+            defaultValue="lead"
+            className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
+          >
+            {OPEN_LEAD_STATUSES.map((status) => (
+              <option key={status.value} value={status.value}>
+                {status.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
       <CompanyVerticalField
         name="vertical"
         selected={selectedVerticals}
@@ -110,7 +134,7 @@ export function CreateCompanyForm({
         disabled={pending}
         className="rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-60"
       >
-        {pending ? "Creating…" : "Add company"}
+        {pending ? "Creating…" : showStatus ? "Add prospect" : "Add company"}
       </button>
     </form>
   );

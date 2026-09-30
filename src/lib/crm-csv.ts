@@ -132,7 +132,7 @@ export type ParsedImportCompany = {
   id: string | null;
   name: string;
   website: string | null;
-  status: CompanyStatus;
+  status: CompanyStatus | null;
   kind: CompanyKind;
   can_reengage: CompanyReengage | null;
   notes: string | null;
@@ -165,7 +165,7 @@ export type CompanyExportCompany = {
   id: string;
   name: string;
   website: string | null;
-  status: CompanyStatus;
+  status: CompanyStatus | null;
   kind: CompanyKind;
   can_reengage: CompanyReengage | null;
   verticals: string[];
@@ -208,7 +208,7 @@ export function buildCompanyExportCsv(companies: CompanyExportCompany[]) {
       csvField(company.id),
       csvField(company.name),
       csvField(company.website),
-      csvField(company.status),
+      csvField(company.status ?? ""),
       csvField(company.kind),
       csvField(companyReengageValue(company.can_reengage)),
       csvField(company.verticals.join(", ")),
@@ -601,15 +601,22 @@ export function parseCompanyImportCsv(text: string): ParsedImport | { error: str
       typeof companyIdResult === "string" ? companyIdResult : null;
     const contactId =
       typeof contactIdResult === "string" ? contactIdResult : null;
-    const statusResult = parseStatus(cell(record, "status"));
-    if (typeof statusResult === "object") {
-      errors.push({ row, message: statusResult.error });
-      return;
-    }
     const kindResult = parseKind(cell(record, "kind"));
     if (typeof kindResult === "object") {
       errors.push({ row, message: kindResult.error });
       return;
+    }
+    let statusResult: CompanyStatus | null = null;
+    if (kindResult === "prospect") {
+      const parsedStatus = parseStatus(cell(record, "status"));
+      if (typeof parsedStatus === "object") {
+        errors.push({ row, message: parsedStatus.error });
+        return;
+      }
+      statusResult =
+        parsedStatus === "won" || parsedStatus === "lost"
+          ? "lead"
+          : parsedStatus;
     }
     const canReengage = parseCanReengage(cell(record, "can_reengage"));
     if (canReengage && typeof canReengage === "object") {

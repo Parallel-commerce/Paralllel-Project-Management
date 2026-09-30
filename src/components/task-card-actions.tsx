@@ -46,6 +46,7 @@ export function TaskCardQuickActions({
   onStatusChange,
   onDueDateChange,
   onBeforeStatusChange,
+  allowDueDate = true,
 }: {
   taskId: string;
   projectId: string;
@@ -59,6 +60,8 @@ export function TaskCardQuickActions({
   onDueDateChange: (dueDate: string | null) => void;
   /** Return false to handle the change elsewhere and skip the save. */
   onBeforeStatusChange?: (status: TaskStatus) => boolean;
+  /** Questions and similar types cannot be scheduled. */
+  allowDueDate?: boolean;
 }) {
   const router = useRouter();
   const statusId = useId();
@@ -74,6 +77,10 @@ export function TaskCardQuickActions({
   const overdue = !!dueDate && dueDate.slice(0, 10) < todayIso && status !== "done";
   const dueValue = dueDate?.slice(0, 10) ?? "";
   const selected = dueValue ? parseISO(dueValue) : undefined;
+
+  useEffect(() => {
+    if (!allowDueDate && menu === "date") setMenu(null);
+  }, [allowDueDate, menu]);
 
   useEffect(() => {
     if (!menu) return;
@@ -325,21 +332,27 @@ export function TaskCardQuickActions({
       >
         <StatusTag status={status} />
       </button>
-      <button
-        ref={dateBtnRef}
-        id={dateId}
-        type="button"
-        aria-haspopup="dialog"
-        aria-expanded={menu === "date"}
-        aria-label={dueDate ? `Change due date, ${formatDue(dueDate)}` : "Set due date"}
-        title="Change due date"
-        onClick={() => toggle("date")}
-        className={`rounded px-1 py-0.5 text-xs tabular-nums outline-none ring-[var(--accent)] hover:bg-black/5 focus-visible:ring-2 ${
-          pending ? "opacity-60" : ""
-        } ${overdue ? "font-medium text-[var(--danger)]" : "text-[var(--muted)]"}`}
-      >
-        {dueDate ? formatDue(dueDate) : "No date"}
-      </button>
+      {allowDueDate ? (
+        <button
+          ref={dateBtnRef}
+          id={dateId}
+          type="button"
+          aria-haspopup="dialog"
+          aria-expanded={menu === "date"}
+          aria-label={dueDate ? `Change due date, ${formatDue(dueDate)}` : "Set due date"}
+          title="Change due date"
+          onClick={() => toggle("date")}
+          className={`rounded px-1 py-0.5 text-xs tabular-nums outline-none ring-[var(--accent)] hover:bg-black/5 focus-visible:ring-2 ${
+            pending ? "opacity-60" : ""
+          } ${overdue ? "font-medium text-[var(--danger)]" : "text-[var(--muted)]"}`}
+        >
+          {dueDate ? formatDue(dueDate) : "No date"}
+        </button>
+      ) : (
+        <span className="rounded px-1 py-0.5 text-xs text-[var(--muted)]">
+          No date
+        </span>
+      )}
       {menuPanel}
     </>
   );

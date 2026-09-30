@@ -35,12 +35,6 @@ export default async function ListArchivePage({
     notFound();
   }
 
-  const { data: project } = await supabase
-    .from("projects")
-    .select("id, name")
-    .eq("id", id)
-    .maybeSingle();
-
   // Keep archive up to date without blocking the first paint
   void supabase.rpc("archive_eligible_tasks", {
     p_list_id: listId,
@@ -89,25 +83,22 @@ export default async function ListArchivePage({
   const tasks = taskRows ?? [];
 
   return (
-    <main className="app-container py-6 sm:py-10">
-        <Link
-          href={`/projects/${id}/lists/${listId}`}
-          className="text-sm text-[var(--muted)] hover:text-[var(--foreground)]"
-        >
-          ← {list.name}
-        </Link>
-        <div className="mt-3">
-          <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
-            {project?.name ?? "Project"}
-          </p>
-          <h1 className="mt-1 font-display text-2xl tracking-tight sm:text-3xl">
-            Archive
-          </h1>
-          <p className="mt-2 max-w-2xl text-sm text-[var(--muted)]">
-            Tasks move here automatically after they&apos;ve been Done for 30
-            days. They stay searchable here, but leave the board.
-          </p>
-        </div>
+    <div>
+      <Link
+        href={`/projects/${id}/lists/${listId}`}
+        className="text-sm text-[var(--muted)] hover:text-[var(--foreground)]"
+      >
+        ← {list.name}
+      </Link>
+      <div className="mt-2">
+        <h1 className="font-display text-2xl tracking-tight sm:text-3xl">
+          Archive
+        </h1>
+        <p className="mt-1 max-w-2xl text-sm text-[var(--muted)]">
+          Tasks move here automatically after they&apos;ve been Done for 30
+          days. They stay searchable here, but leave the board.
+        </p>
+      </div>
 
         <ul className="mt-8 divide-y divide-[var(--border)] border-y border-[var(--border)]">
           {tasks.length === 0 ? (
@@ -158,6 +149,6 @@ export default async function ListArchivePage({
             ))
           )}
         </ul>
-      </main>
+    </div>
   );
 }

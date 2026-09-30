@@ -16,7 +16,7 @@ export function ProjectSettings({
   logoUrl,
   scheduledWeekdays,
   projectType,
-  monthlyHours,
+  scheduleAnchorDate,
 }: {
   projectId: string;
   name: string;
@@ -24,7 +24,7 @@ export function ProjectSettings({
   logoUrl: string | null;
   scheduledWeekdays: number[];
   projectType: ProjectType | null;
-  monthlyHours: number | null;
+  scheduleAnchorDate: string;
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -36,8 +36,7 @@ export function ProjectSettings({
     <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
       <h2 className="font-medium">Project</h2>
       <p className="mt-1 text-sm text-[var(--muted)]">
-        Name, engagement, usual work days, and logo. Clients do not see
-        engagement hours.
+        Name, plan, usual work days, and logo. Clients do not see plan details.
       </p>
         <form
           className="mt-4 flex flex-col gap-3"
@@ -81,7 +80,7 @@ export function ProjectSettings({
           </label>
           <ProjectEngagementFields
             projectType={projectType}
-            monthlyHours={monthlyHours}
+            scheduleAnchorDate={scheduleAnchorDate}
           />
           <WeekdayPicker defaultValue={scheduledWeekdays} />
           <div className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">

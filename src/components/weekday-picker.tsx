@@ -11,10 +11,10 @@ export function WeekdayPicker({
 
   return (
     <fieldset className="flex flex-col gap-1.5">
-      <legend className="text-sm text-[var(--muted)]">Scheduled days</legend>
+      <legend className="text-sm text-[var(--muted)]">Allocated work days</legend>
       <p className="text-xs text-[var(--muted)]">
-        Days this project is usually worked on. Those weekdays are highlighted
-        when picking a due date.
+        Preferred weekdays for plans with a weekly or fortnightly cadence. Growth
+        uses every 3 days from the anchor instead.
       </p>
       <div className="mt-0.5 flex flex-wrap gap-1.5">
         {WEEKDAYS.map((day) => (

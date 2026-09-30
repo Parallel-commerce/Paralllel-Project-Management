@@ -34,7 +34,6 @@ export type ProjectCardData = {
   logoUrl: string | null;
   todoCount: number;
   projectType?: ProjectType | null;
-  monthlyHours?: number | null;
 };
 
 function ProjectMark({
@@ -66,7 +65,6 @@ function ProjectMark({
 function ProjectCardContent({ project }: { project: ProjectCardData }) {
   const engagementLabel = projectEngagementSummary(
     project.projectType,
-    project.monthlyHours,
   );
 
   return (

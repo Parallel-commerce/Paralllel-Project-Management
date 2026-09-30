@@ -37,6 +37,11 @@ type DueDatePickerProps = {
   projectId?: string | null;
   /** Don't count the task currently being edited. */
   excludeTaskId?: string | null;
+  /**
+   * When false, days that already have an open task cannot be selected.
+   * Admins pass true so they can stack multiple tasks on one day.
+   */
+  allowOverbook?: boolean;
 };
 
 function occupancyCopy(count: number) {
@@ -101,6 +106,7 @@ export function DueDatePicker({
   highlightedWeekdays = [],
   projectId = null,
   excludeTaskId = null,
+  allowOverbook = false,
 }: DueDatePickerProps) {
   const id = useId();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -161,12 +167,19 @@ export function DueDatePicker({
     const next: {
       past: { before: Date };
       scheduled?: { dayOfWeek: number[] };
+      full?: (date: Date) => boolean;
     } = { past: { before: today } };
     if (highlightedWeekdays.length > 0) {
       next.scheduled = { dayOfWeek: highlightedWeekdays };
     }
+    if (!allowOverbook && projectId) {
+      next.full = (date: Date) => {
+        const key = format(date, "yyyy-MM-dd");
+        return (counts[key] ?? 0) >= 1;
+      };
+    }
     return next;
-  }, [highlightedWeekdays, today]);
+  }, [highlightedWeekdays, today, allowOverbook, projectId, counts]);
 
   return (
     <div
@@ -210,14 +223,24 @@ export function DueDatePicker({
                   setValue("");
                   return;
                 }
-                setValue(format(date, "yyyy-MM-dd"));
+                const iso = format(date, "yyyy-MM-dd");
+                if (!allowOverbook && (counts[iso] ?? 0) >= 1) {
+                  return;
+                }
+                setValue(iso);
                 setOpen(false);
               }}
               defaultMonth={selected ?? new Date()}
               modifiers={modifiers}
+              disabled={
+                !allowOverbook && projectId
+                  ? (date) => (counts[format(date, "yyyy-MM-dd")] ?? 0) >= 1
+                  : undefined
+              }
               modifiersClassNames={{
                 past: "rdp-past",
                 scheduled: "rdp-scheduled",
+                full: "rdp-full",
               }}
               components={
                 projectId ? { DayButton: OccupancyDayButton } : undefined
@@ -239,11 +262,17 @@ export function DueDatePicker({
           </OccupancyCountsContext.Provider>
           {scheduledLabel ? (
             <p className="mt-2 text-xs text-[var(--muted)]">
-              {scheduledLabel} highlighted. Dots = open tasks on this project.
+              {scheduledLabel} highlighted. Dots = open tasks on this project
+              {!allowOverbook
+                ? ". Full days are locked unless you’re an admin."
+                : "."}
             </p>
           ) : projectId ? (
             <p className="mt-2 text-xs text-[var(--muted)]">
-              Dots = open tasks already due on this project.
+              Dots = open tasks already due on this project
+              {!allowOverbook
+                ? ". Full days are locked unless you’re an admin."
+                : "."}
             </p>
           ) : null}
         </div>

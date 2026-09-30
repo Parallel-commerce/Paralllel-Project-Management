@@ -7,14 +7,10 @@ export type TaskStatus =
   | "done";
 export type TaskType =
   | "bug"
+  | "question"
   | "new_feature"
   | "improvement"
-  | "data"
-  | "documentation"
-  | "design"
-  | "research"
-  | "maintenance"
-  | "other";
+  | "shopify_admin";
 export type CompanyStatus =
   | "lead"
   | "contacted"
@@ -33,7 +29,10 @@ export type ProjectType =
   | "maintain"
   | "optimise"
   | "accelerate"
-  | "enterprise_b2b";
+  | "growth"
+  | "enterprise_b2b"; // legacy — no longer selectable
+
+export type ScheduleCadence = "none" | "weekly" | "fortnightly" | "every_3_days";
 
 export type Profile = {
   id: string;
@@ -71,7 +70,7 @@ export type Company = {
   summary: string | null;
   linkedin_url: string | null;
   notes: string | null;
-  status: CompanyStatus;
+  status: CompanyStatus | null;
   kind: CompanyKind;
   can_reengage: CompanyReengage | null;
   follow_up_at: string | null;
@@ -112,6 +111,8 @@ export type ProjectEngagement = {
   project_id: string;
   project_type: ProjectType | null;
   monthly_hours: number | null;
+  schedule_cadence: ScheduleCadence;
+  schedule_anchor_date: string;
   created_at: string;
   updated_at: string;
 };
@@ -151,6 +152,7 @@ export type Task = {
   due_date: string | null;
   status: TaskStatus;
   task_type: TaskType | null;
+  importance: number;
   number: number;
   key: string;
   created_by: string;
@@ -650,12 +652,16 @@ export type Database = {
           project_id: string;
           project_type?: ProjectType | null;
           monthly_hours?: number | null;
+          schedule_cadence?: ScheduleCadence;
+          schedule_anchor_date?: string;
           created_at?: string;
           updated_at?: string;
         };
         Update: {
           project_type?: ProjectType | null;
           monthly_hours?: number | null;
+          schedule_cadence?: ScheduleCadence;
+          schedule_anchor_date?: string;
           updated_at?: string;
         };
         Relationships: [
@@ -677,7 +683,7 @@ export type Database = {
           summary?: string | null;
           linkedin_url?: string | null;
           notes?: string | null;
-          status?: CompanyStatus;
+          status?: CompanyStatus | null;
           kind?: CompanyKind;
           can_reengage?: CompanyReengage | null;
           follow_up_at?: string | null;
@@ -693,7 +699,7 @@ export type Database = {
           summary?: string | null;
           linkedin_url?: string | null;
           notes?: string | null;
-          status?: CompanyStatus;
+          status?: CompanyStatus | null;
           kind?: CompanyKind;
           can_reengage?: CompanyReengage | null;
           follow_up_at?: string | null;
@@ -845,6 +851,7 @@ export type Database = {
           due_date?: string | null;
           status?: TaskStatus;
           task_type?: TaskType | null;
+          importance?: number;
           number: number;
           key: string;
           created_by: string;
@@ -868,6 +875,7 @@ export type Database = {
           due_date?: string | null;
           status?: TaskStatus;
           task_type?: TaskType | null;
+          importance?: number;
           reported_by?: string;
           assigned_to?: string | null;
           number?: number;
@@ -1511,6 +1519,26 @@ export type Database = {
         Args: { p_project_id: string; p_prefix?: string | null };
         Returns: { task_number: number; task_key: string }[];
       };
+      can_view_project: {
+        Args: { p_project_id: string };
+        Returns: boolean;
+      };
+      project_schedule_config: {
+        Args: { p_project_id: string };
+        Returns: {
+          scheduled_weekdays: number[];
+          schedule_cadence: ScheduleCadence;
+          schedule_anchor_date: string;
+        }[];
+      };
+      project_monthly_change_limit: {
+        Args: { p_project_id: string };
+        Returns: number | null;
+      };
+      project_plan_type: {
+        Args: { p_project_id: string };
+        Returns: ProjectType | null;
+      };
       archive_eligible_tasks: {
         Args: { p_list_id?: string | null; p_project_id?: string | null };
         Returns: number;
@@ -1624,6 +1652,7 @@ export type Database = {
       company_kind: CompanyKind;
       company_reengage: CompanyReengage;
       project_type: ProjectType;
+      schedule_cadence: ScheduleCadence;
       shopify_connection_status: ShopifyConnectionStatus;
     };
     CompositeTypes: Record<string, never>;
@@ -1638,15 +1667,11 @@ export const TASK_STATUSES: { value: TaskStatus; label: string }[] = [
 ];
 
 export const TASK_TYPES: { value: TaskType; label: string }[] = [
-  { value: "bug", label: "Bug" },
-  { value: "new_feature", label: "New feature" },
+  { value: "bug", label: "Bugs" },
+  { value: "question", label: "Questions" },
+  { value: "new_feature", label: "New Feature" },
   { value: "improvement", label: "Improvement" },
-  { value: "data", label: "Data" },
-  { value: "documentation", label: "Documentation" },
-  { value: "design", label: "Design" },
-  { value: "research", label: "Research" },
-  { value: "maintenance", label: "Maintenance" },
-  { value: "other", label: "Other" },
+  { value: "shopify_admin", label: "Shopify Admin" },
 ];
 
 export const PROJECT_ROLES: { value: ProjectRole; label: string }[] = [
@@ -1661,6 +1686,13 @@ export const COMPANY_STATUSES: { value: CompanyStatus; label: string }[] = [
   { value: "proposal", label: "Proposal" },
   { value: "won", label: "Won" },
   { value: "lost", label: "Lost" },
+];
+
+/** Open pipeline stages shown on the Prospects board. */
+export const OPEN_LEAD_STATUSES: { value: CompanyStatus; label: string }[] = [
+  { value: "lead", label: "Lead" },
+  { value: "contacted", label: "Contacted" },
+  { value: "proposal", label: "Proposal" },
 ];
 
 export const COMPANY_KINDS: { value: CompanyKind; label: string }[] = [
@@ -1682,5 +1714,32 @@ export const PROJECT_TYPES: { value: ProjectType; label: string }[] = [
   { value: "maintain", label: "Maintain" },
   { value: "optimise", label: "Optimise" },
   { value: "accelerate", label: "Accelerate" },
-  { value: "enterprise_b2b", label: "Enterprise & B2B" },
+  { value: "growth", label: "Growth" },
+];
+
+export const SCHEDULE_CADENCES: {
+  value: ScheduleCadence;
+  label: string;
+  hint: string;
+}[] = [
+  {
+    value: "none",
+    label: "No cadence",
+    hint: "No retainer day schedule",
+  },
+  {
+    value: "weekly",
+    label: "Every week",
+    hint: "Scheduled days repeat each week",
+  },
+  {
+    value: "fortnightly",
+    label: "Every fortnight",
+    hint: "Scheduled days alternate weeks from the anchor date",
+  },
+  {
+    value: "every_3_days",
+    label: "Every 3 days",
+    hint: "Work days every 3 days from the anchor date",
+  },
 ];
