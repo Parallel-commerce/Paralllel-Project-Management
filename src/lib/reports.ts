@@ -205,7 +205,9 @@ export function buildDigestFromActivity(
       statusChanges += 1;
       if (meta.to === "done") {
         tasksCompleted += 1;
-        const titleMatch = event.summary.match(/Moved “(.+?)” to/);
+        const titleMatch = event.summary.match(
+          /(?:Moved|Opened) “(.+?)” (?:to|as) done/,
+        );
         if (titleMatch?.[1]) {
           completedTasks.push(titleMatch[1]);
         } else {

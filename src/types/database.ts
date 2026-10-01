@@ -456,11 +456,33 @@ export type ProjectReport = {
   title: string;
   narrative: string | null;
   digest: ProjectReportDigest;
-  created_by: string;
+  created_by: string | null;
   created_at: string;
   updated_at: string;
   sent_at: string | null;
   sent_to: string[];
+};
+
+export type WeeklyStoreReportRunStatus =
+  | "running"
+  | "generated"
+  | "skipped"
+  | "failed";
+
+export type ScheduledStoreReportPeriod = "week" | "month";
+
+export type WeeklyStoreReportRun = {
+  id: string;
+  project_id: string;
+  period: ScheduledStoreReportPeriod;
+  week_start: string;
+  week_end: string;
+  report_id: string | null;
+  status: WeeklyStoreReportRunStatus;
+  error: string | null;
+  attempts: number;
+  created_at: string;
+  updated_at: string;
 };
 
 export type ProjectReportRecipient = {
@@ -1241,7 +1263,7 @@ export type Database = {
           title: string;
           narrative?: string | null;
           digest?: ProjectReportDigest;
-          created_by: string;
+          created_by?: string | null;
           created_at?: string;
           updated_at?: string;
           sent_at?: string | null;
@@ -1257,6 +1279,47 @@ export type Database = {
           updated_at?: string;
         };
         Relationships: [];
+      };
+      weekly_store_report_runs: {
+        Row: WeeklyStoreReportRun;
+        Insert: {
+          id?: string;
+          project_id: string;
+          period?: ScheduledStoreReportPeriod;
+          week_start: string;
+          week_end: string;
+          report_id?: string | null;
+          status: WeeklyStoreReportRunStatus;
+          error?: string | null;
+          attempts?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          period?: ScheduledStoreReportPeriod;
+          week_end?: string;
+          report_id?: string | null;
+          status?: WeeklyStoreReportRunStatus;
+          error?: string | null;
+          attempts?: number;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "weekly_store_report_runs_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "weekly_store_report_runs_report_id_fkey";
+            columns: ["report_id"];
+            isOneToOne: false;
+            referencedRelation: "project_reports";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       project_report_recipients: {
         Row: ProjectReportRecipient;

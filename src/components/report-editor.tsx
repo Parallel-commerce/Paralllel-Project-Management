@@ -10,7 +10,7 @@ import {
   sendProjectReport,
   updateReportNarrative,
 } from "@/lib/actions/reports";
-import type { ReportKind } from "@/types/database";
+import type { ReportKind, ReportPeriod } from "@/types/database";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -34,6 +34,7 @@ export function ReportEditor({
   standingEmails,
   sentTo,
   kind = "progress",
+  period = "week",
 }: {
   projectId: string;
   reportId: string;
@@ -43,6 +44,7 @@ export function ReportEditor({
   standingEmails: string[];
   sentTo: string[];
   kind?: ReportKind;
+  period?: ReportPeriod;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -217,7 +219,9 @@ export function ReportEditor({
         <p className="text-sm text-[var(--muted)]">
           {kind === "store"
             ? "Sends the store report narrative. You can include people who are not in Parallel. Requires Resend."
-            : "Sends the narrative plus a short stats snapshot. You can include people who are not in Parallel. Requires Resend."}
+            : period === "month"
+              ? "Sends the letter: a short summary and the work completed this month. You can include people who are not in Parallel. Requires Resend."
+              : "Sends the narrative plus a short stats snapshot. You can include people who are not in Parallel. Requires Resend."}
         </p>
         {selectableClients.length === 0 && savedEmails.length === 0 ? (
           <p className="text-sm text-[var(--muted)]">

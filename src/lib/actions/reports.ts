@@ -4,9 +4,9 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { generateReportNarrative } from "@/lib/ai/claude-report";
-import { generateStoreReportNarrative } from "@/lib/ai/claude-store-report";
 import { createTask } from "@/lib/actions/projects";
 import { buildProjectReportEmail } from "@/lib/email-report";
+import { generateStoreReportDrafts } from "@/lib/generate-store-report";
 import { appUrl, logActivity, sendHtmlEmailBatch } from "@/lib/notify";
 import {
   collectReportActions,
@@ -19,21 +19,13 @@ import {
   type ReportRangeInput,
 } from "@/lib/reports";
 import { resolveStoreAccess } from "@/lib/shopify/connection";
-import { fetchShop, fetchWeeklyStoreDigest } from "@/lib/shopify/weekly";
 import { requireStoreAdmin } from "@/lib/store-auth";
-import {
-  asStoreReportDigest,
-  fillStoreReportComparison,
-  resolveStoreMetricWindow,
-  shouldSeedComparisonReport,
-  storeReportTitle,
-} from "@/lib/store-report";
+import { asStoreReportDigest } from "@/lib/store-report";
 import { loadStoreReportSpeed } from "@/lib/store-report-speed";
 import { createClient } from "@/lib/supabase/server";
 import type {
   ProjectShopifyConnection,
   ReportDigest,
-  StoreReportDigest,
 } from "@/types/database";
 
 async function requireUser() {
@@ -224,6 +216,7 @@ export async function generateProjectReport(
   const ai = await generateReportNarrative({
     projectName: project.name,
     periodLabel: window.label,
+    period: window.period,
     digest,
   });
 
@@ -259,130 +252,6 @@ export async function generateProjectReport(
   revalidatePath(`/projects/${projectId}`);
   revalidatePath(`/projects/${projectId}/reports`);
   redirect(`/projects/${projectId}/reports/${report.id}`);
-}
-
-type StoreReportDraft = {
-  id: string;
-  digest: StoreReportDigest;
-};
-
-function storeReportPeriodBounds(startYmd: string, endYmd: string) {
-  return {
-    period_start: `${startYmd}T00:00:00.000Z`,
-    period_end: `${endYmd}T23:59:59.999Z`,
-  };
-}
-
-async function findStoreReportForPeriod(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  projectId: string,
-  startYmd: string,
-  endYmd: string,
-) {
-  const bounds = storeReportPeriodBounds(startYmd, endYmd);
-  const { data } = await supabase
-    .from("project_reports")
-    .select("id, digest")
-    .eq("project_id", projectId)
-    .eq("kind", "store")
-    .eq("period_start", bounds.period_start)
-    .eq("period_end", bounds.period_end)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (!data) return null;
-  const digest = asStoreReportDigest(data.digest, "store");
-  return digest ? { id: data.id as string, digest } : null;
-}
-
-async function createStoreReportDraft(input: {
-  supabase: Awaited<ReturnType<typeof createClient>>;
-  userId: string;
-  projectId: string;
-  projectName: string;
-  shop: string;
-  accessToken: string;
-  range: ReportRangeInput;
-  comparison?: StoreReportDigest | null;
-}): Promise<StoreReportDraft | { error: string }> {
-  let digest: StoreReportDigest;
-  try {
-    digest = await fetchWeeklyStoreDigest(
-      input.shop,
-      input.accessToken,
-      input.range,
-    );
-  } catch (error) {
-    return {
-      error:
-        error instanceof Error
-          ? error.message
-          : "Could not pull store metrics from Shopify for the selected range.",
-    };
-  }
-
-  if (input.comparison) {
-    digest = fillStoreReportComparison(digest, input.comparison);
-  }
-
-  const speed = await loadStoreReportSpeed(
-    input.supabase,
-    input.projectId,
-    digest.week_end,
-    digest.previous_week_end,
-  );
-  digest.speed = speed;
-  if (!speed) {
-    digest.unavailable.push("lighthouse");
-  }
-
-  const ai = await generateStoreReportNarrative({
-    projectName: input.projectName,
-    digest,
-  });
-
-  if (!ai.usedAi) {
-    digest.warnings.push(
-      ai.error ??
-        "Claude did not write this draft, so the narrative is numbers only. Generate again after checking ANTHROPIC_API_KEY.",
-    );
-  }
-
-  const title = storeReportTitle(
-    digest.period,
-    digest.week_start,
-    digest.week_end,
-  );
-  const { data: report, error } = await input.supabase
-    .from("project_reports")
-    .insert({
-      project_id: input.projectId,
-      kind: "store",
-      period: digest.period ?? "week",
-      ...storeReportPeriodBounds(digest.week_start, digest.week_end),
-      title,
-      narrative: ai.narrative,
-      digest,
-      created_by: input.userId,
-    })
-    .select("id")
-    .single();
-
-  if (error || !report) {
-    return { error: error?.message ?? "Could not create store report." };
-  }
-
-  await logActivity({
-    projectId: input.projectId,
-    actorId: input.userId,
-    entityType: "report",
-    entityId: report.id,
-    action: "created",
-    summary: `Created ${title}`,
-  });
-
-  return { id: report.id, digest };
 }
 
 export async function generateStoreReport(
@@ -422,47 +291,7 @@ export async function generateStoreReport(
     return { error: access.error };
   }
 
-  let comparison: StoreReportDigest | null = null;
-  let seededPrevious = false;
-
-  if (shouldSeedComparisonReport(parsed.preset)) {
-    try {
-      const shopInfo = await fetchShop(access.shop, access.accessToken);
-      const window = resolveStoreMetricWindow(parsed, shopInfo.timezone);
-      if (!("error" in window)) {
-        const existing = await findStoreReportForPeriod(
-          supabase,
-          projectId,
-          window.previousWeekStart,
-          window.previousWeekEnd,
-        );
-        if (existing) {
-          comparison = existing.digest;
-        } else {
-          const seeded = await createStoreReportDraft({
-            supabase,
-            userId: user.id,
-            projectId,
-            projectName: project.name,
-            shop: access.shop,
-            accessToken: access.accessToken,
-            range:
-              parsed.preset === "last_week"
-                ? { preset: "week_before_last" }
-                : { preset: "month_before_last" },
-          });
-          if (!("error" in seeded)) {
-            comparison = seeded.digest;
-            seededPrevious = true;
-          }
-        }
-      }
-    } catch {
-      // Last week / last month can still generate from Shopify even if the earlier draft fails.
-    }
-  }
-
-  const created = await createStoreReportDraft({
+  const created = await generateStoreReportDrafts({
     supabase,
     userId: user.id,
     projectId,
@@ -470,7 +299,6 @@ export async function generateStoreReport(
     shop: access.shop,
     accessToken: access.accessToken,
     range: parsed,
-    comparison,
   });
 
   if ("error" in created) {
@@ -481,7 +309,7 @@ export async function generateStoreReport(
   revalidatePath(`/projects/${projectId}/reports`);
   revalidatePath(`/projects/${projectId}/store`);
   redirect(
-    `/projects/${projectId}/reports/${created.id}${seededPrevious ? "?seeded=1" : ""}`,
+    `/projects/${projectId}/reports/${created.id}${created.seededPrevious ? "?seeded=1" : ""}`,
   );
 }
 
@@ -521,42 +349,14 @@ export async function updateReportNarrative(
   return { success: true };
 }
 
-export async function sendProjectReport(
-  projectId: string,
-  reportId: string,
-  formData: FormData,
-): Promise<{ error: string } | { success: true; message: string }> {
-  const admin = await requireProjectAdmin(projectId);
-  if (!("ok" in admin)) {
-    return { error: admin.error };
-  }
-
-  const { supabase, user } = admin;
-  const recipients = collectRecipients(formData);
-  if ("error" in recipients) {
-    return { error: recipients.error };
-  }
-
-  const { data: standingRows, error: standingError } = await supabase
-    .from("project_report_recipients")
-    .select("email")
-    .eq("project_id", projectId);
-
-  if (standingError) {
-    return { error: standingError.message };
-  }
-
-  const emails = [
-    ...new Set([
-      ...recipients.emails,
-      ...(standingRows ?? []).map((row) => row.email),
-    ]),
-  ];
-
-  if (emails.length === 0) {
-    return { error: "Select or add at least one recipient." };
-  }
-
+async function deliverProjectReport(input: {
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  userId: string;
+  projectId: string;
+  reportId: string;
+  emails: string[];
+}): Promise<{ error: string } | { success: true; message: string }> {
+  const { supabase, projectId, reportId, emails } = input;
   const { data: project } = await supabase
     .from("projects")
     .select("name")
@@ -565,7 +365,7 @@ export async function sendProjectReport(
 
   const { data: report } = await supabase
     .from("project_reports")
-    .select("id, title, narrative, digest, period_start, period_end, kind")
+    .select("id, title, narrative, digest, period, period_start, period_end, kind")
     .eq("id", reportId)
     .eq("project_id", projectId)
     .maybeSingle();
@@ -588,7 +388,7 @@ export async function sendProjectReport(
     title: report.title,
     narrative: report.narrative,
     reportUrl,
-    progressDigest,
+    progressDigest: report.period === "month" ? null : progressDigest,
   });
 
   const delivery = await sendHtmlEmailBatch(
@@ -665,7 +465,7 @@ export async function sendProjectReport(
 
   await logActivity({
     projectId,
-    actorId: user.id,
+    actorId: input.userId,
     entityType: "report",
     entityId: reportId,
     action: "sent",
@@ -675,6 +475,7 @@ export async function sendProjectReport(
 
   revalidatePath(`/projects/${projectId}/reports/${reportId}`);
   revalidatePath(`/projects/${projectId}/reports`);
+  revalidatePath("/home");
 
   if (failures.length) {
     return {
@@ -687,6 +488,89 @@ export async function sendProjectReport(
     success: true,
     message: `Sent to ${sentTo.length} recipient(s).`,
   };
+}
+
+export async function sendProjectReport(
+  projectId: string,
+  reportId: string,
+  formData: FormData,
+): Promise<{ error: string } | { success: true; message: string }> {
+  const admin = await requireProjectAdmin(projectId);
+  if (!("ok" in admin)) {
+    return { error: admin.error };
+  }
+
+  const { supabase, user } = admin;
+  const recipients = collectRecipients(formData);
+  if ("error" in recipients) {
+    return { error: recipients.error };
+  }
+
+  const { data: standingRows, error: standingError } = await supabase
+    .from("project_report_recipients")
+    .select("email")
+    .eq("project_id", projectId);
+
+  if (standingError) {
+    return { error: standingError.message };
+  }
+
+  const emails = [
+    ...new Set([
+      ...recipients.emails,
+      ...(standingRows ?? []).map((row) => row.email),
+    ]),
+  ];
+
+  if (emails.length === 0) {
+    return { error: "Select or add at least one recipient." };
+  }
+
+  return deliverProjectReport({
+    supabase,
+    userId: user.id,
+    projectId,
+    reportId,
+    emails,
+  });
+}
+
+export async function sendStandingProjectReport(
+  projectId: string,
+  reportId: string,
+): Promise<{ error: string } | { success: true; message: string }> {
+  const admin = await requireProjectAdmin(projectId);
+  if (!("ok" in admin)) {
+    return { error: admin.error };
+  }
+
+  const { supabase, user } = admin;
+  const { data: standingRows, error: standingError } = await supabase
+    .from("project_report_recipients")
+    .select("email")
+    .eq("project_id", projectId);
+
+  if (standingError) {
+    return { error: standingError.message };
+  }
+
+  const emails = [
+    ...new Set((standingRows ?? []).map((row) => row.email)),
+  ];
+  if (emails.length === 0) {
+    return {
+      error:
+        "No saved recipients for this store. Open the report to choose who receives it.",
+    };
+  }
+
+  return deliverProjectReport({
+    supabase,
+    userId: user.id,
+    projectId,
+    reportId,
+    emails,
+  });
 }
 
 export async function deleteProjectReport(

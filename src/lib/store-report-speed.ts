@@ -1,5 +1,7 @@
-import type { createClient } from "@/lib/supabase/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 import type {
+  Database,
   ProjectStoreSpeedPage,
   ProjectStoreSpeedRun,
   SpeedPageKind,
@@ -9,7 +11,7 @@ import type {
 
 const PAGE_ORDER: SpeedPageKind[] = ["home", "collection", "product", "cart"];
 
-type ServerClient = Awaited<ReturnType<typeof createClient>>;
+type ServerClient = SupabaseClient<Database>;
 
 export async function loadStoreReportSpeed(
   supabase: ServerClient,

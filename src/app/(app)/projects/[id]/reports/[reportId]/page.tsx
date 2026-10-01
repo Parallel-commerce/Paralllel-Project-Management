@@ -215,7 +215,7 @@ export default async function ProjectReportDetailPage({
 
         {storeDigest && reportSpeed ? (
           <StoreReportSpeedcard speed={reportSpeed} />
-        ) : progressDigest ? (
+        ) : progressDigest && report.period !== "month" ? (
         <section className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
           <h2 className="font-medium">Snapshot</h2>
           <dl className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
@@ -274,6 +274,7 @@ export default async function ProjectReportDetailPage({
                 )}
                 sentTo={report.sent_to}
                 kind={storeDigest ? "store" : "progress"}
+                period={report.period}
               />
             </div>
           </AdminOnly>

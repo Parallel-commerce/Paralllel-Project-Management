@@ -7,6 +7,22 @@
     {
       "path": "/api/cron/store-speed",
       "schedule": "40 0 * * *"
+    },
+    {
+      "path": "/api/cron/weekly-store-reports",
+      "schedule": "0 5 * * 1"
+    },
+    {
+      "path": "/api/cron/weekly-store-reports",
+      "schedule": "0 6 * * 1"
+    },
+    {
+      "path": "/api/cron/monthly-store-reports",
+      "schedule": "0 5 1 * *"
+    },
+    {
+      "path": "/api/cron/monthly-store-reports",
+      "schedule": "0 6 1 * *"
     }
   ]
 }
