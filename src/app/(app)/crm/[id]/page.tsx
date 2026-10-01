@@ -3,6 +3,10 @@ import { notFound } from "next/navigation";
 
 import { CompanyContacts } from "@/components/company-contacts";
 import { CompanyEditor } from "@/components/company-editor";
+import {
+  CompanyTimeline,
+  type CompanyTimelineItem,
+} from "@/components/company-timeline";
 import { CompanyKindTag } from "@/components/company-kind-tag";
 import { CompanyMark } from "@/components/company-mark";
 import { CompanyReengageTag } from "@/components/company-reengage-tag";
@@ -12,13 +16,19 @@ import { ConvertCompanyForm } from "@/components/convert-company-form";
 import { CrmBackLink } from "@/components/crm-list-place";
 import { DeleteProjectButton } from "@/components/delete-project-button";
 import { getIsInternalUser, requireCrmUser } from "@/lib/auth";
+import {
+  timelineDayLabel,
+  timelineRecordedLabel,
+  utcCalendarDay,
+} from "@/lib/company-timeline";
 import { crmHref } from "@/lib/crm-filters";
+import { personDisplayName } from "@/lib/person";
 import {
   projectEngagementFromRow,
   projectEngagementSummary,
 } from "@/lib/project-type";
 import { verticalsFromJoin, type VerticalOption } from "@/lib/verticals";
-import type { Company, Contact } from "@/types/database";
+import type { Company, CompanyTimelineKind, Contact } from "@/types/database";
 
 export const maxDuration = 60;
 
@@ -36,6 +46,7 @@ export default async function CompanyPage({
     { data: contacts },
     { data: projects },
     { data: verticalRows },
+    { data: timelineRows },
   ] = await Promise.all([
       supabase
         .from("companies")
@@ -57,6 +68,14 @@ export default async function CompanyPage({
         .from("verticals")
         .select("id, name")
         .order("name", { ascending: true }),
+      supabase
+        .from("company_timeline_entries")
+        .select(
+          "id, kind, body, occurred_on, created_at, profiles!company_timeline_entries_created_by_fkey(full_name, email, deleted_at)",
+        )
+        .eq("company_id", id)
+        .order("occurred_on", { ascending: false })
+        .order("created_at", { ascending: false }),
     ]);
 
   if (!company) {
@@ -69,6 +88,31 @@ export default async function CompanyPage({
   const contactRows = (contacts ?? []) as Contact[];
   const allVerticals = (verticalRows ?? []) as VerticalOption[];
   const selectedVerticals = verticalsFromJoin(companyRow.company_verticals);
+  const today = utcCalendarDay();
+  const yesterday = utcCalendarDay(-1);
+  const timelineEntries: CompanyTimelineItem[] = (timelineRows ?? []).map(
+    (row) => {
+      const profile = Array.isArray(row.profiles)
+        ? row.profiles[0]
+        : row.profiles;
+      return {
+        id: row.id,
+        kind: row.kind as CompanyTimelineKind,
+        body: row.body,
+        occurredOn: row.occurred_on,
+        dayLabel: timelineDayLabel(row.occurred_on, today, yesterday),
+        recordedLabel: timelineRecordedLabel(row.occurred_on, row.created_at),
+        authorName: personDisplayName(
+          {
+            full_name: profile?.full_name ?? null,
+            email: profile?.email ?? null,
+            deleted_at: profile?.deleted_at ?? null,
+          },
+          "Someone",
+        ),
+      };
+    },
+  );
 
   return (
     <main className="app-container py-6 sm:py-10">
@@ -131,6 +175,11 @@ export default async function CompanyPage({
             company={companyRow}
             verticals={allVerticals}
             selectedVerticals={selectedVerticals}
+          />
+          <CompanyTimeline
+            companyId={id}
+            entries={timelineEntries}
+            today={today}
           />
           <CompanyContacts
             key={`${companyRow.id}-contacts-${contactRows

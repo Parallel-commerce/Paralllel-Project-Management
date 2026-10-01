@@ -455,11 +455,12 @@ export function CompanyEditor({
           </label>
         </div>
         <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
-          Notes
+          Background
           <textarea
             name="notes"
             rows={4}
             defaultValue={company.notes ?? ""}
+            placeholder="Standing context that isn’t tied to a date"
             onBlur={saveNow}
             className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
           />

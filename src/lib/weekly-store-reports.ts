@@ -1,9 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { createProgressReportDraft } from "@/lib/generate-progress-report";
 import {
   findStoreReportForPeriod,
   generateStoreReportDrafts,
 } from "@/lib/generate-store-report";
+import { dueGmtMonthWindow } from "@/lib/reports";
 import { resolveStoreAccess } from "@/lib/shopify/connection";
 import { fetchShop } from "@/lib/shopify/weekly";
 import { lastCompleteMonth, lastCompleteWeek } from "@/lib/store-report";
@@ -49,7 +51,7 @@ function clipError(error: unknown) {
   const message =
     error instanceof Error
       ? error.message
-      : "Could not generate the store report.";
+      : "Could not generate the report.";
   return message.slice(0, 500);
 }
 
@@ -108,6 +110,7 @@ async function claimRun(
   input: {
     projectId: string;
     period: ScheduledStoreReportPeriod;
+    reportKind: "store" | "progress";
     weekStart: string;
     weekEnd: string;
   },
@@ -117,6 +120,7 @@ async function claimRun(
     .select("id, status, attempts, updated_at")
     .eq("project_id", input.projectId)
     .eq("period", input.period)
+    .eq("report_kind", input.reportKind)
     .eq("week_start", input.weekStart)
     .maybeSingle();
 
@@ -130,6 +134,7 @@ async function claimRun(
       .insert({
         project_id: input.projectId,
         period: input.period,
+        report_kind: input.reportKind,
         week_start: input.weekStart,
         week_end: input.weekEnd,
         status: "running",
@@ -213,6 +218,7 @@ async function recordFailure(
     projectId: string;
     projectName: string;
     period: ScheduledStoreReportPeriod;
+    reportKind: "store" | "progress";
     weekStart: string;
     weekEnd: string;
     error: string;
@@ -265,6 +271,7 @@ async function prepareOneStore(
       projectId,
       projectName,
       period,
+      reportKind: "store",
       weekStart: fallback.weekStart,
       weekEnd: fallback.weekEnd,
       error: access.error,
@@ -283,6 +290,7 @@ async function prepareOneStore(
       projectId,
       projectName,
       period,
+      reportKind: "store",
       weekStart,
       weekEnd,
       error: clipError(error),
@@ -294,6 +302,7 @@ async function prepareOneStore(
     claim = await claimRun(supabase, {
       projectId,
       period,
+      reportKind: "store",
       weekStart,
       weekEnd,
     });
@@ -379,11 +388,13 @@ async function prepareOneStore(
 export async function runScheduledStoreReports(
   supabase: Db,
   period: ScheduledStoreReportPeriod,
+  options?: { budgetMs?: number },
 ): Promise<{
   results: WeeklyStoreReportResult[];
   deferred: number;
 }> {
   const started = Date.now();
+  const budgetMs = options?.budgetMs ?? START_BUDGET_MS;
   const { data, error } = await supabase
     .from("project_shopify_connections")
     .select("project_id, shop_domain, access_token_ciphertext, projects(name)")
@@ -402,7 +413,7 @@ export async function runScheduledStoreReports(
 
   async function worker() {
     while (!stop && index < stores.length) {
-      if (Date.now() - started > START_BUDGET_MS) {
+      if (Date.now() - started > budgetMs) {
         stop = true;
         return;
       }
@@ -429,6 +440,161 @@ export function runWeeklyStoreReports(supabase: Db) {
   return runScheduledStoreReports(supabase, "week");
 }
 
-export function runMonthlyStoreReports(supabase: Db) {
-  return runScheduledStoreReports(supabase, "month");
+export function runMonthlyStoreReports(
+  supabase: Db,
+  options?: { budgetMs?: number },
+) {
+  return runScheduledStoreReports(supabase, "month", options);
+}
+
+async function findProgressReport(
+  supabase: Db,
+  projectId: string,
+  title: string,
+) {
+  const { data, error } = await supabase
+    .from("project_reports")
+    .select("id")
+    .eq("project_id", projectId)
+    .eq("kind", "progress")
+    .eq("title", title)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+async function prepareOneProgressReport(
+  supabase: Db,
+  store: StoreRow,
+  window: ReturnType<typeof dueGmtMonthWindow>,
+): Promise<WeeklyStoreReportResult> {
+  const projectId = store.project_id;
+  const projectName = projectNameOf(store);
+
+  let claim: { id: string } | "skip";
+  try {
+    claim = await claimRun(supabase, {
+      projectId,
+      period: "month",
+      reportKind: "progress",
+      weekStart: window.startYmd,
+      weekEnd: window.endYmd,
+    });
+  } catch (error) {
+    return {
+      projectId,
+      projectName,
+      status: "failed",
+      error: clipError(error),
+    };
+  }
+  if (claim === "skip") {
+    return { projectId, projectName, status: "skipped" };
+  }
+
+  try {
+    const existing = await findProgressReport(supabase, projectId, window.title);
+    if (existing) {
+      await finishRun(supabase, claim.id, {
+        status: "skipped",
+        reportId: existing.id,
+        error: null,
+      });
+      return {
+        projectId,
+        projectName,
+        status: "skipped",
+        reportId: existing.id,
+      };
+    }
+
+    const created = await createProgressReportDraft({
+      supabase,
+      userId: null,
+      projectId,
+      projectName,
+      window,
+    });
+    if ("error" in created) {
+      await finishRun(supabase, claim.id, {
+        status: "failed",
+        reportId: null,
+        error: created.error.slice(0, 500),
+      });
+      return {
+        projectId,
+        projectName,
+        status: "failed",
+        error: created.error,
+      };
+    }
+
+    await finishRun(supabase, claim.id, {
+      status: "generated",
+      reportId: created.id,
+      error: null,
+    });
+    return {
+      projectId,
+      projectName,
+      status: "generated",
+      reportId: created.id,
+    };
+  } catch (error) {
+    const message = clipError(error);
+    await finishRun(supabase, claim.id, {
+      status: "failed",
+      reportId: null,
+      error: message,
+    });
+    return { projectId, projectName, status: "failed", error: message };
+  }
+}
+
+export async function runMonthlyProgressReports(
+  supabase: Db,
+  options?: { budgetMs?: number },
+) {
+  const started = Date.now();
+  const budgetMs = options?.budgetMs ?? 90_000;
+  const window = dueGmtMonthWindow();
+  const { data, error } = await supabase
+    .from("project_shopify_connections")
+    .select("project_id, shop_domain, access_token_ciphertext, projects(name)")
+    .not("access_token_ciphertext", "is", null);
+  if (error) throw new Error(error.message);
+
+  const stores = ((data ?? []) as StoreRow[]).sort((a, b) =>
+    projectNameOf(a).localeCompare(projectNameOf(b)),
+  );
+  const results: WeeklyStoreReportResult[] = [];
+  let index = 0;
+  let stop = false;
+
+  async function worker() {
+    while (!stop && index < stores.length) {
+      if (Date.now() - started > budgetMs) {
+        stop = true;
+        return;
+      }
+      const store = stores[index];
+      index += 1;
+      if (!store) return;
+      results.push(await prepareOneProgressReport(supabase, store, window));
+    }
+  }
+
+  const workers = Math.min(CONCURRENCY, stores.length);
+  if (workers > 0) {
+    await Promise.all(Array.from({ length: workers }, () => worker()));
+  }
+
+  const seen = new Set(results.map((result) => result.projectId));
+  return {
+    window: { title: window.title, start: window.startYmd, end: window.endYmd },
+    results,
+    deferred: stores.filter((store) => !seen.has(store.project_id)).length,
+  };
 }

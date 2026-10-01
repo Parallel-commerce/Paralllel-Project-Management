@@ -3,9 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { generateReportNarrative } from "@/lib/ai/claude-report";
 import { createTask } from "@/lib/actions/projects";
 import { buildProjectReportEmail } from "@/lib/email-report";
+import { createProgressReportDraft } from "@/lib/generate-progress-report";
 import { generateStoreReportDrafts } from "@/lib/generate-store-report";
 import { appUrl, logActivity, sendHtmlEmailBatch } from "@/lib/notify";
 import {
@@ -13,7 +13,6 @@ import {
   reportActionDescription,
 } from "@/lib/report-actions";
 import {
-  buildDigestFromActivity,
   parseReportRange,
   resolveReportWindow,
   type ReportRangeInput,
@@ -192,66 +191,21 @@ export async function generateProjectReport(
     return { error: "Project not found." };
   }
 
-  const { data: events, error: eventsError } = await supabase
-    .from("activity_events")
-    .select("action, entity_type, summary, metadata")
-    .eq("project_id", projectId)
-    .gte("created_at", window.periodStart.toISOString())
-    .lte("created_at", window.periodEnd.toISOString())
-    .order("created_at", { ascending: true });
-
-  if (eventsError) {
-    return { error: eventsError.message };
-  }
-
-  const digest = buildDigestFromActivity(
-    (events ?? []).map((event) => ({
-      action: event.action,
-      entity_type: event.entity_type,
-      summary: event.summary,
-      metadata: (event.metadata ?? {}) as Record<string, unknown>,
-    })),
-  );
-
-  const ai = await generateReportNarrative({
-    projectName: project.name,
-    periodLabel: window.label,
-    period: window.period,
-    digest,
-  });
-
-  const { data: report, error } = await supabase
-    .from("project_reports")
-    .insert({
-      project_id: projectId,
-      kind: "progress",
-      period: window.period,
-      period_start: window.periodStart.toISOString(),
-      period_end: window.periodEnd.toISOString(),
-      title: window.title,
-      narrative: ai.narrative,
-      digest,
-      created_by: user.id,
-    })
-    .select("id")
-    .single();
-
-  if (error || !report) {
-    return { error: error?.message ?? "Could not create report." };
-  }
-
-  await logActivity({
+  const created = await createProgressReportDraft({
+    supabase,
+    userId: user.id,
     projectId,
-    actorId: user.id,
-    entityType: "report",
-    entityId: report.id,
-    action: "created",
-    summary: `Created ${window.title}`,
+    projectName: project.name,
+    window,
   });
+
+  if ("error" in created) {
+    return { error: created.error };
+  }
 
   revalidatePath(`/projects/${projectId}`);
   revalidatePath(`/projects/${projectId}/reports`);
-  redirect(`/projects/${projectId}/reports/${report.id}`);
+  redirect(`/projects/${projectId}/reports/${created.id}`);
 }
 
 export async function generateStoreReport(

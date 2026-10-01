@@ -1,9 +1,12 @@
 import Image from "next/image";
-import Link from "next/link";
 
-import { HomeWeeklyReportSend } from "@/components/home-weekly-report-send";
+import {
+  HomeReportMenu,
+  type HomeReportChoice,
+} from "@/components/home-report-menu";
 import { formatDateTime } from "@/lib/format-date";
 import { projectLogoPublicUrl } from "@/lib/project-logo";
+import { dueGmtMonthWindow } from "@/lib/reports";
 import { asStoreReportDigest } from "@/lib/store-report";
 import { createClient } from "@/lib/supabase/server";
 import type {
@@ -77,12 +80,21 @@ const PERIOD_COPY: Record<
   },
   month: {
     title: "Last month's store reports",
-    blurb: "Prepared on the 1st at 7:00, for the previous month.",
+    blurb: "Prepared on the 1st at 7:00 GMT, for the previous month.",
     preparing: "Preparing the monthly report…",
     failed: "Last month's report was not prepared.",
-    waiting: "Waiting for the 1st at 7:00.",
-    stale: "Preparation stopped. It will try again on the 1st.",
+    waiting: "Waiting for the 1st at 7:00 GMT.",
+    stale: "Preparation stopped. It will try again at 8:00 GMT.",
   },
+};
+
+const PERFORMANCE_COPY = {
+  title: "Last month's performance reports",
+  blurb: "Prepared on the 1st at 7:00 GMT, with the store report.",
+  preparing: "Preparing the performance report…",
+  failed: "Last month's performance report was not prepared.",
+  waiting: "Waiting for the 1st at 7:00 GMT.",
+  stale: "Preparation stopped. It will try again at 8:00 GMT.",
 };
 
 function cardRank(card: StoreCard) {
@@ -119,11 +131,13 @@ export async function HomeWeeklyReports() {
   if (stores.length === 0) return null;
 
   const projectIds = stores.map((store) => store.projectId);
-  const [{ data: runRows }, { data: recipientRows }] = await Promise.all([
+  const dueMonth = dueGmtMonthWindow();
+  const [{ data: runRows }, { data: recipientRows }, { data: progressRows }] =
+    await Promise.all([
     supabase
       .from("weekly_store_report_runs")
       .select(
-        "id, project_id, period, week_start, week_end, report_id, status, error, attempts, created_at, updated_at",
+        "id, project_id, period, report_kind, week_start, week_end, report_id, status, error, attempts, created_at, updated_at",
       )
       .in("project_id", projectIds)
       .gte("week_start", since.toISOString().slice(0, 10)),
@@ -131,6 +145,14 @@ export async function HomeWeeklyReports() {
       .from("project_report_recipients")
       .select("project_id")
       .in("project_id", projectIds),
+    supabase
+      .from("project_reports")
+      .select("id, project_id, title, sent_at")
+      .in("project_id", projectIds)
+      .eq("kind", "progress")
+      .eq("period", "month")
+      .eq("title", dueMonth.title)
+      .order("created_at", { ascending: false }),
   ]);
 
   const runsByProject = new Map<string, WeeklyStoreReportRun[]>();
@@ -148,7 +170,9 @@ export async function HomeWeeklyReports() {
       store,
       run: pickRun(
         (runsByProject.get(store.projectId) ?? []).filter(
-          (run) => (run.period ?? "week") === period,
+          (run) =>
+            (run.report_kind ?? "store") === "store" &&
+            (run.period ?? "week") === period,
         ),
       ),
     })),
@@ -207,144 +231,181 @@ export async function HomeWeeklyReports() {
     cardsByPeriod.set(period, cards);
   }
 
-  return (
-    <>
-      {periods.map((period, index) => (
-        <ReportPeriodSection
-          key={period}
-          period={period}
-          cards={cardsByPeriod.get(period) ?? []}
-          className={index === 0 ? "mt-8" : "mt-6"}
-        />
-      ))}
-    </>
+  const progressByProject = new Map<
+    string,
+    { id: string; title: string; sent_at: string | null }
+  >();
+  for (const row of progressRows ?? []) {
+    if (!progressByProject.has(row.project_id)) {
+      progressByProject.set(row.project_id, row);
+    }
+  }
+
+  const performanceCards = stores
+    .map((store) => {
+      const run = pickRun(
+        (runsByProject.get(store.projectId) ?? []).filter(
+          (item) =>
+            item.report_kind === "progress" &&
+            item.period === "month" &&
+            item.week_start === dueMonth.startYmd,
+        ),
+      );
+      const linked = run?.report_id ? reportById.get(run.report_id) : undefined;
+      const existing = progressByProject.get(store.projectId);
+      const reportId = linked?.id ?? existing?.id ?? null;
+      const sentAt =
+        (linked?.sent_at as string | null | undefined) ??
+        existing?.sent_at ??
+        null;
+      return {
+        projectId: store.projectId,
+        projectName: store.projectName,
+        logoUrl: store.logoUrl,
+        reportId,
+        title: reportId ? (linked?.title as string | undefined) ?? existing?.title ?? dueMonth.title : null,
+        score: null,
+        sentAt,
+        recipientCount: recipientCount.get(store.projectId) ?? 0,
+        status: reportId
+          ? run?.status === "running"
+            ? ("running" as const)
+            : ("generated" as const)
+          : reportRunStatus(run?.status),
+        error: run?.error ?? null,
+        updatedAt: run?.updated_at ?? null,
+      };
+    })
+    .sort((a, b) => {
+      const byRank = cardRank(a) - cardRank(b);
+      if (byRank !== 0) return byRank;
+      return a.projectName.localeCompare(b.projectName);
+    });
+
+  const weekCards = new Map(
+    (cardsByPeriod.get("week") ?? []).map((card) => [card.projectId, card]),
   );
-}
+  const monthCards = new Map(
+    (cardsByPeriod.get("month") ?? []).map((card) => [card.projectId, card]),
+  );
+  const performanceByProject = new Map(
+    performanceCards.map((card) => [card.projectId, card]),
+  );
 
-function ReportPeriodSection({
-  period,
-  cards,
-  className,
-}: {
-  period: ScheduledStoreReportPeriod;
-  cards: StoreCard[];
-  className: string;
-}) {
-  const copy = PERIOD_COPY[period];
-  const readyCount = cards.filter((card) => card.reportId && !card.sentAt).length;
+  const customers = stores
+    .map((store) => {
+      const storeChoices = [
+        menuChoice(weekCards.get(store.projectId), PERIOD_COPY.week, "This week"),
+        menuChoice(monthCards.get(store.projectId), PERIOD_COPY.month, "Last month"),
+      ];
+      const performanceChoices = [
+        menuChoice(
+          performanceByProject.get(store.projectId),
+          PERFORMANCE_COPY,
+          null,
+        ),
+      ];
+      return {
+        ...store,
+        storeChoices,
+        performanceChoices,
+        rank: [...storeChoices, ...performanceChoices].some((choice) => choice.canSend)
+          ? 0
+          : 1,
+      };
+    })
+    .sort((a, b) => a.rank - b.rank || a.projectName.localeCompare(b.projectName));
+
+  const readyCount = customers.filter((customer) => customer.rank === 0).length;
 
   return (
-    <section className={className}>
+    <section className="mt-8">
       <div>
-        <h2 className="font-medium">{copy.title}</h2>
+        <h2 className="font-medium">Reports</h2>
         <p className="mt-1 text-sm text-[var(--muted)]">
-          {copy.blurb} Open a report to review it, or send it to the saved
-          recipients
+          Store reports are prepared on Monday at 7:00, and again on the 1st at
+          7:00 GMT with the performance report. Open a report to review it, or
+          send it to the saved recipients
           {readyCount > 0 ? ` (${readyCount} ready)` : ""}.
         </p>
       </div>
       <ul className="mt-3 space-y-2 sm:mt-4">
-        {cards.map((card) => (
-          <StoreReportCard key={card.projectId} card={card} copy={copy} />
+        {customers.map((customer) => (
+          <li
+            key={customer.projectId}
+            className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-3 sm:px-4"
+          >
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-center gap-3">
+                {customer.logoUrl ? (
+                  <Image
+                    src={customer.logoUrl}
+                    alt=""
+                    width={40}
+                    height={40}
+                    className="h-9 w-9 shrink-0 rounded-lg border border-[var(--border)] bg-white object-cover sm:h-10 sm:w-10"
+                  />
+                ) : (
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--accent-soft)] font-display text-sm text-[var(--accent)] sm:h-10 sm:w-10">
+                    {customer.projectName.slice(0, 1).toUpperCase()}
+                  </span>
+                )}
+                <p className="truncate font-medium tracking-tight">
+                  {customer.projectName}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2 pl-12 sm:pl-0">
+                <HomeReportMenu
+                  projectId={customer.projectId}
+                  projectName={customer.projectName}
+                  label="Store report"
+                  choices={customer.storeChoices}
+                />
+                <HomeReportMenu
+                  projectId={customer.projectId}
+                  projectName={customer.projectName}
+                  label="Performance report"
+                  choices={customer.performanceChoices}
+                />
+              </div>
+            </div>
+          </li>
         ))}
       </ul>
     </section>
   );
 }
 
-function StoreReportCard({
-  card,
-  copy,
-}: {
-  card: StoreCard;
-  copy: (typeof PERIOD_COPY)["week"];
-}) {
+function menuChoice(
+  card: StoreCard | undefined,
+  copy: (typeof PERIOD_COPY)["week"],
+  label: string | null,
+): HomeReportChoice {
   const staleRunning =
-    card.status === "running" &&
+    card?.status === "running" &&
     !!card.updatedAt &&
     Date.now() - new Date(card.updatedAt).getTime() > 20 * 60 * 1000;
-  const canSend = !!card.reportId && !card.sentAt && card.recipientCount > 0;
+  const reportId = card?.reportId ?? null;
+  const note = reportId
+    ? null
+    : card?.status === "running" && !staleRunning
+      ? copy.preparing
+      : card?.status === "failed" || staleRunning
+        ? card?.error || copy.failed
+        : copy.waiting;
 
-  return (
-    <li className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-3 sm:px-4">
-      <div className="flex items-start gap-3">
-        {card.logoUrl ? (
-          <Image
-            src={card.logoUrl}
-            alt=""
-            width={40}
-            height={40}
-            className="h-9 w-9 shrink-0 rounded-lg border border-[var(--border)] bg-white object-cover sm:h-10 sm:w-10"
-          />
-        ) : (
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--accent-soft)] font-display text-sm text-[var(--accent)] sm:h-10 sm:w-10">
-            {card.projectName.slice(0, 1).toUpperCase()}
-          </span>
-        )}
-        <div className="min-w-0 flex-1">
-          <p className="truncate font-medium tracking-tight">{card.projectName}</p>
-          <p className="mt-0.5 text-sm text-[var(--muted)]">
-            {card.title ??
-              (card.status === "running" && !staleRunning
-                ? copy.preparing
-                : card.status === "failed" || staleRunning
-                  ? copy.failed
-                  : copy.waiting)}
-          </p>
-          {card.score != null ? (
-            <p className="mt-1 text-sm">Score {card.score}%</p>
-          ) : null}
-          {card.sentAt ? (
-            <p className="mt-1 text-xs text-[var(--muted)]">
-              Sent {formatDateTime(card.sentAt)}
-            </p>
-          ) : null}
-          {card.error && (card.status === "failed" || staleRunning) ? (
-            <p className="mt-1 text-sm text-[var(--danger)]">{card.error}</p>
-          ) : null}
-          {staleRunning && !card.error ? (
-            <p className="mt-1 text-sm text-[var(--muted)]">{copy.stale}</p>
-          ) : null}
-        </div>
-      </div>
-      <div className="mt-3 flex flex-wrap items-center gap-2 pl-12 sm:pl-[3.25rem]">
-        {card.reportId ? (
-          <Link
-            href={`/projects/${card.projectId}/reports/${card.reportId}`}
-            className="rounded-md border border-[var(--border)] bg-white px-3 py-1.5 text-sm font-medium hover:bg-[var(--surface-2)]"
-          >
-            View
-          </Link>
-        ) : (
-          <Link
-            href={`/projects/${card.projectId}/reports`}
-            className="rounded-md border border-[var(--border)] bg-white px-3 py-1.5 text-sm font-medium hover:bg-[var(--surface-2)]"
-          >
-            Reports
-          </Link>
-        )}
-        {canSend && card.reportId ? (
-          <HomeWeeklyReportSend
-            projectId={card.projectId}
-            reportId={card.reportId}
-            projectName={card.projectName}
-          />
-        ) : null}
-        {card.reportId && !card.sentAt && card.recipientCount === 0 ? (
-          <Link
-            href={`/projects/${card.projectId}/settings`}
-            className="text-sm text-[var(--accent)] hover:underline"
-          >
-            Add recipients
-          </Link>
-        ) : null}
-        {canSend ? (
-          <span className="text-xs text-[var(--muted)]">
-            {card.recipientCount} saved{" "}
-            {card.recipientCount === 1 ? "recipient" : "recipients"}
-          </span>
-        ) : null}
-      </div>
-    </li>
-  );
+  return {
+    key: label ?? "performance",
+    label,
+    title: reportId ? card?.title ?? null : null,
+    openHref: reportId
+      ? `/projects/${card?.projectId}/reports/${reportId}`
+      : null,
+    reportId,
+    sentLabel: card?.sentAt ? `Sent ${formatDateTime(card.sentAt)}` : null,
+    note: staleRunning && !card?.error ? copy.stale : note,
+    canSend: !!reportId && !card?.sentAt && (card?.recipientCount ?? 0) > 0,
+    needsRecipients:
+      !!reportId && !card?.sentAt && (card?.recipientCount ?? 0) === 0,
+  };
 }

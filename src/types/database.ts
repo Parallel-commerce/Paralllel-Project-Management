@@ -107,6 +107,19 @@ export type CompanyVertical = {
   created_at: string;
 };
 
+export type CompanyTimelineKind = "note" | "event";
+
+export type CompanyTimelineEntry = {
+  id: string;
+  company_id: string;
+  kind: CompanyTimelineKind;
+  body: string;
+  occurred_on: string;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type ProjectEngagement = {
   project_id: string;
   project_type: ProjectType | null;
@@ -471,10 +484,13 @@ export type WeeklyStoreReportRunStatus =
 
 export type ScheduledStoreReportPeriod = "week" | "month";
 
+export type ScheduledReportKind = "store" | "progress";
+
 export type WeeklyStoreReportRun = {
   id: string;
   project_id: string;
   period: ScheduledStoreReportPeriod;
+  report_kind: ScheduledReportKind;
   week_start: string;
   week_end: string;
   report_id: string | null;
@@ -819,6 +835,40 @@ export type Database = {
             columns: ["vertical_id"];
             isOneToOne: false;
             referencedRelation: "verticals";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      company_timeline_entries: {
+        Row: CompanyTimelineEntry;
+        Insert: {
+          id?: string;
+          company_id: string;
+          kind?: CompanyTimelineKind;
+          body: string;
+          occurred_on?: string;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          body?: string;
+          occurred_on?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "company_timeline_entries_company_id_fkey";
+            columns: ["company_id"];
+            isOneToOne: false;
+            referencedRelation: "companies";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "company_timeline_entries_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
             referencedColumns: ["id"];
           },
         ];
@@ -1286,6 +1336,7 @@ export type Database = {
           id?: string;
           project_id: string;
           period?: ScheduledStoreReportPeriod;
+          report_kind?: ScheduledReportKind;
           week_start: string;
           week_end: string;
           report_id?: string | null;
@@ -1297,6 +1348,7 @@ export type Database = {
         };
         Update: {
           period?: ScheduledStoreReportPeriod;
+          report_kind?: ScheduledReportKind;
           week_end?: string;
           report_id?: string | null;
           status?: WeeklyStoreReportRunStatus;

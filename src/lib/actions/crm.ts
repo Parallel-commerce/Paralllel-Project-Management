@@ -6,7 +6,12 @@ import { redirect } from "next/navigation";
 import { enrichCompanyRecord } from "@/lib/ai/claude-company-enrich";
 import { getIsInternalUser, requireCrmUser } from "@/lib/auth";
 import { inviteMember } from "@/lib/actions/projects";
+import { companyKindLabel } from "@/lib/company-kind";
+import { companyReengageLabel } from "@/lib/company-reengage";
+import { companyStatusLabel } from "@/lib/company-status";
+import { utcCalendarDay } from "@/lib/company-timeline";
 import { parseCompanyImportCsv, type ImportRowError } from "@/lib/crm-csv";
+import { formatDate } from "@/lib/format-date";
 import {
   normalizeCompanyLinkedInUrl,
   normalizePersonLinkedInUrl,
@@ -31,6 +36,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 const IMPORT_MAX_BYTES = 2 * 1024 * 1024;
 const IMPORT_MAX_ROWS = 5000;
+const TIMELINE_NOTE_MAX = 4000;
 
 const STATUS_VALUES = new Set<CompanyStatus>(
   COMPANY_STATUSES.map((item) => item.value),
@@ -117,6 +123,115 @@ function parseDate(raw: string) {
     return { error: "Follow-up date is invalid." } as const;
   }
   return value;
+}
+
+function parseOccurredOn(raw: string): string | { error: string } {
+  const value = raw.trim();
+  if (!value) return utcCalendarDay();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return { error: "Choose a valid date." };
+  }
+  if (value > utcCalendarDay(1)) {
+    return { error: "Notes can’t be dated in the future." };
+  }
+  return value;
+}
+
+function parseNoteBody(raw: string): string | { error: string } {
+  const body = raw.trim();
+  if (!body) return { error: "Write a note before saving." };
+  if (body.length > TIMELINE_NOTE_MAX) {
+    return { error: "Notes are limited to 4,000 characters." };
+  }
+  return body;
+}
+
+type CompanyTimelineSnapshot = {
+  kind: CompanyKind;
+  status: CompanyStatus | null;
+  can_reengage: CompanyReengage | null;
+  follow_up_at: string | null;
+};
+
+function followUpSummary(before: string | null, after: string | null) {
+  const from = before?.slice(0, 10) || null;
+  const to = after?.slice(0, 10) || null;
+  if (from === to) return null;
+  if (!from && to) return `Set follow-up for ${formatDate(to)}`;
+  if (from && !to) return `Cleared follow-up on ${formatDate(from)}`;
+  return `Moved follow-up from ${formatDate(from)} to ${formatDate(to)}`;
+}
+
+function companyChangeSummaries(
+  before: CompanyTimelineSnapshot,
+  after: CompanyTimelineSnapshot,
+) {
+  const summaries: string[] = [];
+
+  if (before.kind !== after.kind) {
+    if (before.kind === "prospect" && after.kind === "customer") {
+      summaries.push("Marked as a customer");
+    } else if (
+      before.kind === "prospect" &&
+      after.kind === "lost_opportunity"
+    ) {
+      summaries.push("Marked as a lost opportunity");
+    } else {
+      summaries.push(
+        `Changed type from ${companyKindLabel(before.kind)} to ${companyKindLabel(after.kind)}`,
+      );
+    }
+  }
+
+  if (before.status !== after.status && before.kind === after.kind) {
+    if (before.status && after.status) {
+      summaries.push(
+        `Changed lead status from ${companyStatusLabel(before.status)} to ${companyStatusLabel(after.status)}`,
+      );
+    } else if (after.status) {
+      summaries.push(`Set lead status to ${companyStatusLabel(after.status)}`);
+    } else if (before.status) {
+      summaries.push(
+        `Cleared lead status ${companyStatusLabel(before.status)}`,
+      );
+    }
+  }
+
+  if (before.can_reengage !== after.can_reengage) {
+    summaries.push(
+      `Changed re-engage from ${companyReengageLabel(before.can_reengage)} to ${companyReengageLabel(after.can_reengage)}`,
+    );
+  }
+
+  const followUp = followUpSummary(before.follow_up_at, after.follow_up_at);
+  if (followUp) summaries.push(followUp);
+
+  return summaries;
+}
+
+async function recordCompanyEvents(
+  supabase: SupabaseClient<Database>,
+  companyId: string,
+  createdBy: string,
+  bodies: string[],
+) {
+  const rows = bodies
+    .map((body) => body.trim())
+    .filter(Boolean)
+    .map((body) => ({
+      company_id: companyId,
+      kind: "event" as const,
+      body,
+      created_by: createdBy,
+    }));
+  if (rows.length === 0) return;
+
+  const { error } = await supabase
+    .from("company_timeline_entries")
+    .insert(rows);
+  if (error) {
+    console.error("company timeline insert failed:", error.message);
+  }
 }
 
 function parseEmail(raw: string) {
@@ -299,6 +414,8 @@ export async function createCompany(
   );
   if (verticals && "error" in verticals) return verticals;
 
+  await recordCompanyEvents(supabase, data.id, user.id, ["Added to CRM"]);
+
   revalidatePath("/crm");
   redirect(`/crm/${data.id}`);
 }
@@ -307,7 +424,7 @@ export async function updateCompany(
   companyId: string,
   formData: FormData,
 ): Promise<{ error: string } | void> {
-  const { supabase } = await requireCrmUser();
+  const { supabase, user } = await requireCrmUser();
   const name = String(formData.get("name") ?? "").trim();
   const website = normalizeWebsite(String(formData.get("website") ?? ""));
   const notes = emptyToNull(String(formData.get("notes") ?? ""));
@@ -328,6 +445,15 @@ export async function updateCompany(
     return { error: "Company name is required." };
   }
 
+  const { data: before, error: loadError } = await supabase
+    .from("companies")
+    .select("kind, status, can_reengage, follow_up_at")
+    .eq("id", companyId)
+    .maybeSingle();
+
+  if (loadError) return { error: loadError.message };
+  if (!before) return { error: "Company not found." };
+
   const { error } = await supabase
     .from("companies")
     .update({
@@ -345,6 +471,18 @@ export async function updateCompany(
   if (error) {
     return { error: error.message };
   }
+
+  await recordCompanyEvents(
+    supabase,
+    companyId,
+    user.id,
+    companyChangeSummaries(before, {
+      kind: resolved.kind,
+      status: resolved.status,
+      can_reengage: canReengage,
+      follow_up_at: followUp,
+    }),
+  );
 
   revalidatePath("/crm");
   revalidatePath(`/crm/${companyId}`);
@@ -381,9 +519,18 @@ export async function updateCompanyKind(
   companyId: string,
   kind: string,
 ): Promise<{ error: string } | void> {
-  const { supabase } = await requireCrmUser();
+  const { supabase, user } = await requireCrmUser();
   const kindResult = parseKind(kind);
   if (typeof kindResult === "object") return kindResult;
+
+  const { data: before, error: loadError } = await supabase
+    .from("companies")
+    .select("kind, status, can_reengage, follow_up_at")
+    .eq("id", companyId)
+    .maybeSingle();
+
+  if (loadError) return { error: loadError.message };
+  if (!before) return { error: "Company not found." };
 
   const patch =
     kindResult === "prospect"
@@ -399,6 +546,17 @@ export async function updateCompanyKind(
     return { error: error.message };
   }
 
+  await recordCompanyEvents(
+    supabase,
+    companyId,
+    user.id,
+    companyChangeSummaries(before, {
+      ...before,
+      kind: patch.kind,
+      status: patch.status,
+    }),
+  );
+
   revalidatePath("/crm");
   revalidatePath("/crm/companies");
   revalidatePath(`/crm/${companyId}`);
@@ -408,13 +566,13 @@ export async function updateCompanyStatus(
   companyId: string,
   status: string,
 ): Promise<{ error: string } | void> {
-  const { supabase } = await requireCrmUser();
+  const { supabase, user } = await requireCrmUser();
   const statusResult = parseStatus(status);
   if (typeof statusResult === "object") return statusResult;
 
   const { data: company, error: loadError } = await supabase
     .from("companies")
-    .select("id, kind")
+    .select("id, kind, status, can_reengage, follow_up_at")
     .eq("id", companyId)
     .maybeSingle();
 
@@ -428,12 +586,14 @@ export async function updateCompanyStatus(
     return { error: "Lead status is only used for prospects." };
   }
 
-  const patch =
+  const nextKind: CompanyKind =
     statusResult === "won"
-      ? { kind: "customer" as CompanyKind, status: null }
+      ? "customer"
       : statusResult === "lost"
-        ? { kind: "lost_opportunity" as CompanyKind, status: null }
-        : { status: statusResult };
+        ? "lost_opportunity"
+        : company.kind;
+  const nextStatus = nextKind === company.kind ? statusResult : null;
+  const patch = { kind: nextKind, status: nextStatus };
 
   const { error } = await supabase
     .from("companies")
@@ -444,6 +604,18 @@ export async function updateCompanyStatus(
     return { error: error.message };
   }
 
+  await recordCompanyEvents(
+    supabase,
+    companyId,
+    user.id,
+    companyChangeSummaries(company, {
+      kind: nextKind,
+      status: nextStatus,
+      can_reengage: company.can_reengage,
+      follow_up_at: company.follow_up_at,
+    }),
+  );
+
   revalidatePath("/crm");
   revalidatePath("/crm/companies");
   revalidatePath(`/crm/${companyId}`);
@@ -453,9 +625,18 @@ export async function updateCompanyReengage(
   companyId: string,
   canReengage: string,
 ): Promise<{ error: string } | void> {
-  const { supabase } = await requireCrmUser();
+  const { supabase, user } = await requireCrmUser();
   const parsed = parseCanReengage(canReengage);
   if (parsed && typeof parsed === "object") return parsed;
+
+  const { data: before, error: loadError } = await supabase
+    .from("companies")
+    .select("kind, status, can_reengage, follow_up_at")
+    .eq("id", companyId)
+    .maybeSingle();
+
+  if (loadError) return { error: loadError.message };
+  if (!before) return { error: "Company not found." };
 
   const { error } = await supabase
     .from("companies")
@@ -465,6 +646,16 @@ export async function updateCompanyReengage(
   if (error) {
     return { error: error.message };
   }
+
+  await recordCompanyEvents(
+    supabase,
+    companyId,
+    user.id,
+    companyChangeSummaries(before, {
+      ...before,
+      can_reengage: parsed,
+    }),
+  );
 
   revalidatePath("/crm");
   revalidatePath(`/crm/${companyId}`);
@@ -640,11 +831,87 @@ export async function deleteCompany(
   }
 }
 
+export async function createCompanyNote(
+  companyId: string,
+  formData: FormData,
+): Promise<{ error: string } | void> {
+  const { supabase, user } = await requireCrmUser();
+  const body = parseNoteBody(String(formData.get("body") ?? ""));
+  if (typeof body === "object") return body;
+  const occurredOn = parseOccurredOn(String(formData.get("occurred_on") ?? ""));
+  if (typeof occurredOn === "object") return occurredOn;
+
+  const { error } = await supabase.from("company_timeline_entries").insert({
+    company_id: companyId,
+    kind: "note",
+    body,
+    occurred_on: occurredOn,
+    created_by: user.id,
+  });
+
+  if (error) return { error: error.message };
+
+  revalidatePath(`/crm/${companyId}`);
+}
+
+export async function updateCompanyNote(
+  companyId: string,
+  noteId: string,
+  formData: FormData,
+): Promise<{ error: string } | void> {
+  const { supabase } = await requireCrmUser();
+  const body = parseNoteBody(String(formData.get("body") ?? ""));
+  if (typeof body === "object") return body;
+  const occurredOn = parseOccurredOn(String(formData.get("occurred_on") ?? ""));
+  if (typeof occurredOn === "object") return occurredOn;
+
+  const { data: existing, error: loadError } = await supabase
+    .from("company_timeline_entries")
+    .select("id, kind")
+    .eq("id", noteId)
+    .eq("company_id", companyId)
+    .maybeSingle();
+
+  if (loadError) return { error: loadError.message };
+  if (!existing || existing.kind !== "note") {
+    return { error: "Note not found." };
+  }
+
+  const { error } = await supabase
+    .from("company_timeline_entries")
+    .update({ body, occurred_on: occurredOn })
+    .eq("id", noteId)
+    .eq("company_id", companyId)
+    .eq("kind", "note");
+
+  if (error) return { error: error.message };
+
+  revalidatePath(`/crm/${companyId}`);
+}
+
+export async function deleteCompanyNote(
+  companyId: string,
+  noteId: string,
+): Promise<{ error: string } | void> {
+  const { supabase } = await requireCrmUser();
+
+  const { error } = await supabase
+    .from("company_timeline_entries")
+    .delete()
+    .eq("id", noteId)
+    .eq("company_id", companyId)
+    .eq("kind", "note");
+
+  if (error) return { error: error.message };
+
+  revalidatePath(`/crm/${companyId}`);
+}
+
 export async function createContact(
   companyId: string,
   formData: FormData,
 ): Promise<{ error: string } | void> {
-  const { supabase } = await requireCrmUser();
+  const { supabase, user } = await requireCrmUser();
   const fullName = String(formData.get("full_name") ?? "").trim();
   const emailResult = parseEmail(String(formData.get("email") ?? ""));
   if (emailResult && typeof emailResult === "object") return emailResult;
@@ -675,6 +942,10 @@ export async function createContact(
   if (error) {
     return { error: error.message };
   }
+
+  await recordCompanyEvents(supabase, companyId, user.id, [
+    `Added ${fullName} as a contact`,
+  ]);
 
   revalidatePath(`/crm/${companyId}`);
   revalidatePath("/crm");
@@ -727,7 +998,16 @@ export async function deleteContact(
   companyId: string,
   contactId: string,
 ): Promise<{ error: string } | void> {
-  const { supabase } = await requireCrmUser();
+  const { supabase, user } = await requireCrmUser();
+
+  const { data: contact, error: loadError } = await supabase
+    .from("contacts")
+    .select("full_name")
+    .eq("id", contactId)
+    .eq("company_id", companyId)
+    .maybeSingle();
+
+  if (loadError) return { error: loadError.message };
 
   const { error } = await supabase
     .from("contacts")
@@ -737,6 +1017,12 @@ export async function deleteContact(
 
   if (error) {
     return { error: error.message };
+  }
+
+  if (contact) {
+    await recordCompanyEvents(supabase, companyId, user.id, [
+      `Removed ${contact.full_name} as a contact`,
+    ]);
   }
 
   revalidatePath(`/crm/${companyId}`);
@@ -830,12 +1116,21 @@ export async function convertCompanyToProject(
     };
   }
 
+  const timelineEvents = [`Created project “${name}”`];
   if (company.kind !== "customer") {
-    await supabase
+    const { error: kindError } = await supabase
       .from("companies")
       .update({ status: null, kind: "customer" })
       .eq("id", companyId);
+    if (!kindError) {
+      timelineEvents.push(
+        company.kind === "prospect"
+          ? "Marked as a customer"
+          : `Changed type from ${companyKindLabel(company.kind)} to ${companyKindLabel("customer")}`,
+      );
+    }
   }
+  await recordCompanyEvents(supabase, companyId, user.id, timelineEvents);
 
   if (inviteIds.length > 0) {
     const { data: contacts } = await supabase
@@ -970,6 +1265,7 @@ export async function importCompanies(
   let companiesUpdated = 0;
   let verticalsAssigned = 0;
   const companyIds = new Map<object, string>();
+  const createdCompanyIds: string[] = [];
 
   for (const company of companies) {
     const row = company.contacts[0]?.row ?? 0;
@@ -1104,7 +1400,25 @@ export async function importCompanies(
     companyIds.set(company, data.id);
     existingById.set(data.id, { id: data.id, name: company.name });
     existingByName.set(company.name.toLowerCase(), data.id);
+    createdCompanyIds.push(data.id);
     companiesCreated += 1;
+  }
+
+  for (let index = 0; index < createdCompanyIds.length; index += 500) {
+    const slice = createdCompanyIds.slice(index, index + 500);
+    const { error: timelineError } = await supabase
+      .from("company_timeline_entries")
+      .insert(
+        slice.map((companyId) => ({
+          company_id: companyId,
+          kind: "event" as const,
+          body: "Added to CRM",
+          created_by: user.id,
+        })),
+      );
+    if (timelineError) {
+      console.error("company timeline insert failed:", timelineError.message);
+    }
   }
 
   const importedIds = new Set(companyIds.values());

@@ -1,7 +1,10 @@
 import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 
-import { runMonthlyStoreReports } from "@/lib/weekly-store-reports";
+import {
+  runMonthlyProgressReports,
+  runMonthlyStoreReports,
+} from "@/lib/weekly-store-reports";
 import { createServiceClient } from "@/lib/supabase/service";
 
 export const maxDuration = 300;
@@ -20,15 +23,22 @@ export async function GET(request: Request) {
 
   try {
     const supabase = createServiceClient();
-    const result = await runMonthlyStoreReports(supabase);
+    const started = Date.now();
+    const performance = await runMonthlyProgressReports(supabase, {
+      budgetMs: 90_000,
+    });
+    const remaining = 4 * 60 * 1000 - (Date.now() - started);
+    const store = await runMonthlyStoreReports(supabase, {
+      budgetMs: Math.max(0, remaining),
+    });
     revalidatePath("/home");
-    for (const item of result.results) {
+    for (const item of [...performance.results, ...store.results]) {
       revalidatePath(`/projects/${item.projectId}/reports`);
       if (item.reportId) {
         revalidatePath(`/projects/${item.projectId}/reports/${item.reportId}`);
       }
     }
-    return NextResponse.json(result);
+    return NextResponse.json({ performance, store });
   } catch (error) {
     const message =
       error instanceof Error

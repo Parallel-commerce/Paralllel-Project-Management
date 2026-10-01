@@ -251,6 +251,40 @@ function formatMonth(date: Date) {
   }).format(date);
 }
 
+/** Previous calendar month in GMT. Before 07:00 GMT on the 1st, that month is not due yet. */
+export function dueGmtMonthWindow(now = new Date()) {
+  const beforeSevenOnTheFirst =
+    now.getUTCDate() === 1 && now.getUTCHours() < 7;
+  const monthsBack = beforeSevenOnTheFirst ? 2 : 1;
+  const start = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - monthsBack, 1),
+  );
+  const end = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - monthsBack + 1, 1),
+  );
+  end.setUTCMilliseconds(-1);
+  const monthLabel = new Intl.DateTimeFormat("en-GB", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(start);
+  const dayLabel = new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+  return {
+    period: "month" as const,
+    periodStart: start,
+    periodEnd: end,
+    startYmd: start.toISOString().slice(0, 10),
+    endYmd: end.toISOString().slice(0, 10),
+    label: `${dayLabel.format(start)} – ${dayLabel.format(end)}`,
+    title: `Monthly report · ${monthLabel}`,
+  };
+}
+
 function formatRangeLabel(start: Date, end: Date) {
   return `${formatShortDate(start)} – ${formatShortDate(end)}`;
 }
