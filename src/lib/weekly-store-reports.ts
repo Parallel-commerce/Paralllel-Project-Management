@@ -18,7 +18,8 @@ import type {
 export const WEEKLY_REPORT_TIME_ZONE = "Africa/Johannesburg";
 
 const CONCURRENCY = 2;
-const START_BUDGET_MS = 8 * 60 * 1000;
+/** Stop starting new stores before the 5-minute Hobby function limit. */
+const START_BUDGET_MS = 4 * 60 * 1000;
 const STALE_RUNNING_MS = 15 * 60 * 1000;
 const MAX_ATTEMPTS = 2;
 

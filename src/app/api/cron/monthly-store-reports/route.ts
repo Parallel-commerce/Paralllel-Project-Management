@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { runMonthlyStoreReports } from "@/lib/weekly-store-reports";
 import { createServiceClient } from "@/lib/supabase/service";
 
-export const maxDuration = 800;
+export const maxDuration = 300;
 
 function authorized(request: Request) {
   const secret = process.env.CRON_SECRET;
