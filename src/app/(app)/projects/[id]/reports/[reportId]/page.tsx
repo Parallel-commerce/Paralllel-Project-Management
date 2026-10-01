@@ -80,6 +80,7 @@ export default async function ProjectReportDetailPage({
     { data: lists },
     { data: actionTasks },
     speedFallback,
+    { data: standingRecipients },
   ] = await Promise.all([
       isAdmin
         ? supabase
@@ -117,6 +118,13 @@ export default async function ProjectReportDetailPage({
             storeDigest.previous_week_end,
           )
         : Promise.resolve(storeDigest?.speed ?? null),
+      isAdmin
+        ? supabase
+            .from("project_report_recipients")
+            .select("email")
+            .eq("project_id", id)
+            .order("created_at", { ascending: true })
+        : Promise.resolve({ data: [] as { email: string }[] }),
     ]);
 
   const reportSpeed = storeDigest?.speed ?? speedFallback;
@@ -261,6 +269,9 @@ export default async function ProjectReportDetailPage({
                 title={report.title}
                 narrative={report.narrative}
                 clients={clients}
+                standingEmails={(standingRecipients ?? []).map(
+                  (recipient) => recipient.email,
+                )}
                 sentTo={report.sent_to}
                 kind={storeDigest ? "store" : "progress"}
               />

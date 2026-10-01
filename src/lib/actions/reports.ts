@@ -7,7 +7,7 @@ import { generateReportNarrative } from "@/lib/ai/claude-report";
 import { generateStoreReportNarrative } from "@/lib/ai/claude-store-report";
 import { createTask } from "@/lib/actions/projects";
 import { buildProjectReportEmail } from "@/lib/email-report";
-import { appUrl, logActivity, sendHtmlEmail } from "@/lib/notify";
+import { appUrl, logActivity, sendHtmlEmailBatch } from "@/lib/notify";
 import {
   collectReportActions,
   reportActionDescription,
@@ -79,6 +79,18 @@ async function requireProjectAdmin(projectId: string): Promise<
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+function normalizeRecipientEmail(
+  raw: string,
+): { email: string } | { error: string } {
+  const email = raw.trim().toLowerCase();
+  if (!email || email.length > 320 || !EMAIL_RE.test(email)) {
+    return {
+      error: `“${email || raw.trim()}” is not a valid email address.`,
+    };
+  }
+  return { email };
+}
+
 function collectRecipients(
   formData: FormData,
 ): { emails: string[] } | { error: string } {
@@ -90,12 +102,72 @@ function collectRecipients(
     .map((value) => value.trim().toLowerCase())
     .filter(Boolean);
 
-  const invalid = raw.find((email) => !EMAIL_RE.test(email));
-  if (invalid) {
-    return { error: `“${invalid}” is not a valid email address.` };
+  for (const email of raw) {
+    const parsed = normalizeRecipientEmail(email);
+    if ("error" in parsed) return parsed;
   }
 
   return { emails: [...new Set(raw)] };
+}
+
+function revalidateReportRecipientPaths(projectId: string) {
+  revalidatePath(`/projects/${projectId}/settings`);
+  revalidatePath(`/projects/${projectId}/reports`);
+  revalidatePath("/projects/[id]/reports/[reportId]", "page");
+}
+
+export async function addProjectReportRecipient(
+  projectId: string,
+  rawEmail: string,
+): Promise<{ error: string } | { success: true; email: string }> {
+  const admin = await requireProjectAdmin(projectId);
+  if (!("ok" in admin)) {
+    return { error: admin.error };
+  }
+
+  const parsed = normalizeRecipientEmail(rawEmail);
+  if ("error" in parsed) return parsed;
+
+  const { supabase, user } = admin;
+  const { error } = await supabase.from("project_report_recipients").insert({
+    project_id: projectId,
+    email: parsed.email,
+    created_by: user.id,
+  });
+
+  if (error && error.code !== "23505") {
+    return { error: error.message };
+  }
+
+  revalidateReportRecipientPaths(projectId);
+  return { success: true, email: parsed.email };
+}
+
+export async function removeProjectReportRecipient(
+  projectId: string,
+  rawEmail: string,
+): Promise<{ error: string } | { success: true }> {
+  const admin = await requireProjectAdmin(projectId);
+  if (!("ok" in admin)) {
+    return { error: admin.error };
+  }
+
+  const parsed = normalizeRecipientEmail(rawEmail);
+  if ("error" in parsed) return parsed;
+
+  const { supabase } = admin;
+  const { error } = await supabase
+    .from("project_report_recipients")
+    .delete()
+    .eq("project_id", projectId)
+    .eq("email", parsed.email);
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  revalidateReportRecipientPaths(projectId);
+  return { success: true };
 }
 
 export async function generateProjectReport(
@@ -464,7 +536,24 @@ export async function sendProjectReport(
   if ("error" in recipients) {
     return { error: recipients.error };
   }
-  if (recipients.emails.length === 0) {
+
+  const { data: standingRows, error: standingError } = await supabase
+    .from("project_report_recipients")
+    .select("email")
+    .eq("project_id", projectId);
+
+  if (standingError) {
+    return { error: standingError.message };
+  }
+
+  const emails = [
+    ...new Set([
+      ...recipients.emails,
+      ...(standingRows ?? []).map((row) => row.email),
+    ]),
+  ];
+
+  if (emails.length === 0) {
     return { error: "Select or add at least one recipient." };
   }
 
@@ -502,24 +591,21 @@ export async function sendProjectReport(
     progressDigest,
   });
 
-  const sentTo: string[] = [];
-  const failures: string[] = [];
-
-  for (const email of recipients.emails) {
-    const resultEmail = await sendHtmlEmail(
-      email,
-      `${project.name}: ${report.title}`,
-      text,
-      html,
-    );
-    if ("error" in resultEmail && resultEmail.error) {
-      failures.push(`${email}: ${resultEmail.error}`);
-    } else if ("skipped" in resultEmail && resultEmail.skipped) {
-      failures.push(`${email}: email not configured (RESEND_API_KEY)`);
-    } else {
-      sentTo.push(email);
-    }
+  const delivery = await sendHtmlEmailBatch(
+    emails,
+    `${project.name}: ${report.title}`,
+    text,
+    html,
+  );
+  if ("skipped" in delivery) {
+    return {
+      error:
+        "No emails were sent. Check RESEND_API_KEY and recipients.",
+    };
   }
+
+  const sentTo = delivery.sent;
+  const failures = delivery.failures;
 
   if (sentTo.length === 0) {
     return {

@@ -2,12 +2,15 @@ import { notFound } from "next/navigation";
 
 import { AdminOnly } from "@/components/admin-only";
 import { ProjectDeleteSettings, ProjectSettings } from "@/components/project-settings";
+import { ReportRecipientSettings } from "@/components/report-recipient-settings";
 import { StoreSetupForm } from "@/components/store-setup-form";
 import { requireSessionUser } from "@/lib/auth";
 import { projectLogoPublicUrl } from "@/lib/project-logo";
 import { projectEngagementFromRow } from "@/lib/project-type";
 import { normalizeScheduledWeekdays } from "@/lib/scheduled-weekdays";
+import { CANONICAL_APP_URL } from "@/lib/app-url";
 import { toPublicConnection } from "@/lib/shopify/connection";
+import { SHOPIFY_CALLBACK_PATH } from "@/lib/shopify/oauth";
 import type {
   ProjectRole,
   ProjectShopifyConnection,
@@ -57,7 +60,8 @@ export default async function ProjectSettingsPage({
     notFound();
   }
 
-  const [{ data: connectionRow }, { data: themeGitRow }] = await Promise.all([
+  const [{ data: connectionRow }, { data: themeGitRow }, { data: recipientRows }] =
+    await Promise.all([
     supabase
       .from("project_shopify_connections")
       .select("*")
@@ -68,6 +72,11 @@ export default async function ProjectSettingsPage({
       .select("*")
       .eq("project_id", id)
       .maybeSingle(),
+    supabase
+      .from("project_report_recipients")
+      .select("email")
+      .eq("project_id", id)
+      .order("created_at", { ascending: true }),
   ]);
 
   const engagement = projectEngagementFromRow(project.project_engagement);
@@ -80,8 +89,8 @@ export default async function ProjectSettingsPage({
     <div>
       <h1 className="font-display text-2xl tracking-tight sm:text-3xl">Settings</h1>
       <p className="mt-1 text-sm text-[var(--muted)]">
-        Project details, Shopify connection, and the live theme git repo.
-        Clients never see this page.
+        Project details, report recipients, Shopify connection, and the live
+        theme git repo. Clients never see this page.
       </p>
 
       {query.connected === "1" ? (
@@ -108,10 +117,16 @@ export default async function ProjectSettingsPage({
             projectType={engagement.projectType}
             scheduleAnchorDate={engagement.scheduleAnchorDate}
           />
+          <ReportRecipientSettings
+            projectId={id}
+            emails={(recipientRows ?? []).map((row) => row.email)}
+          />
           <StoreSetupForm
             projectId={id}
             connection={connection}
             themeGit={themeGit}
+            shopifyAppUrl={CANONICAL_APP_URL}
+            shopifyRedirectUrl={`${CANONICAL_APP_URL}${SHOPIFY_CALLBACK_PATH}`}
           />
           <ProjectDeleteSettings projectId={id} name={project.name} />
         </div>

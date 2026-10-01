@@ -80,6 +80,72 @@ export async function sendHtmlEmail(
   return sendEmail(to, subject, text, html);
 }
 
+const EMAIL_BATCH_SIZE = 100;
+
+/**
+ * One Resend request can carry up to 100 individual emails. Sending one
+ * request per address hits the 10 requests/second rate limit.
+ */
+export async function sendHtmlEmailBatch(
+  recipients: string[],
+  subject: string,
+  text: string,
+  html: string,
+): Promise<
+  { skipped: true } | { sent: string[]; failures: string[] }
+> {
+  const apiKey = process.env.RESEND_API_KEY;
+  const from =
+    process.env.RESEND_FROM_EMAIL ||
+    "Parallel Commerce <login@parallelcommerce.co.uk>";
+
+  if (!apiKey) {
+    return { skipped: true };
+  }
+
+  const resend = new Resend(apiKey);
+  const absoluteLinkHint = text.includes("http")
+    ? text
+    : `${text}\n\nOpen Parallel: ${appUrl()}`;
+  const sent: string[] = [];
+  const failures: string[] = [];
+
+  for (let start = 0; start < recipients.length; start += EMAIL_BATCH_SIZE) {
+    const chunk = recipients.slice(start, start + EMAIL_BATCH_SIZE);
+    const result = await resend.batch.send(
+      chunk.map((to) => ({
+        from,
+        to,
+        subject,
+        text: absoluteLinkHint,
+        html,
+      })),
+      { batchValidation: "permissive" },
+    );
+
+    if (result.error || !result.data) {
+      const message = result.error?.message ?? "Email could not be sent.";
+      for (const email of chunk) failures.push(`${email}: ${message}`);
+      continue;
+    }
+
+    const failed = new Map<number, string>();
+    if ("errors" in result.data && Array.isArray(result.data.errors)) {
+      for (const item of result.data.errors) {
+        failed.set(item.index, item.message);
+      }
+    }
+
+    chunk.forEach((email, index) => {
+      const message = failed.get(index);
+      if (message) failures.push(`${email}: ${message}`);
+      else sent.push(email);
+    });
+  }
+
+  return { sent, failures };
+}
+
 /** Friendly reminder: open Parallel, enter email, use the one-time code. */
 export async function sendSignInReminderEmail(input: {
   to: string;

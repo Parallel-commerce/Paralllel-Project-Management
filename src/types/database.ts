@@ -463,6 +463,14 @@ export type ProjectReport = {
   sent_to: string[];
 };
 
+export type ProjectReportRecipient = {
+  id: string;
+  project_id: string;
+  email: string;
+  created_by: string;
+  created_at: string;
+};
+
 export type ShopifyConnectionStatus =
   | "pending"
   | "connected"
@@ -1249,6 +1257,35 @@ export type Database = {
           updated_at?: string;
         };
         Relationships: [];
+      };
+      project_report_recipients: {
+        Row: ProjectReportRecipient;
+        Insert: {
+          id?: string;
+          project_id: string;
+          email: string;
+          created_by: string;
+          created_at?: string;
+        };
+        Update: {
+          email?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "project_report_recipients_project_id_fkey";
+            columns: ["project_id"];
+            isOneToOne: false;
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "project_report_recipients_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       project_shopify_connections: {
         Row: ProjectShopifyConnection;

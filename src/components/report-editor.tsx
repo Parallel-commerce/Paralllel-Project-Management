@@ -1,9 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition } from "react";
 
 import {
+  addProjectReportRecipient,
   deleteProjectReport,
+  removeProjectReportRecipient,
   sendProjectReport,
   updateReportNarrative,
 } from "@/lib/actions/reports";
@@ -28,6 +31,7 @@ export function ReportEditor({
   title,
   narrative,
   clients,
+  standingEmails,
   sentTo,
   kind = "progress",
 }: {
@@ -36,26 +40,82 @@ export function ReportEditor({
   title: string;
   narrative: string | null;
   clients: { email: string; label: string }[];
+  standingEmails: string[];
   sentTo: string[];
   kind?: ReportKind;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [savedEmails, setSavedEmails] = useState(standingEmails);
   const [extraEmails, setExtraEmails] = useState<string[]>([]);
   const [extraDraft, setExtraDraft] = useState("");
+  const [saveForFuture, setSaveForFuture] = useState(true);
+
+  const savedSet = new Set(savedEmails.map((email) => email.toLowerCase()));
+  const selectableClients = clients.filter(
+    (client) => !savedSet.has(client.email.toLowerCase()),
+  );
+
+  function invalidEmail(emails: string[]) {
+    return emails.find((email) => !EMAIL_RE.test(email) || email.length > 320);
+  }
+
+  async function persistEmails(emails: string[]): Promise<
+    | { ok: true; saved: string[] }
+    | { ok: false; error: string; saved: string[] }
+  > {
+    const saved: string[] = [];
+    for (const email of emails) {
+      const result = await addProjectReportRecipient(projectId, email);
+      if ("error" in result) {
+        return { ok: false, error: result.error, saved };
+      }
+      saved.push(result.email);
+    }
+    return { ok: true, saved };
+  }
 
   function addExtraEmails() {
     const next = parseEmailList(extraDraft);
     if (next.length === 0) return;
-    const invalid = next.find((email) => !EMAIL_RE.test(email));
+    const invalid = invalidEmail(next);
     if (invalid) {
       setError(`“${invalid}” is not a valid email address.`);
       return;
     }
     setError(null);
-    setExtraEmails((current) => [...new Set([...current, ...next])]);
-    setExtraDraft("");
+    if (!saveForFuture) {
+      const oneOff = next.filter((email) => !savedSet.has(email));
+      if (oneOff.length) {
+        setExtraEmails((current) => [...new Set([...current, ...oneOff])]);
+      }
+      setExtraDraft("");
+      return;
+    }
+    startTransition(async () => {
+      const result = await persistEmails(next);
+      if (result.saved.length) {
+        setSavedEmails((current) => [...new Set([...current, ...result.saved])]);
+      }
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setExtraDraft("");
+    });
+  }
+
+  function removeSaved(email: string) {
+    setError(null);
+    startTransition(async () => {
+      const result = await removeProjectReportRecipient(projectId, email);
+      if ("error" in result) {
+        setError(result.error);
+        return;
+      }
+      setSavedEmails((current) => current.filter((item) => item !== email));
+    });
   }
 
   return (
@@ -114,12 +174,30 @@ export function ReportEditor({
         onSubmit={(event) => {
           event.preventDefault();
           const formData = new FormData(event.currentTarget);
-          for (const email of extraEmails) {
-            formData.append("recipients", email);
+          const draftEmails = parseEmailList(extraDraft);
+          const invalid = invalidEmail(draftEmails);
+          if (invalid) {
+            setError(`“${invalid}” is not a valid email address.`);
+            return;
           }
           setError(null);
           setMessage(null);
           startTransition(async () => {
+            if (saveForFuture && draftEmails.length > 0) {
+              const persisted = await persistEmails(draftEmails);
+              if (persisted.saved.length) {
+                setSavedEmails((current) => [
+                  ...new Set([...current, ...persisted.saved]),
+                ]);
+              }
+              if (!persisted.ok) {
+                setError(persisted.error);
+                return;
+              }
+            }
+            for (const email of extraEmails) {
+              formData.append("recipients", email);
+            }
             const result = await sendProjectReport(
               projectId,
               reportId,
@@ -141,13 +219,13 @@ export function ReportEditor({
             ? "Sends the store report narrative. You can include people who are not in Parallel. Requires Resend."
             : "Sends the narrative plus a short stats snapshot. You can include people who are not in Parallel. Requires Resend."}
         </p>
-        {clients.length === 0 ? (
+        {selectableClients.length === 0 && savedEmails.length === 0 ? (
           <p className="text-sm text-[var(--muted)]">
             No client members on this project. Add email addresses below.
           </p>
-        ) : (
+        ) : selectableClients.length > 0 ? (
           <ul className="space-y-2">
-            {clients.map((client) => (
+            {selectableClients.map((client) => (
               <li key={client.email}>
                 <label className="flex items-center gap-2 text-sm">
                   <input
@@ -168,7 +246,42 @@ export function ReportEditor({
               </li>
             ))}
           </ul>
-        )}
+        ) : null}
+
+        {savedEmails.length > 0 ? (
+          <div className="flex flex-col gap-2">
+            <p className="text-sm text-[var(--foreground)]">Always included</p>
+            <p className="text-xs text-[var(--muted)]">
+              Saved for this project and included every time a report is sent.
+              They do not need a Parallel login. Manage the list in{" "}
+              <Link
+                href={`/projects/${projectId}/settings`}
+                className="text-[var(--accent)] hover:underline"
+              >
+                project settings
+              </Link>
+              .
+            </p>
+            <ul className="space-y-2">
+              {savedEmails.map((email) => (
+                <li
+                  key={email}
+                  className="flex items-center justify-between gap-3 text-sm"
+                >
+                  <span>{email}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeSaved(email)}
+                    disabled={pending}
+                    className="text-xs text-[var(--muted)] hover:text-[var(--danger)] disabled:opacity-60"
+                  >
+                    Remove
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
 
         <div className="flex flex-col gap-2">
           <label className="text-sm text-[var(--muted)]" htmlFor="extra-recipients">
@@ -199,6 +312,14 @@ export function ReportEditor({
               Add
             </button>
           </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={saveForFuture}
+              onChange={(event) => setSaveForFuture(event.target.checked)}
+            />
+            Always include on future reports
+          </label>
           <p className="text-xs text-[var(--muted)]">
             Separate multiple addresses with commas. They do not need a Parallel
             login.

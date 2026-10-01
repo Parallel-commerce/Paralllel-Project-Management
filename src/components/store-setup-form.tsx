@@ -15,14 +15,50 @@ import type { ProjectThemeGit, StoreConnectionPublic } from "@/types/database";
 const inputClass =
   "rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2";
 
+function CopyUrlField({ label, value }: { label: string; value: string }) {
+  const [copied, setCopied] = useState(false);
+
+  return (
+    <div>
+      <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
+        {label}
+      </p>
+      <div className="mt-1 flex items-start gap-2">
+        <code className="min-w-0 flex-1 break-all rounded-md border border-[var(--border)] bg-white px-3 py-2 text-xs text-[var(--foreground)]">
+          {value}
+        </code>
+        <button
+          type="button"
+          onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(value);
+              setCopied(true);
+              window.setTimeout(() => setCopied(false), 1500);
+            } catch {
+              setCopied(false);
+            }
+          }}
+          className="shrink-0 rounded-md border border-[var(--border)] bg-white px-3 py-2 text-sm font-medium hover:bg-[var(--surface-2)]"
+        >
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function StoreSetupForm({
   projectId,
   connection,
   themeGit,
+  shopifyAppUrl,
+  shopifyRedirectUrl,
 }: {
   projectId: string;
   connection: StoreConnectionPublic | null;
   themeGit: ProjectThemeGit | null;
+  shopifyAppUrl: string;
+  shopifyRedirectUrl: string;
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -49,6 +85,17 @@ export function StoreSetupForm({
           New connects request <code>read_orders</code>,{" "}
           <code>read_themes</code>, and <code>read_reports</code>.
         </p>
+
+        <div className="mt-4 space-y-3 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-3">
+          <p className="text-sm text-[var(--muted)]">
+            Paste these into the custom app URL fields in the Dev Dashboard.
+          </p>
+          <CopyUrlField label="App URL" value={shopifyAppUrl} />
+          <CopyUrlField
+            label="Allowed redirection URL"
+            value={shopifyRedirectUrl}
+          />
+        </div>
 
         <form
           className="mt-4 grid gap-3 sm:grid-cols-2"
