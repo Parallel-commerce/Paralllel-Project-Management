@@ -181,9 +181,12 @@ async function ensureDefinitions(shop: string, accessToken: string) {
     `,
   );
 
-  if (!existing.metaobjectDefinitionByType) {
+  let definitionId = existing.metaobjectDefinitionByType?.id ?? null;
+
+  if (!definitionId) {
     const created = await admin<{
       metaobjectDefinitionCreate: {
+        metaobjectDefinition: { id: string } | null;
         userErrors: { field?: string[] | null; message: string; code?: string }[];
       };
     }>(
@@ -217,6 +220,11 @@ async function ensureDefinitions(shop: string, accessToken: string) {
       `,
     );
     assertUserErrors(created.metaobjectDefinitionCreate.userErrors);
+    definitionId = created.metaobjectDefinitionCreate.metaobjectDefinition?.id ?? null;
+  }
+
+  if (!definitionId) {
+    throw new Error("Shopify did not return the colour group definition.");
   }
 
   if (!existing.metafieldDefinitions.nodes.length) {
@@ -228,16 +236,17 @@ async function ensureDefinitions(shop: string, accessToken: string) {
       shop,
       accessToken,
       /* GraphQL */ `
-        mutation ColourGroupMetafield {
+        mutation ColourGroupMetafield($definitionId: String!) {
           metafieldDefinitionCreate(
             definition: {
               name: "Colour group"
               namespace: "$app"
               key: "${COLOUR_GROUP_KEY}"
               description: "Colour-variant group for this product."
-              type: "metaobject_reference<${COLOUR_GROUP_TYPE}>"
+              type: "metaobject_reference"
               ownerType: PRODUCT
               access: { admin: MERCHANT_READ, storefront: PUBLIC_READ }
+              validations: [{ name: "metaobject_definition_id", value: $definitionId }]
             }
           ) {
             createdDefinition {
@@ -251,7 +260,27 @@ async function ensureDefinitions(shop: string, accessToken: string) {
           }
         }
       `,
+      { definitionId },
     );
+    // #region agent log
+    fetch("http://127.0.0.1:7926/ingest/ecf3ebf1-ce0a-4442-bafa-46c68a8be40e", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "0a2197" },
+      body: JSON.stringify({
+        sessionId: "0a2197",
+        runId: "post-fix",
+        hypothesisId: "A",
+        location: "colour-groups.ts:ensureDefinitions",
+        message: "metafield definition create",
+        data: {
+          type: "metaobject_reference",
+          hasDefinitionId: Boolean(definitionId),
+          userErrorCount: created.metafieldDefinitionCreate.userErrors.length,
+        },
+        timestamp: Date.now(),
+      }),
+    }).catch(() => {});
+    // #endregion
     assertUserErrors(created.metafieldDefinitionCreate.userErrors);
   }
 }
