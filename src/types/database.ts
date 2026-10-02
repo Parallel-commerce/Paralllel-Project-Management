@@ -525,6 +525,10 @@ export type ProjectShopifyConnection = {
   status: ShopifyConnectionStatus;
   last_error: string | null;
   last_synced_at: string | null;
+  colour_grouping_enabled: boolean;
+  colour_grouping_last_run_at: string | null;
+  colour_grouping_last_error: string | null;
+  colour_grouping_last_summary: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -538,6 +542,10 @@ export type StoreConnectionPublic = {
   last_error: string | null;
   last_synced_at: string | null;
   scopes: string | null;
+  colour_grouping_enabled: boolean;
+  colour_grouping_last_run_at: string | null;
+  colour_grouping_last_error: string | null;
+  colour_grouping_last_summary: string | null;
 };
 
 export type ProjectThemeGit = {
@@ -1414,6 +1422,10 @@ export type Database = {
           status?: ShopifyConnectionStatus;
           last_error?: string | null;
           last_synced_at?: string | null;
+          colour_grouping_enabled?: boolean;
+          colour_grouping_last_run_at?: string | null;
+          colour_grouping_last_error?: string | null;
+          colour_grouping_last_summary?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -1426,6 +1438,10 @@ export type Database = {
           status?: ShopifyConnectionStatus;
           last_error?: string | null;
           last_synced_at?: string | null;
+          colour_grouping_enabled?: boolean;
+          colour_grouping_last_run_at?: string | null;
+          colour_grouping_last_error?: string | null;
+          colour_grouping_last_summary?: string | null;
           updated_at?: string;
         };
         Relationships: [

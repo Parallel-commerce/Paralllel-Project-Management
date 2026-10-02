@@ -13,11 +13,13 @@ import {
   normalizeThemeBranch,
   normalizeThemeRepo,
 } from "@/lib/github/theme";
+import { syncProjectColourGroups } from "@/lib/shopify/colour-groups";
 import {
   SHOPIFY_OAUTH_COOKIE,
   createOAuthState,
   shopifyAuthorizeUrl,
 } from "@/lib/shopify/oauth";
+import { scopesForColourGrouping } from "@/lib/shopify/scopes";
 import { captureShopifySnapshot } from "@/lib/shopify/sync";
 import { captureStoreSpeed } from "@/lib/shopify/speed";
 import { requireStoreAdmin } from "@/lib/store-auth";
@@ -175,8 +177,41 @@ export async function startShopifyConnect(projectId: string) {
       shop: row.shop_domain,
       clientId: row.client_id,
       nonce,
+      scopes: scopesForColourGrouping(row.colour_grouping_enabled),
     }),
   );
+}
+
+export async function setColourGroupingEnabled(
+  projectId: string,
+  enabled: boolean,
+): Promise<{ error: string } | { ok: true }> {
+  const admin = await requireStoreAdmin(projectId);
+  if (!admin.ok) return { error: admin.error };
+
+  const { error } = await admin.supabase
+    .from("project_shopify_connections")
+    .update({
+      colour_grouping_enabled: enabled,
+      colour_grouping_last_error: null,
+    })
+    .eq("project_id", projectId);
+
+  if (error) return { error: error.message };
+
+  revalidateStoreAdminPaths(projectId);
+  return { ok: true };
+}
+
+export async function syncColourGroups(
+  projectId: string,
+): Promise<{ error: string } | { ok: true; summary: string }> {
+  const admin = await requireStoreAdmin(projectId);
+  if (!admin.ok) return { error: admin.error };
+
+  const result = await syncProjectColourGroups(admin.supabase, projectId);
+  revalidateStoreAdminPaths(projectId);
+  return result;
 }
 
 export async function disconnectShopifyStore(

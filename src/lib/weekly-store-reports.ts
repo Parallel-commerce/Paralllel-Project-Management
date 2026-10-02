@@ -262,6 +262,10 @@ async function prepareOneStore(
     status: "connected",
     last_error: null,
     last_synced_at: null,
+    colour_grouping_enabled: false,
+    colour_grouping_last_run_at: null,
+    colour_grouping_last_error: null,
+    colour_grouping_last_summary: null,
     created_at: "",
     updated_at: "",
   } satisfies ProjectShopifyConnection);

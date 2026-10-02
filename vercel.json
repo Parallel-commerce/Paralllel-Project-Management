@@ -9,6 +9,10 @@
       "schedule": "40 0 * * *"
     },
     {
+      "path": "/api/cron/colour-groups",
+      "schedule": "20 1 * * *"
+    },
+    {
       "path": "/api/cron/weekly-store-reports",
       "schedule": "0 5 * * 1"
     },

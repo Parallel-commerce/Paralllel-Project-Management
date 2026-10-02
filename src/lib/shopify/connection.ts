@@ -43,5 +43,9 @@ export function toPublicConnection(
     last_error: row.last_error,
     last_synced_at: row.last_synced_at,
     scopes: row.scopes,
+    colour_grouping_enabled: row.colour_grouping_enabled,
+    colour_grouping_last_run_at: row.colour_grouping_last_run_at,
+    colour_grouping_last_error: row.colour_grouping_last_error,
+    colour_grouping_last_summary: row.colour_grouping_last_summary,
   };
 }

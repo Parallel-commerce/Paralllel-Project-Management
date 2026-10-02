@@ -7,7 +7,9 @@ import {
   disconnectShopifyStore,
   saveShopifyCredentials,
   saveThemeGit,
+  setColourGroupingEnabled,
   startShopifyConnect,
+  syncColourGroups,
   syncShopifySnapshot,
 } from "@/lib/actions/store";
 import type { ProjectThemeGit, StoreConnectionPublic } from "@/types/database";
@@ -70,10 +72,26 @@ export function StoreSetupForm({
   const [connecting, startConnect] = useTransition();
   const [syncing, startSync] = useTransition();
   const [disconnecting, startDisconnect] = useTransition();
+  const [togglingGrouping, startToggleGrouping] = useTransition();
+  const [groupingProducts, startGroupingProducts] = useTransition();
+  const [groupSummary, setGroupSummary] = useState<string | null>(null);
+  const [groupError, setGroupError] = useState<string | null>(null);
 
   const connected =
     connection?.has_access_token && connection.status === "connected";
-  const shopifyBusy = savingShopify || connecting || syncing || disconnecting;
+  const shopifyBusy =
+    savingShopify ||
+    connecting ||
+    syncing ||
+    disconnecting ||
+    togglingGrouping ||
+    groupingProducts;
+  const colourGroupingOn = Boolean(connection?.colour_grouping_enabled);
+  const colourGroupingScopesReady = Boolean(
+    connection?.scopes?.split(/[,\s]+/).includes("write_products") &&
+      connection.scopes.split(/[,\s]+/).includes("write_metaobjects") &&
+      connection.scopes.split(/[,\s]+/).includes("write_metaobject_definitions"),
+  );
 
   return (
     <>
@@ -84,6 +102,14 @@ export function StoreSetupForm({
           Dashboard, then paste its credentials here. Clients never see this.
           New connects request <code>read_orders</code>,{" "}
           <code>read_themes</code>, and <code>read_reports</code>.
+          {colourGroupingOn ? (
+            <>
+              {" "}
+              Colour grouping also requests <code>write_products</code>,{" "}
+              <code>write_metaobjects</code>, and{" "}
+              <code>write_metaobject_definitions</code> when you reconnect.
+            </>
+          ) : null}
         </p>
 
         <div className="mt-4 space-y-3 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-3">
@@ -266,6 +292,89 @@ export function StoreSetupForm({
           </p>
         ) : null}
       </section>
+
+      {connected && connection ? (
+        <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
+          <h2 className="font-medium">Colour groups</h2>
+          <p className="mt-1 text-sm text-[var(--muted)]">
+            Products titled <span className="text-[var(--foreground)]">Name (Colour)</span>{" "}
+            are grouped into one metaobject, and each product points at that group.
+            A daily job picks up new products. Turn this on separately for each store.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={shopifyBusy}
+              onClick={() => {
+                setGroupError(null);
+                setGroupSummary(null);
+                startToggleGrouping(async () => {
+                  const result = await setColourGroupingEnabled(
+                    projectId,
+                    !colourGroupingOn,
+                  );
+                  if ("error" in result) {
+                    setGroupError(result.error);
+                    return;
+                  }
+                  router.refresh();
+                });
+              }}
+              className="rounded-md border border-[var(--border)] bg-white px-4 py-2 text-sm font-medium hover:bg-[var(--surface-2)] disabled:opacity-60"
+            >
+              {togglingGrouping
+                ? "Saving…"
+                : colourGroupingOn
+                  ? "Turn off colour grouping"
+                  : "Turn on colour grouping"}
+            </button>
+            {colourGroupingOn ? (
+              <button
+                type="button"
+                disabled={shopifyBusy || !colourGroupingScopesReady}
+                onClick={() => {
+                  setGroupError(null);
+                  setGroupSummary(null);
+                  startGroupingProducts(async () => {
+                    const result = await syncColourGroups(projectId);
+                    if ("error" in result) {
+                      setGroupError(result.error);
+                      return;
+                    }
+                    setGroupSummary(result.summary);
+                    router.refresh();
+                  });
+                }}
+                className="rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)] disabled:opacity-60"
+              >
+                {groupingProducts ? "Grouping…" : "Group products now"}
+              </button>
+            ) : null}
+          </div>
+          {colourGroupingOn && !colourGroupingScopesReady ? (
+            <p className="mt-3 text-sm text-[var(--muted)]">
+              Reconnect the store above. The app permissions are not on the
+              current token yet, so grouping stays paused until then.
+            </p>
+          ) : null}
+          {connection.colour_grouping_last_summary ? (
+            <p className="mt-3 text-sm text-[var(--muted)]">
+              Last run: {connection.colour_grouping_last_summary}
+              {connection.colour_grouping_last_run_at
+                ? ` · ${new Date(connection.colour_grouping_last_run_at).toLocaleString("en-GB")}`
+                : ""}
+            </p>
+          ) : null}
+          {groupSummary ? (
+            <p className="mt-3 text-sm text-[var(--muted)]">{groupSummary}</p>
+          ) : null}
+          {groupError || connection.colour_grouping_last_error ? (
+            <p className="mt-3 text-sm text-[var(--danger)]" role="alert">
+              {groupError ?? connection.colour_grouping_last_error}
+            </p>
+          ) : null}
+        </section>
+      ) : null}
 
       <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
         <h2 className="font-medium">Theme git</h2>

@@ -53,10 +53,11 @@ export function shopifyAuthorizeUrl(input: {
   shop: string;
   clientId: string;
   nonce: string;
+  scopes?: string;
 }) {
   const url = new URL(`${shopAdminOrigin(input.shop)}/admin/oauth/authorize`);
   url.searchParams.set("client_id", input.clientId);
-  url.searchParams.set("scope", shopifyScopesParam());
+  url.searchParams.set("scope", input.scopes ?? shopifyScopesParam());
   url.searchParams.set("redirect_uri", shopifyCallbackUrl());
   url.searchParams.set("state", input.nonce);
   return url.toString();
