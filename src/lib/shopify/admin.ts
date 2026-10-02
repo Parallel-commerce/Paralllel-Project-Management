@@ -105,8 +105,54 @@ const ORDERS_PAGE_QUERY = /* GraphQL */ `
   }
 `;
 
+function graphqlErrorList(errors: unknown): GraphQlError[] | undefined {
+  if (errors == null) return undefined;
+  if (typeof errors === "string") {
+    const message = errors.trim();
+    return message ? [{ message }] : undefined;
+  }
+  if (Array.isArray(errors)) {
+    const list = errors.flatMap((error) => {
+      if (typeof error === "string") {
+        const message = error.trim();
+        return message ? [{ message }] : [];
+      }
+      if (
+        error &&
+        typeof error === "object" &&
+        "message" in error &&
+        typeof error.message === "string"
+      ) {
+        return [error as GraphQlError];
+      }
+      return [];
+    });
+    return list.length ? list : undefined;
+  }
+  if (typeof errors === "object") {
+    const record = errors as Record<string, unknown>;
+    if (typeof record.message === "string" && record.message.trim()) {
+      return [{ message: record.message.trim() }];
+    }
+    const parts = Object.entries(record)
+      .map(([key, value]) => {
+        if (typeof value === "string" && value.trim()) return `${key}: ${value.trim()}`;
+        if (Array.isArray(value)) return `${key}: ${value.map(String).join(", ")}`;
+        return "";
+      })
+      .filter(Boolean);
+    return [
+      {
+        message: parts.join("; ") || "Shopify returned an unexpected error.",
+      },
+    ];
+  }
+  return [{ message: String(errors) }];
+}
+
 export function isAccessDenied(errors: GraphQlError[] | undefined) {
-  return (errors ?? []).some((error) => {
+  const list = Array.isArray(errors) ? errors : [];
+  return list.some((error) => {
     const code = error.extensions?.code?.toUpperCase() ?? "";
     const message = error.message.toLowerCase();
     return (
@@ -136,11 +182,20 @@ export async function shopifyGraphql<T>(
     },
   );
 
-  const json = (await response.json().catch(() => null)) as GraphQlResponse<T> | null;
-  if (!response.ok && !json) {
-    throw new Error(`Shopify Admin API failed (${response.status}).`);
+  const json = (await response.json().catch(() => null)) as
+    | (GraphQlResponse<T> & { errors?: unknown })
+    | null;
+  const errors = graphqlErrorList(json?.errors);
+  if (!response.ok) {
+    const detail = errors?.map((error) => error.message).join(" ");
+    throw new Error(
+      detail
+        ? `Shopify Admin API failed (${response.status}): ${detail}`
+        : `Shopify Admin API failed (${response.status}).`,
+    );
   }
-  return json ?? {};
+  if (!json) return {};
+  return errors ? { ...json, errors } : json;
 }
 
 export function moneyAmount(value: string | null | undefined) {
