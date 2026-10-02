@@ -17,6 +17,7 @@ import {
 } from "@/lib/allocate-due-dates";
 import { logActivity, notifyUser, sendSignInCode } from "@/lib/notify";
 import { PROJECT_LOGO_BUCKET } from "@/lib/project-logo";
+import { projectReportPath } from "@/lib/report-paths";
 import { parseProjectEngagement } from "@/lib/project-type";
 import { parseScheduledWeekdays } from "@/lib/scheduled-weekdays";
 import { parseImportance } from "@/lib/task-importance";
@@ -1286,7 +1287,7 @@ export async function createTask(projectId: string, listId: string, formData: Fo
   revalidatePath("/tasks");
   revalidatePath("/home");
   if (source.sourceReportId) {
-    revalidatePath(`/projects/${projectId}/reports/${source.sourceReportId}`);
+    revalidatePath(projectReportPath(projectId, source.sourceReportId));
   }
   return {
     success: true,

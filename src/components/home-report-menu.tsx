@@ -63,22 +63,22 @@ export function HomeReportMenu({
         type="button"
         aria-expanded={open}
         aria-haspopup="menu"
-        aria-label={`${label} for ${projectName}`}
+        aria-label={`${label} report for ${projectName}`}
         onClick={() => {
           setOpen((value) => !value);
           setError(null);
         }}
-        className="inline-flex items-center gap-2 rounded-md border border-[var(--border)] bg-white px-3 py-1.5 text-sm font-medium hover:bg-[var(--surface-2)]"
+        className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-white px-2 py-0.5 text-xs font-medium hover:bg-[var(--surface-2)]"
       >
         {label}
         {ready ? (
-          <span className="text-xs font-medium text-[var(--accent)]">Ready</span>
+          <span className="font-medium text-[var(--accent)]">Ready</span>
         ) : null}
       </button>
       {open ? (
         <div
           role="menu"
-          className="absolute left-0 z-20 mt-1 w-64 rounded-lg border border-[var(--border)] bg-white p-2 shadow-lg"
+          className="absolute right-0 z-20 mt-1 w-64 rounded-lg border border-[var(--border)] bg-white p-2 shadow-lg"
         >
           {choices.map((choice) => (
             <div key={choice.key} className="px-2 py-2">
@@ -105,7 +105,7 @@ export function HomeReportMenu({
                   </Link>
                 ) : (
                   <Link
-                    href={`/projects/${projectId}/reports`}
+                    href={`/reports/${projectId}`}
                     role="menuitem"
                     className="text-sm text-[var(--accent)] hover:underline"
                   >

@@ -1,3 +1,4 @@
+import { DailySnapshotPages } from "@/components/daily-snapshot-pages";
 import { formatDate, formatDateTime, formatDayMonth } from "@/lib/format-date";
 import {
   snapshotChangePct,
@@ -42,25 +43,6 @@ function trendClass(trend: ScorecardTrend | undefined) {
   if (trend === "up") return "text-[var(--status-done-label)]";
   if (trend === "down") return "text-[var(--danger)]";
   return "text-[var(--muted)]";
-}
-
-function PeriodValue({
-  value,
-  hint,
-  hintTrend,
-}: {
-  value: string;
-  hint?: string;
-  hintTrend?: ScorecardTrend;
-}) {
-  return (
-    <div>
-      <p className="font-display text-xl tracking-tight">{value}</p>
-      {hint ? (
-        <p className={`mt-0.5 text-xs ${trendClass(hintTrend)}`}>{hint}</p>
-      ) : null}
-    </div>
-  );
 }
 
 export function StoreDashboard({
@@ -179,103 +161,61 @@ export function StoreDashboard({
 
   return (
     <section className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h2 className="font-medium">{snapshot.shop_name ?? "Shopify store"}</h2>
-          <p className="mt-1 text-sm text-[var(--muted)]">
-            {shopMeta.join(" · ")}
-          </p>
-        </div>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <p className="text-sm text-[var(--muted)]">
+          <span className="font-medium text-[var(--foreground)]">
+            {snapshot.shop_name ?? "Shopify store"}
+          </span>
+          {shopMeta.length > 0 ? ` · ${shopMeta.join(" · ")}` : null}
+        </p>
         <p className="text-xs text-[var(--muted)]">
           Updated {formatDateTime(snapshot.captured_at)}
         </p>
       </div>
 
-      <div className="grid gap-2 sm:hidden">
-        {periods.map((period) => (
-          <div
+      <div className="grid overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] sm:grid-cols-3">
+        {periods.map((period, index) => (
+          <section
             key={period.label}
-            className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2.5"
+            aria-label={period.label}
+            className={
+              index === 0
+                ? "bg-[var(--accent-soft)]"
+                : "border-t border-[var(--border)] sm:border-t-0 sm:border-l"
+            }
           >
-            <p className="text-sm font-medium">
-              {period.label}
+            <div className="flex items-baseline justify-between gap-3 px-4 pt-3">
+              <h3 className="font-display text-lg tracking-tight">
+                {period.label}
+              </h3>
               {period.sub ? (
-                <span className="font-normal text-[var(--muted)]">
-                  {" "}
-                  · {period.sub}
-                </span>
+                <p className="text-xs text-[var(--muted)]">{period.sub}</p>
               ) : null}
-            </p>
-            <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2">
+            </div>
+            <dl className="px-4 pt-1 pb-3">
               {period.values.map((metric) => (
-                <div key={metric.label}>
-                  <p className="text-xs text-[var(--muted)]">{metric.label}</p>
-                  <PeriodValue
-                    value={metric.value}
-                    hint={metric.hint}
-                    hintTrend={metric.hintTrend}
-                  />
+                <div
+                  key={metric.label}
+                  className="flex items-baseline justify-between gap-3 border-b border-[var(--border)]/80 py-1.5 last:border-0"
+                >
+                  <dt className="text-xs text-[var(--muted)]">{metric.label}</dt>
+                  <dd className="text-right">
+                    <span className="font-display text-lg tracking-tight tabular-nums">
+                      {metric.value}
+                    </span>
+                    {metric.hint ? (
+                      <span
+                        className={`ml-2 text-xs tabular-nums ${trendClass(metric.hintTrend)}`}
+                      >
+                        {metric.hint}
+                      </span>
+                    ) : null}
+                  </dd>
                 </div>
               ))}
-            </div>
-          </div>
+            </dl>
+          </section>
         ))}
-      </div>
-
-      <div className="hidden max-w-3xl overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--surface)] sm:block">
-        <table className="w-full min-w-[28rem] text-left">
-          <caption className="sr-only">
-            Online Store metrics for yesterday, the last 7 days, and the last 30
-            days
-          </caption>
-          <thead>
-            <tr className="border-b border-[var(--border)]">
-              <th className="w-28 px-4 py-3" scope="col">
-                <span className="sr-only">Metric</span>
-              </th>
-              <th className="px-4 py-3 align-top" scope="col">
-                <span className="block text-sm font-medium">Yesterday</span>
-                <span className="mt-0.5 block text-xs text-[var(--muted)]">
-                  {yesterdayDate ?? "—"}
-                </span>
-              </th>
-              <th className="px-4 py-3 align-top" scope="col">
-                <span className="block text-sm font-medium">7 days</span>
-              </th>
-              <th className="px-4 py-3 align-top" scope="col">
-                <span className="block text-sm font-medium">30 days</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr
-                key={row.label}
-                className="border-b border-[var(--border)] last:border-0"
-              >
-                <th
-                  className="px-4 py-2.5 text-sm font-medium text-[var(--muted)]"
-                  scope="row"
-                >
-                  {row.label}
-                </th>
-                <td className="px-4 py-2.5">
-                  <PeriodValue
-                    value={row.yesterday}
-                    hint={row.hint}
-                    hintTrend={row.hintTrend}
-                  />
-                </td>
-                <td className="px-4 py-2.5">
-                  <PeriodValue value={row.week} />
-                </td>
-                <td className="px-4 py-2.5">
-                  <PeriodValue value={row.month} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
       </div>
       <p className="text-xs text-[var(--muted)]">
         Orders and sales are Online Store only. POS and other channels stay in
@@ -290,7 +230,8 @@ export function StoreDashboard({
 
       {!latestDaily ? (
         <p className="text-sm text-[var(--muted)]">
-          The first daily snapshot appears after midnight, or after Sync now.
+          The first daily snapshot appears after midnight, or after a sync from
+          Settings.
         </p>
       ) : null}
 
@@ -298,62 +239,32 @@ export function StoreDashboard({
         <h3 className="font-medium">Daily snapshots</h3>
         {daily.length === 0 ? (
           <p className="mt-2 text-sm text-[var(--muted)]">
-            No daily snapshots yet. Sync now will record yesterday, and the
-            nightly job will keep the series going.
+            No daily snapshots yet. Sync now in Settings records yesterday, and
+            the nightly job keeps the series going.
           </p>
         ) : (
-          <div className="mt-2 overflow-x-auto">
-            <table className="w-full min-w-[32rem] text-left text-sm">
-              <thead>
-                <tr className="border-b border-[var(--border)] text-[var(--muted)]">
-                  <th className="py-1.5 pr-3 font-medium">Day</th>
-                  <th className="py-1.5 pr-3 font-medium">Orders</th>
-                  <th className="py-1.5 pr-3 font-medium">Sales</th>
-                  <th className="py-1.5 pr-3 font-medium">Sessions</th>
-                  <th className="py-1.5 pr-3 font-medium">Conversion</th>
-                  <th className="py-1.5 font-medium">vs previous</th>
-                </tr>
-              </thead>
-              <tbody>
-                {daily.map((row, index) => {
-                  const previous = daily[index + 1];
-                  const change = vsPreviousDayCopy(
-                    snapshotChangePct(row, previous, "sales_1d"),
-                  );
-                  return (
-                    <tr
-                      key={row.id}
-                      className="border-b border-[var(--border)] last:border-0"
-                    >
-                      <td className="py-1.5 pr-3">
-                        {row.snapshot_date
-                          ? formatDate(row.snapshot_date)
-                          : formatDateTime(row.captured_at)}
-                      </td>
-                      <td className="py-1.5 pr-3">{formatCount(row.orders_1d)}</td>
-                      <td className="py-1.5 pr-3">
-                        {row.sales_available
-                          ? formatMoney(
-                              row.sales_1d,
-                              row.currency ?? snapshot.currency,
-                            )
-                          : "—"}
-                      </td>
-                      <td className="py-1.5 pr-3">
-                        {formatCount(row.sessions_1d)}
-                      </td>
-                      <td className="py-1.5 pr-3">
-                        {formatPercent(row.conversion_rate_1d)}
-                      </td>
-                      <td className={`py-1.5 ${trendClass(change?.trend)}`}>
-                        {previous ? (change?.label ?? "—") : "—"}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <DailySnapshotPages
+            rows={daily.map((row, index) => {
+              const previous = daily[index + 1];
+              const change = vsPreviousDayCopy(
+                snapshotChangePct(row, previous, "sales_1d"),
+              );
+              return {
+                id: row.id,
+                day: row.snapshot_date
+                  ? formatDate(row.snapshot_date)
+                  : formatDateTime(row.captured_at),
+                orders: formatCount(row.orders_1d),
+                sales: row.sales_available
+                  ? formatMoney(row.sales_1d, row.currency ?? snapshot.currency)
+                  : "—",
+                sessions: formatCount(row.sessions_1d),
+                conversion: formatPercent(row.conversion_rate_1d),
+                change: previous ? (change?.label ?? "—") : null,
+                trend: change?.trend,
+              };
+            })}
+          />
         )}
       </div>
     </section>

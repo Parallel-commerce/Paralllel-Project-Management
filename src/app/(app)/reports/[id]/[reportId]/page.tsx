@@ -151,10 +151,10 @@ export default async function ProjectReportDetailPage({
   return (
     <div>
       <Link
-        href={`/projects/${id}/reports`}
+        href={`/reports/${id}`}
         className="text-sm text-[var(--muted)] hover:text-[var(--foreground)]"
       >
-        ← Reports
+        ← {project.name}
       </Link>
       <p className="mt-2 text-sm text-[var(--muted)]">
         Created {formatDateTime(report.created_at)}
@@ -167,7 +167,7 @@ export default async function ProjectReportDetailPage({
               The previous period was not in the archive, so we drafted that
               report first. It is in the{" "}
               <Link
-                href={`/projects/${id}/reports`}
+                href={`/reports/${id}`}
                 className="text-[var(--accent)] hover:underline"
               >
                 archive

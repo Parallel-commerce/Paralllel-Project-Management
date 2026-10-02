@@ -1,9 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
-import { Suspense } from "react";
 
 import { AdminHomeInsights } from "@/components/admin-home-insights";
-import { HomeWeeklyReports } from "@/components/home-weekly-reports";
 import { AdminOnly } from "@/components/admin-only";
 import {
   HomeQuickTaskForm,
@@ -120,12 +118,6 @@ export default async function HomeDashboardPage() {
           {isPlatformAdmin ? ", and an operations overview" : ""}.
         </p>
       </div>
-
-      {isPlatformAdmin || isProjectAdmin ? (
-        <Suspense fallback={null}>
-          <HomeWeeklyReports />
-        </Suspense>
-      ) : null}
 
       <div className="mt-6 flex flex-col gap-6 lg:mt-8 lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-8">
         <section className="order-1 min-w-0 lg:order-none lg:col-start-1 lg:row-start-1">

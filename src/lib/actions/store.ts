@@ -29,6 +29,8 @@ import type {
 function revalidateStoreAdminPaths(projectId: string) {
   revalidatePath(`/projects/${projectId}`);
   revalidatePath(`/projects/${projectId}/store`);
+  revalidatePath("/reports");
+  revalidatePath(`/reports/${projectId}`);
   revalidatePath(`/projects/${projectId}/settings`);
 }
 

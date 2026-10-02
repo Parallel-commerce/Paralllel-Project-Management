@@ -21,6 +21,11 @@ export const primaryNavItems: PrimaryNavItem[] = [
     match: (pathname) => pathname.startsWith("/projects"),
   },
   {
+    href: "/reports",
+    label: "Reports",
+    match: (pathname) => pathname.startsWith("/reports"),
+  },
+  {
     href: "/crm",
     label: "CRM",
     match: (pathname) => pathname.startsWith("/crm"),

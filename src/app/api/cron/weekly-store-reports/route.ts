@@ -23,9 +23,10 @@ export async function GET(request: Request) {
     const result = await runWeeklyStoreReports(supabase);
     revalidatePath("/home");
     for (const item of result.results) {
-      revalidatePath(`/projects/${item.projectId}/reports`);
+      revalidatePath("/reports");
+      revalidatePath(`/reports/${item.projectId}`);
       if (item.reportId) {
-        revalidatePath(`/projects/${item.projectId}/reports/${item.reportId}`);
+        revalidatePath(`/reports/${item.projectId}/${item.reportId}`);
       }
     }
     return NextResponse.json(result);

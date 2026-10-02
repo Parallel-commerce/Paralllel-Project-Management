@@ -1,12 +1,7 @@
 import { AdminOnly } from "@/components/admin-only";
 import { RefreshStoreSpeedButton } from "@/components/refresh-store-speed-button";
 import { formatDateTime } from "@/lib/format-date";
-import {
-  cwvLabel,
-  formatCls,
-  formatMs,
-  type CwvRating,
-} from "@/lib/pagespeed";
+import { formatCls, formatMs, type CwvRating } from "@/lib/pagespeed";
 import type {
   ProjectStoreSpeedPage,
   ProjectStoreSpeedRun,
@@ -16,18 +11,11 @@ import type {
 const PAGE_ORDER: SpeedPageKind[] = ["home", "collection", "product", "cart"];
 
 const PAGE_LABEL: Record<SpeedPageKind, string> = {
-  home: "Homepage",
+  home: "Home",
   collection: "Collection",
   product: "Product",
   cart: "Cart",
 };
-
-function ratingClass(rating: CwvRating | string | null | undefined) {
-  if (rating === "good") return "text-[var(--status-done-label)]";
-  if (rating === "poor") return "text-[var(--danger)]";
-  if (rating === "needs_improvement") return "text-[var(--status-feedback-label)]";
-  return "text-[var(--muted)]";
-}
 
 function asRating(value: string | null | undefined): CwvRating | null {
   if (value === "good" || value === "needs_improvement" || value === "poor") {
@@ -36,11 +24,32 @@ function asRating(value: string | null | undefined): CwvRating | null {
   return null;
 }
 
-function pageLabel(page: ProjectStoreSpeedPage) {
+function labRating(score: number | null): CwvRating | null {
+  if (score == null) return null;
+  if (score >= 90) return "good";
+  if (score >= 50) return "needs_improvement";
+  return "poor";
+}
+
+function ratingInk(rating: CwvRating | null) {
+  if (rating === "good") return "text-[var(--status-done-label)]";
+  if (rating === "poor") return "text-[var(--danger)]";
+  if (rating === "needs_improvement") return "text-[var(--status-feedback-label)]";
+  return "text-[var(--foreground)]";
+}
+
+function ratingWash(rating: CwvRating | null) {
+  if (rating === "good") return "bg-[var(--status-done-bg)]";
+  if (rating === "poor") return "bg-[color-mix(in_srgb,var(--danger)_10%,white)]";
+  if (rating === "needs_improvement") return "bg-[var(--status-feedback-bg)]";
+  return "bg-[var(--surface)]";
+}
+
+function pageTitle(page: ProjectStoreSpeedPage) {
   if (page.page_kind === "collection" || page.page_kind === "product") {
-    return page.title || PAGE_LABEL[page.page_kind];
+    return page.title || null;
   }
-  return PAGE_LABEL[page.page_kind];
+  return null;
 }
 
 export function StoreSpeedPanel({
@@ -58,17 +67,30 @@ export function StoreSpeedPanel({
     (a, b) => PAGE_ORDER.indexOf(a.page_kind) - PAGE_ORDER.indexOf(b.page_kind),
   );
   const originRating = asRating(run?.origin_category);
+  const passed = run?.origin_passed;
 
   return (
-    <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h3 className="font-medium">Core Web Vitals</h3>
-          <p className="mt-1 text-sm text-[var(--muted)]">
-            Mobile PageSpeed for the homepage, a collection, a product, and cart.
-            Field data is real Chrome users when Google has enough traffic; lab
-            scores are Lighthouse.
-          </p>
+    <section>
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+          <h3 className="font-display text-lg tracking-tight">Core Web Vitals</h3>
+          {run ? (
+            <p className={`text-sm font-medium ${ratingInk(originRating)}`}>
+              {passed == null
+                ? "Not enough field data"
+                : passed
+                  ? "Passes"
+                  : "Fails"}
+            </p>
+          ) : null}
+          {run ? (
+            <p className="text-xs tabular-nums text-[var(--muted)]">
+              LCP {formatMs(run.origin_lcp_ms)} · INP {formatMs(run.origin_inp_ms)} ·
+              CLS {formatCls(run.origin_cls)}
+              {" · "}
+              {formatDateTime(run.captured_at)}
+            </p>
+          ) : null}
         </div>
         {canRefresh ? (
           <AdminOnly variant="inline">
@@ -78,97 +100,62 @@ export function StoreSpeedPanel({
       </div>
 
       {!run ? (
-        <p className="mt-4 text-sm text-[var(--muted)]">
+        <p className="mt-2 text-sm text-[var(--muted)]">
           {canRefresh
-            ? "No speed snapshot yet. Refresh speed to capture the first run. It takes a minute or two."
+            ? "No speed snapshot yet. Refresh speed to capture the first run."
             : "Speed snapshots will appear here once your Parallel team captures them."}
         </p>
       ) : (
-        <>
-          <div className="mt-4 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3">
-            <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
-              Store origin · field data
-            </p>
-            <p className={`mt-1 font-medium ${ratingClass(originRating)}`}>
-              {run.origin_passed == null
-                ? "Not enough Chrome user data yet"
-                : run.origin_passed
-                  ? "Passes Core Web Vitals"
-                  : "Does not pass Core Web Vitals"}
-            </p>
-            <p className="mt-1 text-sm text-[var(--muted)]">
-              LCP {formatMs(run.origin_lcp_ms)} · INP {formatMs(run.origin_inp_ms)} ·
-              CLS {formatCls(run.origin_cls)}
-              {run.origin_url ? ` · ${run.origin_url.replace(/^https?:\/\//, "")}` : ""}
-            </p>
-            <p className="mt-1 text-xs text-[var(--muted)]">
-              Updated {formatDateTime(run.captured_at)}
-            </p>
-          </div>
-
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
-            {ordered.map((page) => {
-              const fieldRating = asRating(page.field_category);
-              const hasField = page.field_lcp_ms != null || page.field_cls != null;
-              return (
-                <article
-                  key={page.id}
-                  className="rounded-lg border border-[var(--border)] px-4 py-3"
-                >
-                  <p className="text-xs uppercase tracking-wide text-[var(--muted)]">
+        <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
+          {ordered.map((page) => {
+            const score = page.performance_score;
+            const band = labRating(score);
+            const title = pageTitle(page);
+            const hasField = page.field_lcp_ms != null || page.field_cls != null;
+            const lcp = hasField ? page.field_lcp_ms : page.lab_lcp_ms;
+            const cls = hasField ? page.field_cls : page.lab_cls;
+            return (
+              <article
+                key={page.id}
+                className={`rounded-xl px-3 py-2.5 ${ratingWash(band)}`}
+              >
+                <div className="flex items-baseline justify-between gap-2">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--muted)]">
                     {PAGE_LABEL[page.page_kind]}
                   </p>
-                  <p className="mt-1 font-medium">{pageLabel(page)}</p>
-                  <p className="mt-0.5 truncate text-xs text-[var(--muted)]">
-                    {page.url.replace(/^https?:\/\//, "")}
-                  </p>
-                  {page.error ? (
-                    <p className="mt-2 text-sm text-[var(--danger)]">{page.error}</p>
-                  ) : (
-                    <>
-                      <p className="mt-2 font-display text-2xl tracking-tight">
-                        {page.performance_score != null
-                          ? page.performance_score
-                          : "—"}
-                        <span className="ml-1 text-sm font-sans text-[var(--muted)]">
-                          lab
-                        </span>
-                      </p>
-                      <p className={`mt-1 text-sm ${ratingClass(fieldRating)}`}>
-                        {hasField
-                          ? `Field ${cwvLabel(fieldRating)}${
-                              page.field_passed == null
-                                ? ""
-                                : page.field_passed
-                                  ? " · pass"
-                                  : " · fail"
-                            }`
-                          : "No URL-level field data"}
-                      </p>
-                      <p className="mt-1 text-xs text-[var(--muted)]">
-                        {hasField
-                          ? `LCP ${formatMs(page.field_lcp_ms)} · INP ${formatMs(page.field_inp_ms)} · CLS ${formatCls(page.field_cls)}`
-                          : `Lab LCP ${formatMs(page.lab_lcp_ms)} · TBT ${formatMs(page.lab_tbt_ms)} · CLS ${formatCls(page.lab_cls)}`}
-                      </p>
-                      {page.opportunities?.length ? (
-                        <ul className="mt-2 list-disc space-y-0.5 pl-4 text-xs text-[var(--muted)]">
-                          {page.opportunities.slice(0, 3).map((item) => (
-                            <li key={item.id || item.title}>
-                              {item.title}
-                              {item.savings_ms
-                                ? ` (${formatMs(item.savings_ms)})`
-                                : ""}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : null}
-                    </>
+                  {page.field_passed == null ? null : (
+                    <p className={`text-[11px] font-medium ${ratingInk(asRating(page.field_category))}`}>
+                      {page.field_passed ? "Pass" : "Fail"}
+                    </p>
                   )}
-                </article>
-              );
-            })}
-          </div>
-        </>
+                </div>
+                {page.error ? (
+                  <p className="mt-1 text-sm text-[var(--danger)]">{page.error}</p>
+                ) : (
+                  <>
+                    <p
+                      className={`mt-1 font-display text-4xl leading-none tracking-tight tabular-nums ${ratingInk(band)}`}
+                    >
+                      {score ?? "—"}
+                    </p>
+                    {title ? (
+                      <p className="mt-1 h-4 truncate text-xs text-[var(--foreground)]">
+                        {title}
+                      </p>
+                    ) : (
+                      <p className="mt-1 h-4" aria-hidden="true" />
+                    )}
+                    <p className="mt-1.5 text-[11px] tabular-nums text-[var(--muted)]">
+                      LCP {formatMs(lcp)}
+                      {hasField ? ` · INP ${formatMs(page.field_inp_ms)}` : ""}
+                      {" · "}CLS {formatCls(cls)}
+                    </p>
+                  </>
+                )}
+              </article>
+            );
+          })}
+        </div>
       )}
     </section>
   );

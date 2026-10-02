@@ -330,7 +330,7 @@ export function TaskModal({
               ) : null}
               {mode === "edit" && task?.source_report_id ? (
                 <Link
-                  href={`/projects/${projectId}/reports/${task.source_report_id}`}
+                  href={`/reports/${projectId}/${task.source_report_id}`}
                   className="mt-1 block truncate text-sm text-[var(--muted)] hover:text-[var(--accent)]"
                 >
                   From store report

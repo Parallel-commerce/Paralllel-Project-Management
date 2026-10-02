@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 
 import { AdminOnly } from "@/components/admin-only";
 import { GenerateReportForm } from "@/components/generate-report-form";
+import { ProjectStoreView } from "@/components/project-store-view";
 import { formatDateTime } from "@/lib/format-date";
 import { resolveReportWindow, type ReportWindow } from "@/lib/reports";
 import { toPublicConnection } from "@/lib/shopify/connection";
@@ -96,24 +97,25 @@ export default async function ProjectReportsPage({
 
   return (
     <div>
-      <h1 className="font-display text-2xl tracking-tight sm:text-3xl">
-        Reports
+      <Link
+        href="/reports"
+        className="text-sm text-[var(--muted)] hover:text-[var(--foreground)]"
+      >
+        ← Reports
+      </Link>
+      <h1 className="mt-2 font-display text-2xl tracking-tight sm:text-3xl">
+        {project.name}
       </h1>
       <p className="mt-1 text-sm text-[var(--muted)]">
         {isAdmin
-          ? "Generate performance reports from project activity, or store reports from Shopify."
-          : "Shared reports for this project."}{" "}
-        {isAdmin ? (
-          <Link
-            href={`/projects/${id}/store`}
-            className="text-[var(--accent)] hover:underline"
-          >
-            Open Store
-          </Link>
-        ) : null}
+          ? "Store performance, then generate a report or open one from the archive."
+          : role === "client"
+            ? "Your store, and the reports shared with you."
+            : "Reports shared with you."}
       </p>
 
       <div className="mt-8 space-y-8">
+        <ProjectStoreView projectId={id} isAdmin={isAdmin} embedded />
         {isAdmin ? (
           <AdminOnly>
             <GenerateReportForm
@@ -143,7 +145,7 @@ export default async function ProjectReportsPage({
               (reports ?? []).map((report) => (
                 <li key={report.id}>
                   <Link
-                    href={`/projects/${id}/reports/${report.id}`}
+                    href={`/reports/${id}/${report.id}`}
                     className="flex items-start justify-between gap-4 px-1 py-4 hover:bg-[var(--surface)]/60"
                   >
                     <div>

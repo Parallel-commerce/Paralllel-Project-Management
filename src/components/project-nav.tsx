@@ -19,18 +19,19 @@ export function ProjectNav({
   name,
   logoUrl,
   isAdmin,
+  showStore = true,
 }: {
   projectId: string;
   name: string;
   logoUrl: string | null;
   isAdmin: boolean;
+  showStore?: boolean;
 }) {
   const pathname = usePathname();
   const base = `/projects/${projectId}`;
   const overviewActive = pathname === base;
   const messagesActive = pathname.startsWith(`${base}/messages`);
   const storeActive = pathname.startsWith(`${base}/store`);
-  const reportsActive = pathname.startsWith(`${base}/reports`);
   const settingsActive = pathname.startsWith(`${base}/settings`);
 
   return (
@@ -71,12 +72,11 @@ export function ProjectNav({
         <Link href={`${base}/messages`} className={navClass(messagesActive)}>
           Messages
         </Link>
-        <Link href={`${base}/store`} className={navClass(storeActive)}>
-          Store
-        </Link>
-        <Link href={`${base}/reports`} className={navClass(reportsActive)}>
-          Reports
-        </Link>
+        {showStore ? (
+          <Link href={`${base}/store`} className={navClass(storeActive)}>
+            Store
+          </Link>
+        ) : null}
         {isAdmin ? (
           <AdminOnly variant="inline">
             <Link

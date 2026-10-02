@@ -33,9 +33,10 @@ export async function GET(request: Request) {
     });
     revalidatePath("/home");
     for (const item of [...performance.results, ...store.results]) {
-      revalidatePath(`/projects/${item.projectId}/reports`);
+      revalidatePath("/reports");
+      revalidatePath(`/reports/${item.projectId}`);
       if (item.reportId) {
-        revalidatePath(`/projects/${item.projectId}/reports/${item.reportId}`);
+        revalidatePath(`/reports/${item.projectId}/${item.reportId}`);
       }
     }
     return NextResponse.json({ performance, store });

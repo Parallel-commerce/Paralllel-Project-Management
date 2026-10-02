@@ -49,6 +49,7 @@ export default async function ProjectLayout({
         name={project.name}
         logoUrl={projectLogoPublicUrl(project.logo_path)}
         isAdmin={isAdmin}
+        showStore={isAdmin || role !== "client"}
       />
       {children}
     </div>

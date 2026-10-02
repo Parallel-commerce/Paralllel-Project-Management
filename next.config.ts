@@ -5,6 +5,20 @@ const supabaseHost = process.env.NEXT_PUBLIC_SUPABASE_URL
   : undefined;
 
 const nextConfig = {
+  async redirects() {
+    return [
+      {
+        source: "/projects/:id/reports",
+        destination: "/reports/:id",
+        permanent: false,
+      },
+      {
+        source: "/projects/:id/reports/:reportId",
+        destination: "/reports/:id/:reportId",
+        permanent: false,
+      },
+    ];
+  },
   experimental: {
     serverActions: {
       bodySizeLimit: "42mb",

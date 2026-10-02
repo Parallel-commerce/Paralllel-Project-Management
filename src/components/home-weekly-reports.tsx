@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 
 import {
   HomeReportMenu,
@@ -319,55 +320,53 @@ export async function HomeWeeklyReports() {
   const readyCount = customers.filter((customer) => customer.rank === 0).length;
 
   return (
-    <section className="mt-8">
-      <div>
-        <h2 className="font-medium">Reports</h2>
-        <p className="mt-1 text-sm text-[var(--muted)]">
-          Store reports are prepared on Monday at 7:00, and again on the 1st at
-          7:00 GMT with the performance report. Open a report to review it, or
-          send it to the saved recipients
-          {readyCount > 0 ? ` (${readyCount} ready)` : ""}.
-        </p>
+    <section>
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="text-sm font-medium">Prepared</h2>
+        {readyCount > 0 ? (
+          <p className="text-xs text-[var(--muted)]">{readyCount} ready</p>
+        ) : null}
       </div>
-      <ul className="mt-3 space-y-2 sm:mt-4">
+      <ul className="mt-2 divide-y divide-[var(--border)] rounded-xl border border-[var(--border)] bg-[var(--surface)]">
         {customers.map((customer) => (
           <li
             key={customer.projectId}
-            className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-3 sm:px-4"
+            className="flex items-center justify-between gap-2 px-2.5 py-1.5 sm:px-3"
           >
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex min-w-0 items-center gap-3">
-                {customer.logoUrl ? (
-                  <Image
-                    src={customer.logoUrl}
-                    alt=""
-                    width={40}
-                    height={40}
-                    className="h-9 w-9 shrink-0 rounded-lg border border-[var(--border)] bg-white object-cover sm:h-10 sm:w-10"
-                  />
-                ) : (
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--accent-soft)] font-display text-sm text-[var(--accent)] sm:h-10 sm:w-10">
-                    {customer.projectName.slice(0, 1).toUpperCase()}
-                  </span>
-                )}
-                <p className="truncate font-medium tracking-tight">
-                  {customer.projectName}
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2 pl-12 sm:pl-0">
-                <HomeReportMenu
-                  projectId={customer.projectId}
-                  projectName={customer.projectName}
-                  label="Store report"
-                  choices={customer.storeChoices}
+            <div className="flex min-w-0 items-center gap-2">
+              {customer.logoUrl ? (
+                <Image
+                  src={customer.logoUrl}
+                  alt=""
+                  width={24}
+                  height={24}
+                  className="h-6 w-6 shrink-0 rounded border border-[var(--border)] bg-white object-cover"
                 />
-                <HomeReportMenu
-                  projectId={customer.projectId}
-                  projectName={customer.projectName}
-                  label="Performance report"
-                  choices={customer.performanceChoices}
-                />
-              </div>
+              ) : (
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-[var(--accent-soft)] text-xs font-medium text-[var(--accent)]">
+                  {customer.projectName.slice(0, 1).toUpperCase()}
+                </span>
+              )}
+              <Link
+                href={`/reports/${customer.projectId}`}
+                className="truncate text-sm hover:text-[var(--accent)]"
+              >
+                {customer.projectName}
+              </Link>
+            </div>
+            <div className="flex shrink-0 gap-1">
+              <HomeReportMenu
+                projectId={customer.projectId}
+                projectName={customer.projectName}
+                label="Store"
+                choices={customer.storeChoices}
+              />
+              <HomeReportMenu
+                projectId={customer.projectId}
+                projectName={customer.projectName}
+                label="Performance"
+                choices={customer.performanceChoices}
+              />
             </div>
           </li>
         ))}
@@ -398,9 +397,10 @@ function menuChoice(
     key: label ?? "performance",
     label,
     title: reportId ? card?.title ?? null : null,
-    openHref: reportId
-      ? `/projects/${card?.projectId}/reports/${reportId}`
-      : null,
+    openHref:
+      reportId && card
+        ? `/reports/${card.projectId}/${reportId}`
+        : null,
     reportId,
     sentLabel: card?.sentAt ? `Sent ${formatDateTime(card.sentAt)}` : null,
     note: staleRunning && !card?.error ? copy.stale : note,

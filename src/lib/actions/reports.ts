@@ -12,6 +12,7 @@ import {
   collectReportActions,
   reportActionDescription,
 } from "@/lib/report-actions";
+import { projectReportPath, projectReportsPath } from "@/lib/report-paths";
 import {
   parseReportRange,
   resolveReportWindow,
@@ -101,10 +102,18 @@ function collectRecipients(
   return { emails: [...new Set(raw)] };
 }
 
+function revalidateProjectReports(projectId: string, reportId?: string) {
+  revalidatePath("/reports");
+  revalidatePath(projectReportsPath(projectId));
+  if (reportId) {
+    revalidatePath(projectReportPath(projectId, reportId));
+  }
+}
+
 function revalidateReportRecipientPaths(projectId: string) {
   revalidatePath(`/projects/${projectId}/settings`);
-  revalidatePath(`/projects/${projectId}/reports`);
-  revalidatePath("/projects/[id]/reports/[reportId]", "page");
+  revalidateProjectReports(projectId);
+  revalidatePath("/reports/[id]/[reportId]", "page");
 }
 
 export async function addProjectReportRecipient(
@@ -204,8 +213,8 @@ export async function generateProjectReport(
   }
 
   revalidatePath(`/projects/${projectId}`);
-  revalidatePath(`/projects/${projectId}/reports`);
-  redirect(`/projects/${projectId}/reports/${created.id}`);
+  revalidateProjectReports(projectId, created.id);
+  redirect(projectReportPath(projectId, created.id));
 }
 
 export async function generateStoreReport(
@@ -260,10 +269,10 @@ export async function generateStoreReport(
   }
 
   revalidatePath(`/projects/${projectId}`);
-  revalidatePath(`/projects/${projectId}/reports`);
+  revalidateProjectReports(projectId, created.id);
   revalidatePath(`/projects/${projectId}/store`);
   redirect(
-    `/projects/${projectId}/reports/${created.id}${created.seededPrevious ? "?seeded=1" : ""}`,
+    `${projectReportPath(projectId, created.id)}${created.seededPrevious ? "?seeded=1" : ""}`,
   );
 }
 
@@ -298,8 +307,7 @@ export async function updateReportNarrative(
     return { error: error.message };
   }
 
-  revalidatePath(`/projects/${projectId}/reports/${reportId}`);
-  revalidatePath(`/projects/${projectId}/reports`);
+  revalidateProjectReports(projectId, reportId);
   return { success: true };
 }
 
@@ -328,7 +336,7 @@ async function deliverProjectReport(input: {
     return { error: "Report not found." };
   }
 
-  const reportUrl = `${appUrl()}/projects/${projectId}/reports/${reportId}`;
+  const reportUrl = `${appUrl()}${projectReportPath(projectId, reportId)}`;
   const storeDigest = asStoreReportDigest(report.digest, report.kind);
   const progressDigest =
     storeDigest ||
@@ -413,7 +421,7 @@ async function deliverProjectReport(input: {
       p_body: storeDigest
         ? `A store report for ${project.name} is ready.`
         : `A progress report for ${project.name} is ready.`,
-      p_link: `/projects/${projectId}/reports/${reportId}`,
+      p_link: projectReportPath(projectId, reportId),
     });
   }
 
@@ -427,8 +435,7 @@ async function deliverProjectReport(input: {
     metadata: { recipients: sentTo },
   });
 
-  revalidatePath(`/projects/${projectId}/reports/${reportId}`);
-  revalidatePath(`/projects/${projectId}/reports`);
+  revalidateProjectReports(projectId, reportId);
   revalidatePath("/home");
 
   if (failures.length) {
@@ -563,9 +570,9 @@ export async function deleteProjectReport(
     summary: `Deleted report “${report?.title ?? "report"}”`,
   });
 
-  revalidatePath(`/projects/${projectId}/reports`);
+  revalidateProjectReports(projectId);
   revalidatePath(`/projects/${projectId}`);
-  redirect(`/projects/${projectId}/reports`);
+  redirect(projectReportsPath(projectId));
 }
 
 export async function createReportActionTasks(
@@ -633,7 +640,7 @@ export async function createReportActionTasks(
     return { error: "Those recommendations are no longer in the report." };
   }
 
-  const reportPath = `/projects/${projectId}/reports/${reportId}`;
+  const reportPath = projectReportPath(projectId, reportId);
   const created: {
     key: string;
     taskId: string;
@@ -674,7 +681,7 @@ export async function createReportActionTasks(
     });
   }
 
-  revalidatePath(`/projects/${projectId}/reports/${reportId}`);
+  revalidateProjectReports(projectId, reportId);
   revalidatePath(`/projects/${projectId}/lists/${listId}`);
   revalidatePath(`/projects/${projectId}`);
   return { created };
