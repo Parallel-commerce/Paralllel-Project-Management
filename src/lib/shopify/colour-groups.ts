@@ -309,13 +309,31 @@ async function fetchProducts(shop: string, accessToken: string) {
   throw new Error("This catalogue is larger than one colour-grouping run can read.");
 }
 
+function productIdsFromValue(value: string | null | undefined) {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (id): id is string => typeof id === "string" && id.startsWith("gid://shopify/Product/"),
+    );
+  } catch {
+    return [];
+  }
+}
+
+type ExistingGroup = { id: string; handle: string; productCount: number };
+
 async function fetchMetaobjects(shop: string, accessToken: string) {
-  const metaobjects: { id: string; handle: string }[] = [];
+  const metaobjects: ExistingGroup[] = [];
   let cursor: string | null = null;
 
   for (let page = 0; page < MAX_PAGES; page += 1) {
     const data: {
-      metaobjects: { pageInfo: PageInfo; nodes: { id: string; handle: string }[] };
+      metaobjects: {
+        pageInfo: PageInfo;
+        nodes: { id: string; handle: string; products: { value: string | null } | null }[];
+      };
     } = await admin(
       shop,
       accessToken,
@@ -329,13 +347,22 @@ async function fetchMetaobjects(shop: string, accessToken: string) {
             nodes {
               id
               handle
+              products: field(key: "products") {
+                value
+              }
             }
           }
         }
       `,
       { cursor },
     );
-    metaobjects.push(...data.metaobjects.nodes);
+    for (const node of data.metaobjects.nodes) {
+      metaobjects.push({
+        id: node.id,
+        handle: node.handle,
+        productCount: productIdsFromValue(node.products?.value).length,
+      });
+    }
     if (!data.metaobjects.pageInfo.hasNextPage) return metaobjects;
     cursor = data.metaobjects.pageInfo.endCursor;
     if (!cursor) throw new Error("Shopify metaobject pagination did not return a cursor.");
@@ -482,10 +509,12 @@ async function deleteMetaobject(shop: string, accessToken: string, id: string) {
   assertUserErrors(data.metaobjectDelete.userErrors);
 }
 
-function summarize(groups: ColourGroup[], unlinked: number) {
+function summarize(groups: ColourGroup[], unlinked: number, emptyRemoved: number) {
   const products = groups.reduce((count, group) => count + group.productIds.length, 0);
-  const summary = `${groups.length} groups, ${products} products`;
-  return unlinked ? `${summary}, ${unlinked} unlinked` : summary;
+  const parts = [`${groups.length} groups, ${products} products`];
+  if (unlinked) parts.push(`${unlinked} unlinked`);
+  if (emptyRemoved) parts.push(`${emptyRemoved} empty groups removed`);
+  return parts.join(", ");
 }
 
 export async function syncProjectColourGroups(
@@ -560,13 +589,14 @@ export async function syncProjectColourGroups(
     await clearMetafields(row.shop_domain, accessToken, toClear);
 
     const keepIds = new Set(groupIdByHandle.values());
+    let emptyRemoved = 0;
     for (const metaobject of existing) {
-      if (!keepIds.has(metaobject.id)) {
-        await deleteMetaobject(row.shop_domain, accessToken, metaobject.id);
-      }
+      if (keepIds.has(metaobject.id)) continue;
+      await deleteMetaobject(row.shop_domain, accessToken, metaobject.id);
+      if (metaobject.productCount === 0) emptyRemoved += 1;
     }
 
-    const summary = summarize(groups, toClear.length);
+    const summary = summarize(groups, toClear.length, emptyRemoved);
     await supabase
       .from("project_shopify_connections")
       .update({
@@ -586,6 +616,113 @@ export async function syncProjectColourGroups(
       .eq("project_id", projectId);
     return { error: message };
   }
+}
+
+export type ColourGroupMemberList = {
+  name: string;
+  products: string[];
+  truncated?: boolean;
+};
+
+export async function listProjectColourGroups(
+  supabase: SupabaseClient<Database>,
+  projectId: string,
+): Promise<{ error: string } | { groups: ColourGroupMemberList[] }> {
+  const { data, error } = await supabase
+    .from("project_shopify_connections")
+    .select("*")
+    .eq("project_id", projectId)
+    .maybeSingle();
+
+  if (error) return { error: error.message };
+  const row = data as ProjectShopifyConnection | null;
+  if (!row?.access_token_ciphertext || row.status !== "connected") {
+    return { error: "Connect the Shopify store before viewing colour groups." };
+  }
+  if (missingColourGroupScopes(row.scopes).length) {
+    return { error: "Reconnect the store before viewing colour groups." };
+  }
+
+  let accessToken: string;
+  try {
+    accessToken = decryptSecret(row.access_token_ciphertext);
+  } catch {
+    return { error: "Could not read the stored Shopify token. Reconnect the store." };
+  }
+
+  const groups: ColourGroupMemberList[] = [];
+  let cursor: string | null = null;
+
+  for (let page = 0; page < MAX_PAGES; page += 1) {
+    const dataPage: {
+      metaobjects: {
+        pageInfo: PageInfo;
+        nodes: {
+          handle: string;
+          name: { value: string | null } | null;
+          products: {
+            references: {
+              nodes: { title?: string }[];
+              pageInfo: { hasNextPage: boolean };
+            } | null;
+          } | null;
+        }[];
+      };
+    } = await admin(
+      row.shop_domain,
+      accessToken,
+      /* GraphQL */ `
+        query ColourGroupReview($cursor: String) {
+          metaobjects(type: "${COLOUR_GROUP_TYPE}", first: 25, after: $cursor) {
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
+            nodes {
+              handle
+              name: field(key: "name") {
+                value
+              }
+              products: field(key: "products") {
+                references(first: 100) {
+                  nodes {
+                    ... on Product {
+                      title
+                    }
+                  }
+                  pageInfo {
+                    hasNextPage
+                  }
+                }
+              }
+            }
+          }
+        }
+      `,
+      { cursor },
+    );
+
+    for (const node of dataPage.metaobjects.nodes) {
+      const products = (node.products?.references?.nodes ?? [])
+        .map((product) => product.title?.trim() ?? "")
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b));
+      groups.push({
+        name: node.name?.value?.trim() || node.handle,
+        products,
+        truncated: Boolean(node.products?.references?.pageInfo.hasNextPage),
+      });
+    }
+
+    if (!dataPage.metaobjects.pageInfo.hasNextPage) {
+      groups.sort((a, b) => a.name.localeCompare(b.name));
+      return { groups };
+    }
+    cursor = dataPage.metaobjects.pageInfo.endCursor;
+    if (!cursor) throw new Error("Shopify metaobject pagination did not return a cursor.");
+  }
+
+  throw new Error("There are more colour groups than this page can list.");
 }
 
 export async function syncScheduledColourGroups(supabase: SupabaseClient<Database>) {

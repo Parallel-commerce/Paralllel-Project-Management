@@ -7,15 +7,83 @@ import {
   disconnectShopifyStore,
   saveShopifyCredentials,
   saveThemeGit,
+  loadColourGroups,
   setColourGroupingEnabled,
   startShopifyConnect,
   syncColourGroups,
   syncShopifySnapshot,
 } from "@/lib/actions/store";
+import type { ColourGroupMemberList } from "@/lib/shopify/colour-groups";
 import type { ProjectThemeGit, StoreConnectionPublic } from "@/types/database";
 
 const inputClass =
   "rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2";
+
+function ColourGroupList({
+  groups,
+  query,
+  onQuery,
+}: {
+  groups: ColourGroupMemberList[];
+  query: string;
+  onQuery: (value: string) => void;
+}) {
+  const needle = query.trim().toLocaleLowerCase("en-GB");
+  const visible = needle
+    ? groups.filter((group) => {
+        if (group.name.toLocaleLowerCase("en-GB").includes(needle)) return true;
+        return group.products.some((product) =>
+          product.toLocaleLowerCase("en-GB").includes(needle),
+        );
+      })
+    : groups;
+  const productCount = groups.reduce((count, group) => count + group.products.length, 0);
+
+  return (
+    <div className="mt-3">
+      <input
+        value={query}
+        onChange={(event) => onQuery(event.target.value)}
+        placeholder="Search groups or products"
+        className={inputClass}
+      />
+      <p className="mt-2 text-sm text-[var(--muted)]">
+        {groups.length} groups, {productCount} products
+        {needle ? ` · ${visible.length} match` : ""}
+      </p>
+      <div className="mt-2 max-h-96 space-y-1 overflow-y-auto rounded-md border border-[var(--border)] bg-white p-2">
+        {visible.length ? (
+          visible.map((group, index) => (
+            <details key={`${group.name}-${index}`} className="rounded-md px-2 py-1">
+              <summary className="cursor-pointer text-sm">
+                {group.name}{" "}
+                <span className="text-[var(--muted)]">({group.products.length})</span>
+              </summary>
+              {group.products.length ? (
+                <ul className="mt-1 space-y-0.5 pb-1 pl-4 text-sm text-[var(--muted)]">
+                  {group.products.map((product, productIndex) => (
+                    <li key={`${product}-${productIndex}`}>{product}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-1 pb-1 pl-4 text-sm text-[var(--muted)]">
+                  No products. The next run removes this group.
+                </p>
+              )}
+              {group.truncated ? (
+                <p className="pb-1 pl-4 text-sm text-[var(--muted)]">
+                  This group has more products than the list shows.
+                </p>
+              ) : null}
+            </details>
+          ))
+        ) : (
+          <p className="px-2 py-1 text-sm text-[var(--muted)]">No matching groups.</p>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function CopyUrlField({ label, value }: { label: string; value: string }) {
   const [copied, setCopied] = useState(false);
@@ -76,6 +144,11 @@ export function StoreSetupForm({
   const [groupingProducts, startGroupingProducts] = useTransition();
   const [groupSummary, setGroupSummary] = useState<string | null>(null);
   const [groupError, setGroupError] = useState<string | null>(null);
+  const [loadingGroups, startLoadingGroups] = useTransition();
+  const [colourGroups, setColourGroups] = useState<ColourGroupMemberList[] | null>(
+    null,
+  );
+  const [groupQuery, setGroupQuery] = useState("");
 
   const connected =
     connection?.has_access_token && connection.status === "connected";
@@ -85,7 +158,8 @@ export function StoreSetupForm({
     syncing ||
     disconnecting ||
     togglingGrouping ||
-    groupingProducts;
+    groupingProducts ||
+    loadingGroups;
   const colourGroupingOn = Boolean(connection?.colour_grouping_enabled);
   const colourGroupingScopesReady = Boolean(
     connection?.scopes?.split(/[,\s]+/).includes("write_products") &&
@@ -299,7 +373,8 @@ export function StoreSetupForm({
           <p className="mt-1 text-sm text-[var(--muted)]">
             Products titled <span className="text-[var(--foreground)]">Name (Colour)</span>{" "}
             are grouped into one metaobject, and each product points at that group.
-            A daily job picks up new products. Turn this on separately for each store.
+            A daily job picks up new products and removes groups that have no
+            products. Turn this on separately for each store.
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
             <button
@@ -367,6 +442,32 @@ export function StoreSetupForm({
           ) : null}
           {groupSummary ? (
             <p className="mt-3 text-sm text-[var(--muted)]">{groupSummary}</p>
+          ) : null}
+          {colourGroupingOn && colourGroupingScopesReady ? (
+            <div className="mt-4">
+              <button
+                type="button"
+                disabled={shopifyBusy}
+                onClick={() => {
+                  setGroupError(null);
+                  startLoadingGroups(async () => {
+                    const result = await loadColourGroups(projectId);
+                    if ("error" in result) {
+                      setGroupError(result.error);
+                      setColourGroups(null);
+                      return;
+                    }
+                    setColourGroups(result.groups);
+                  });
+                }}
+                className="rounded-md border border-[var(--border)] bg-white px-4 py-2 text-sm font-medium hover:bg-[var(--surface-2)] disabled:opacity-60"
+              >
+                {loadingGroups ? "Loading groups…" : "Show grouped products"}
+              </button>
+              {colourGroups ? (
+                <ColourGroupList groups={colourGroups} query={groupQuery} onQuery={setGroupQuery} />
+              ) : null}
+            </div>
           ) : null}
           {groupError || connection.colour_grouping_last_error ? (
             <p className="mt-3 text-sm text-[var(--danger)]" role="alert">

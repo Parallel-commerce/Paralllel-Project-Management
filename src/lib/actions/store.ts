@@ -13,7 +13,11 @@ import {
   normalizeThemeBranch,
   normalizeThemeRepo,
 } from "@/lib/github/theme";
-import { syncProjectColourGroups } from "@/lib/shopify/colour-groups";
+import {
+  listProjectColourGroups,
+  syncProjectColourGroups,
+  type ColourGroupMemberList,
+} from "@/lib/shopify/colour-groups";
 import {
   SHOPIFY_OAUTH_COOKIE,
   createOAuthState,
@@ -201,6 +205,21 @@ export async function setColourGroupingEnabled(
 
   revalidateStoreAdminPaths(projectId);
   return { ok: true };
+}
+
+export async function loadColourGroups(
+  projectId: string,
+): Promise<{ error: string } | { groups: ColourGroupMemberList[] }> {
+  const admin = await requireStoreAdmin(projectId);
+  if (!admin.ok) return { error: admin.error };
+
+  try {
+    return await listProjectColourGroups(admin.supabase, projectId);
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Could not load colour groups.";
+    return { error: message };
+  }
 }
 
 export async function syncColourGroups(
