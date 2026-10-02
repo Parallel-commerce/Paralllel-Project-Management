@@ -262,25 +262,6 @@ async function ensureDefinitions(shop: string, accessToken: string) {
       `,
       { definitionId },
     );
-    // #region agent log
-    fetch("http://127.0.0.1:7926/ingest/ecf3ebf1-ce0a-4442-bafa-46c68a8be40e", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "0a2197" },
-      body: JSON.stringify({
-        sessionId: "0a2197",
-        runId: "post-fix",
-        hypothesisId: "A",
-        location: "colour-groups.ts:ensureDefinitions",
-        message: "metafield definition create",
-        data: {
-          type: "metaobject_reference",
-          hasDefinitionId: Boolean(definitionId),
-          userErrorCount: created.metafieldDefinitionCreate.userErrors.length,
-        },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {});
-    // #endregion
     assertUserErrors(created.metafieldDefinitionCreate.userErrors);
   }
 }
