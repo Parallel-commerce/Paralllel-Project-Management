@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { AdminOnly } from "@/components/admin-only";
+import { AutomaticReportSettings } from "@/components/automatic-report-settings";
 import { ProjectDeleteSettings, ProjectSettings } from "@/components/project-settings";
 import { ReportRecipientSettings } from "@/components/report-recipient-settings";
 import { StoreSetupForm } from "@/components/store-setup-form";
@@ -33,7 +34,7 @@ export default async function ProjectSettingsPage({
       supabase
         .from("projects")
         .select(
-          "id, name, description, logo_path, scheduled_weekdays, project_engagement(project_type, schedule_anchor_date)",
+          "id, name, description, logo_path, scheduled_weekdays, auto_weekly_report, auto_monthly_report, project_engagement(project_type, schedule_anchor_date)",
         )
         .eq("id", id)
         .maybeSingle(),
@@ -116,6 +117,11 @@ export default async function ProjectSettingsPage({
             )}
             projectType={engagement.projectType}
             scheduleAnchorDate={engagement.scheduleAnchorDate}
+          />
+          <AutomaticReportSettings
+            projectId={id}
+            weekly={project.auto_weekly_report}
+            monthly={project.auto_monthly_report}
           />
           <ReportRecipientSettings
             projectId={id}

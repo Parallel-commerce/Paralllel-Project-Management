@@ -116,6 +116,28 @@ function revalidateReportRecipientPaths(projectId: string) {
   revalidatePath("/reports/[id]/[reportId]", "page");
 }
 
+export async function updateAutomaticReports(
+  projectId: string,
+  input: { weekly: boolean; monthly: boolean },
+): Promise<{ error: string } | { success: true }> {
+  const admin = await requireProjectAdmin(projectId);
+  if (!("ok" in admin)) return { error: admin.error };
+
+  const { error } = await admin.supabase
+    .from("projects")
+    .update({
+      auto_weekly_report: input.weekly,
+      auto_monthly_report: input.monthly,
+    })
+    .eq("id", projectId);
+
+  if (error) return { error: error.message };
+
+  revalidatePath(`/projects/${projectId}/settings`);
+  revalidatePath("/reports");
+  return { success: true };
+}
+
 export async function addProjectReportRecipient(
   projectId: string,
   rawEmail: string,

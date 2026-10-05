@@ -1,14 +1,9 @@
 import Image from "next/image";
 import Link from "next/link";
 
-import {
-  HomeReportMenu,
-  type HomeReportChoice,
-} from "@/components/home-report-menu";
 import { formatDateTime } from "@/lib/format-date";
 import { projectLogoPublicUrl } from "@/lib/project-logo";
 import { dueGmtMonthWindow } from "@/lib/reports";
-import { asStoreReportDigest } from "@/lib/store-report";
 import { createClient } from "@/lib/supabase/server";
 import type {
   ScheduledStoreReportPeriod,
@@ -27,6 +22,17 @@ type StoreCard = {
   status: WeeklyStoreReportRun["status"] | "waiting";
   error: string | null;
   updatedAt: string | null;
+};
+
+type PreparedChoice = {
+  key: string;
+  label: string;
+  title: string | null;
+  openHref: string | null;
+  reportId: string | null;
+  sentLabel: string | null;
+  note: string | null;
+  state: "ready" | "sent" | "preparing" | "failed" | "waiting";
 };
 
 function pickRun(runs: WeeklyStoreReportRun[]) {
@@ -113,7 +119,7 @@ export async function HomeWeeklyReports() {
 
   const { data: connections } = await supabase
     .from("project_shopify_connections")
-    .select("project_id, projects(id, name, logo_path)")
+    .select("project_id, projects(id, name, logo_path, auto_weekly_report, auto_monthly_report)")
     .not("access_token_ciphertext", "is", null);
 
   const stores = (connections ?? [])
@@ -125,6 +131,8 @@ export async function HomeWeeklyReports() {
         projectId,
         projectName: project.name as string,
         logoUrl: projectLogoPublicUrl(project.logo_path as string | null),
+        autoWeekly: project.auto_weekly_report !== false,
+        autoMonthly: project.auto_monthly_report !== false,
       };
     })
     .filter((store): store is NonNullable<typeof store> => !!store);
@@ -133,8 +141,14 @@ export async function HomeWeeklyReports() {
 
   const projectIds = stores.map((store) => store.projectId);
   const dueMonth = dueGmtMonthWindow();
-  const [{ data: runRows }, { data: recipientRows }, { data: progressRows }] =
-    await Promise.all([
+  const recentStoreSince = new Date();
+  recentStoreSince.setUTCDate(recentStoreSince.getUTCDate() - 45);
+  const [
+    { data: runRows },
+    { data: recipientRows },
+    { data: progressRows },
+    { data: storeReportRows },
+  ] = await Promise.all([
     supabase
       .from("weekly_store_report_runs")
       .select(
@@ -153,6 +167,14 @@ export async function HomeWeeklyReports() {
       .eq("kind", "progress")
       .eq("period", "month")
       .eq("title", dueMonth.title)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("project_reports")
+      .select("id, project_id, title, sent_at, period, created_at")
+      .in("project_id", projectIds)
+      .eq("kind", "store")
+      .in("period", ["week", "month"])
+      .gte("created_at", recentStoreSince.toISOString())
       .order("created_at", { ascending: false }),
   ]);
 
@@ -195,6 +217,11 @@ export async function HomeWeeklyReports() {
       : { data: [] };
 
   const reportById = new Map((reports ?? []).map((report) => [report.id, report]));
+  const latestStoreReport = new Map<string, (typeof storeReportRows)[number]>();
+  for (const report of storeReportRows ?? []) {
+    const key = `${report.project_id}:${report.period}`;
+    if (!latestStoreReport.has(key)) latestStoreReport.set(key, report);
+  }
   const recipientCount = new Map<string, number>();
   for (const row of recipientRows ?? []) {
     const projectId = row.project_id as string;
@@ -205,21 +232,34 @@ export async function HomeWeeklyReports() {
   for (const period of periods) {
     const cards = chosen
       .filter((item) => item.period === period)
-      .map(({ store, run }) => {
-        const report = run?.report_id ? reportById.get(run.report_id) : undefined;
-        const digest = report
-          ? asStoreReportDigest(report.digest, report.kind)
-          : null;
+      .map(({ store, run, period }) => {
+        const linked = run?.report_id ? reportById.get(run.report_id) : undefined;
+        const candidate = latestStoreReport.get(`${store.projectId}:${period}`);
+        const candidateAge = candidate
+          ? Date.now() - new Date(candidate.created_at).getTime()
+          : Number.POSITIVE_INFINITY;
+        const candidateFresh =
+          period === "month"
+            ? candidateAge <= 40 * 24 * 60 * 60 * 1000
+            : candidateAge <= 14 * 24 * 60 * 60 * 1000;
+        const fallback =
+          !linked &&
+          run?.status !== "running" &&
+          run?.status !== "failed" &&
+          candidateFresh
+            ? candidate
+            : undefined;
+        const report = linked ?? fallback;
         return {
           projectId: store.projectId,
           projectName: store.projectName,
           logoUrl: store.logoUrl,
           reportId: report?.id ?? null,
-          title: (report?.title as string | undefined) ?? null,
-          score: digest?.scorecard.score ?? null,
-          sentAt: (report?.sent_at as string | null | undefined) ?? null,
+          title: report?.title ?? null,
+          score: null,
+          sentAt: report?.sent_at ?? null,
           recipientCount: recipientCount.get(store.projectId) ?? 0,
-          status: reportRunStatus(run?.status),
+          status: report ? "generated" : reportRunStatus(run?.status),
           error: run?.error ?? null,
           updatedAt: run?.updated_at ?? null,
         };
@@ -295,29 +335,53 @@ export async function HomeWeeklyReports() {
 
   const customers = stores
     .map((store) => {
-      const storeChoices = [
-        menuChoice(weekCards.get(store.projectId), PERIOD_COPY.week, "This week"),
-        menuChoice(monthCards.get(store.projectId), PERIOD_COPY.month, "Last month"),
-      ];
-      const performanceChoices = [
-        menuChoice(
-          performanceByProject.get(store.projectId),
-          PERFORMANCE_COPY,
-          null,
-        ),
-      ];
+      const choices = [
+        store.autoWeekly
+          ? menuChoice(weekCards.get(store.projectId), PERIOD_COPY.week, "Weekly")
+          : null,
+        store.autoMonthly
+          ? menuChoice(
+              monthCards.get(store.projectId),
+              PERIOD_COPY.month,
+              "Monthly",
+            )
+          : null,
+        store.autoMonthly
+          ? menuChoice(
+              performanceByProject.get(store.projectId),
+              PERFORMANCE_COPY,
+              "Performance",
+            )
+          : null,
+      ].filter((choice): choice is PreparedChoice =>
+        !!choice && (choice.key !== "Performance" || choice.state !== "waiting"),
+      );
       return {
         ...store,
-        storeChoices,
-        performanceChoices,
-        rank: [...storeChoices, ...performanceChoices].some((choice) => choice.canSend)
-          ? 0
-          : 1,
+        choices,
+        rank: choices.some((choice) => choice.state === "ready") ? 0 : 1,
       };
     })
+    .filter((customer) => customer.choices.length > 0)
     .sort((a, b) => a.rank - b.rank || a.projectName.localeCompare(b.projectName));
 
-  const readyCount = customers.filter((customer) => customer.rank === 0).length;
+  const readyCount = customers.reduce(
+    (count, customer) =>
+      count +
+      customer.choices.filter((choice) => choice.state === "ready").length,
+    0,
+  );
+
+  if (customers.length === 0) {
+    return (
+      <section>
+        <h2 className="text-sm font-medium">Prepared</h2>
+        <p className="mt-2 text-sm text-[var(--muted)]">
+          Turn on weekly or monthly reports in a customer’s settings.
+        </p>
+      </section>
+    );
+  }
 
   return (
     <section>
@@ -331,7 +395,7 @@ export async function HomeWeeklyReports() {
         {customers.map((customer) => (
           <li
             key={customer.projectId}
-            className="flex items-center justify-between gap-2 px-2.5 py-1.5 sm:px-3"
+            className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 px-2.5 py-1.5 sm:px-3"
           >
             <div className="flex min-w-0 items-center gap-2">
               {customer.logoUrl ? (
@@ -354,19 +418,10 @@ export async function HomeWeeklyReports() {
                 {customer.projectName}
               </Link>
             </div>
-            <div className="flex shrink-0 gap-1">
-              <HomeReportMenu
-                projectId={customer.projectId}
-                projectName={customer.projectName}
-                label="Store"
-                choices={customer.storeChoices}
-              />
-              <HomeReportMenu
-                projectId={customer.projectId}
-                projectName={customer.projectName}
-                label="Performance"
-                choices={customer.performanceChoices}
-              />
+            <div className="flex shrink-0 flex-wrap justify-end gap-1">
+              {customer.choices.map((choice) => (
+                <PreparedReportLink key={choice.key} choice={choice} />
+              ))}
             </div>
           </li>
         ))}
@@ -378,34 +433,85 @@ export async function HomeWeeklyReports() {
 function menuChoice(
   card: StoreCard | undefined,
   copy: (typeof PERIOD_COPY)["week"],
-  label: string | null,
-): HomeReportChoice {
+  label: string,
+): PreparedChoice {
   const staleRunning =
     card?.status === "running" &&
     !!card.updatedAt &&
     Date.now() - new Date(card.updatedAt).getTime() > 20 * 60 * 1000;
   const reportId = card?.reportId ?? null;
+  const sent = !!card?.sentAt;
+  const preparing = card?.status === "running" && !staleRunning;
+  const failed = !reportId && (card?.status === "failed" || staleRunning);
   const note = reportId
     ? null
-    : card?.status === "running" && !staleRunning
+    : preparing
       ? copy.preparing
-      : card?.status === "failed" || staleRunning
-        ? card?.error || copy.failed
+      : failed
+        ? card?.error || (staleRunning ? copy.stale : copy.failed)
         : copy.waiting;
 
   return {
-    key: label ?? "performance",
+    key: label,
     label,
     title: reportId ? card?.title ?? null : null,
-    openHref:
-      reportId && card
-        ? `/reports/${card.projectId}/${reportId}`
-        : null,
+    openHref: reportId && card ? `/reports/${card.projectId}/${reportId}` : null,
     reportId,
-    sentLabel: card?.sentAt ? `Sent ${formatDateTime(card.sentAt)}` : null,
-    note: staleRunning && !card?.error ? copy.stale : note,
-    canSend: !!reportId && !card?.sentAt && (card?.recipientCount ?? 0) > 0,
-    needsRecipients:
-      !!reportId && !card?.sentAt && (card?.recipientCount ?? 0) === 0,
+    sentLabel: sent && card?.sentAt ? `Sent ${formatDateTime(card.sentAt)}` : null,
+    note,
+    state: reportId
+      ? sent
+        ? "sent"
+        : "ready"
+      : preparing
+        ? "preparing"
+        : failed
+          ? "failed"
+          : "waiting",
   };
+}
+
+const STATE_LABEL = {
+  ready: "Ready",
+  sent: "Sent",
+  preparing: "Preparing",
+  failed: "Failed",
+  waiting: "Waiting",
+} as const;
+
+function PreparedReportLink({ choice }: { choice: PreparedChoice }) {
+  const statusClass =
+    choice.state === "ready"
+      ? "text-[var(--accent)]"
+      : choice.state === "failed"
+        ? "text-[var(--danger)]"
+        : "text-[var(--muted)]";
+  const className =
+    "inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-white px-2 py-0.5 text-xs font-medium";
+  const body = (
+    <>
+      {choice.label}
+      <span className={`font-medium ${statusClass}`}>
+        {STATE_LABEL[choice.state]}
+      </span>
+    </>
+  );
+
+  if (!choice.openHref) {
+    return (
+      <span className={className} title={choice.note ?? undefined}>
+        {body}
+      </span>
+    );
+  }
+
+  return (
+    <Link
+      href={choice.openHref}
+      title={choice.sentLabel ?? choice.title ?? undefined}
+      className={`${className} hover:bg-[var(--surface-2)]`}
+    >
+      {body}
+    </Link>
+  );
 }

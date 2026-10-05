@@ -31,8 +31,22 @@ type StoreRow = {
   project_id: string;
   shop_domain: string;
   access_token_ciphertext: string | null;
-  projects: { name: string } | { name: string }[] | null;
+  projects:
+    | {
+        name: string;
+        auto_weekly_report?: boolean | null;
+        auto_monthly_report?: boolean | null;
+      }
+    | {
+        name: string;
+        auto_weekly_report?: boolean | null;
+        auto_monthly_report?: boolean | null;
+      }[]
+    | null;
 };
+
+const CONNECTED_STORE_SELECT =
+  "project_id, shop_domain, access_token_ciphertext, projects(name, auto_weekly_report, auto_monthly_report)";
 
 export type WeeklyStoreReportResult = {
   projectId: string;
@@ -42,9 +56,23 @@ export type WeeklyStoreReportResult = {
   error?: string;
 };
 
+function projectOf(row: StoreRow) {
+  return Array.isArray(row.projects) ? row.projects[0] : row.projects;
+}
+
 function projectNameOf(row: StoreRow) {
-  const project = Array.isArray(row.projects) ? row.projects[0] : row.projects;
-  return project?.name ?? "Store";
+  return projectOf(row)?.name ?? "Store";
+}
+
+function wantsAutomaticReport(
+  row: StoreRow,
+  period: ScheduledStoreReportPeriod,
+) {
+  const project = projectOf(row);
+  if (!project) return false;
+  return period === "month"
+    ? project.auto_monthly_report !== false
+    : project.auto_weekly_report !== false;
 }
 
 function clipError(error: unknown) {
@@ -401,16 +429,16 @@ export async function runScheduledStoreReports(
   const budgetMs = options?.budgetMs ?? START_BUDGET_MS;
   const { data, error } = await supabase
     .from("project_shopify_connections")
-    .select("project_id, shop_domain, access_token_ciphertext, projects(name)")
+    .select(CONNECTED_STORE_SELECT)
     .not("access_token_ciphertext", "is", null);
 
   if (error) {
     throw new Error(error.message);
   }
 
-  const stores = ((data ?? []) as StoreRow[]).sort((a, b) =>
-    projectNameOf(a).localeCompare(projectNameOf(b)),
-  );
+  const stores = ((data ?? []) as StoreRow[])
+    .filter((row) => wantsAutomaticReport(row, period))
+    .sort((a, b) => projectNameOf(a).localeCompare(projectNameOf(b)));
   const results: WeeklyStoreReportResult[] = [];
   let index = 0;
   let stop = false;
@@ -566,13 +594,13 @@ export async function runMonthlyProgressReports(
   const window = dueGmtMonthWindow();
   const { data, error } = await supabase
     .from("project_shopify_connections")
-    .select("project_id, shop_domain, access_token_ciphertext, projects(name)")
+    .select(CONNECTED_STORE_SELECT)
     .not("access_token_ciphertext", "is", null);
   if (error) throw new Error(error.message);
 
-  const stores = ((data ?? []) as StoreRow[]).sort((a, b) =>
-    projectNameOf(a).localeCompare(projectNameOf(b)),
-  );
+  const stores = ((data ?? []) as StoreRow[])
+    .filter((row) => wantsAutomaticReport(row, "month"))
+    .sort((a, b) => projectNameOf(a).localeCompare(projectNameOf(b)));
   const results: WeeklyStoreReportResult[] = [];
   let index = 0;
   let stop = false;

@@ -58,6 +58,8 @@ export type Project = {
   sort_order: number;
   /** 0 = Sunday … 6 = Saturday */
   scheduled_weekdays: number[];
+  auto_weekly_report: boolean;
+  auto_monthly_report: boolean;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -669,6 +671,8 @@ export type Database = {
           company_id?: string | null;
           sort_order?: number;
           scheduled_weekdays?: number[];
+          auto_weekly_report?: boolean;
+          auto_monthly_report?: boolean;
           created_by: string;
           created_at?: string;
           updated_at?: string;
@@ -681,6 +685,8 @@ export type Database = {
           company_id?: string | null;
           sort_order?: number;
           scheduled_weekdays?: number[];
+          auto_weekly_report?: boolean;
+          auto_monthly_report?: boolean;
           updated_at?: string;
         };
         Relationships: [
