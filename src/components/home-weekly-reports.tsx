@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 
+import { reportPeriodChipClass } from "@/components/report-period-mark";
 import { formatDateTime } from "@/lib/format-date";
 import { projectLogoPublicUrl } from "@/lib/project-logo";
 import { dueGmtMonthWindow } from "@/lib/reports";
@@ -33,6 +34,7 @@ type PreparedChoice = {
   sentLabel: string | null;
   note: string | null;
   state: "ready" | "sent" | "preparing" | "failed" | "waiting";
+  tone: "week" | "month" | null;
 };
 
 function pickRun(runs: WeeklyStoreReportRun[]) {
@@ -340,13 +342,19 @@ export async function HomeWeeklyReports() {
     .map((store) => {
       const choices = [
         store.autoWeekly
-          ? menuChoice(weekCards.get(store.projectId), PERIOD_COPY.week, "Weekly")
+          ? menuChoice(
+              weekCards.get(store.projectId),
+              PERIOD_COPY.week,
+              "Weekly",
+              "week",
+            )
           : null,
         store.autoMonthly
           ? menuChoice(
               monthCards.get(store.projectId),
               PERIOD_COPY.month,
               "Monthly",
+              "month",
             )
           : null,
         store.autoMonthly
@@ -354,6 +362,7 @@ export async function HomeWeeklyReports() {
               performanceByProject.get(store.projectId),
               PERFORMANCE_COPY,
               "Performance",
+              null,
             )
           : null,
       ].filter((choice): choice is PreparedChoice =>
@@ -437,6 +446,7 @@ function menuChoice(
   card: StoreCard | undefined,
   copy: (typeof PERIOD_COPY)["week"],
   label: string,
+  tone: PreparedChoice["tone"],
 ): PreparedChoice {
   const staleRunning =
     card?.status === "running" &&
@@ -462,6 +472,7 @@ function menuChoice(
     reportId,
     sentLabel: sent && card?.sentAt ? `Sent ${formatDateTime(card.sentAt)}` : null,
     note,
+    tone,
     state: reportId
       ? sent
         ? "sent"
@@ -489,8 +500,7 @@ function PreparedReportLink({ choice }: { choice: PreparedChoice }) {
       : choice.state === "failed"
         ? "text-[var(--danger)]"
         : "text-[var(--muted)]";
-  const className =
-    "inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-white px-2 py-0.5 text-xs font-medium";
+  const className = `inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium ${reportPeriodChipClass(choice.tone)}`;
   const body = (
     <>
       {choice.label}

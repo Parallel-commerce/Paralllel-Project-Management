@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 
 import { HomeWeeklyReports } from "@/components/home-weekly-reports";
+import { ReportPeriodMark } from "@/components/report-period-mark";
 import { ProjectStoreView } from "@/components/project-store-view";
 import { formatDateTime } from "@/lib/format-date";
 import { projectLogoPublicUrl } from "@/lib/project-logo";
@@ -13,6 +14,7 @@ type ReportRow = {
   project_id: string;
   title: string;
   kind: string | null;
+  period: string | null;
   sent_at: string | null;
   created_at: string;
 };
@@ -57,7 +59,7 @@ export default async function ReportsPage() {
     reportProjectIds.length > 0
       ? await supabase
           .from("project_reports")
-          .select("id, project_id, title, kind, sent_at, created_at")
+          .select("id, project_id, title, kind, period, sent_at, created_at")
           .in("project_id", reportProjectIds)
           .order("created_at", { ascending: false })
       : { data: [] };
@@ -190,19 +192,31 @@ function ReportList({
           <li key={report.id}>
             <Link
               href={`/reports/${projectId}/${report.id}`}
-              className="flex items-start justify-between gap-4 px-1 py-4 hover:bg-[var(--surface)]/60"
+              className="flex items-center justify-between gap-4 px-1 py-3 hover:bg-[var(--surface)]/60"
             >
-              <div>
+              <ReportPeriodMark period={report.period} />
+              <div className="min-w-0 flex-1">
                 <p className="font-medium">{report.title}</p>
                 <p className="mt-1 text-xs text-[var(--muted)]">
                   {report.kind === "store" ? "Store" : "Performance"} · Created{" "}
                   {formatDateTime(report.created_at)}
                   {report.sent_at
                     ? ` · Sent ${formatDateTime(report.sent_at)}`
-                    : " · Draft"}
+                    : null}
                 </p>
               </div>
-              <span className="text-sm text-[var(--accent)]">Open</span>
+              <span className="flex shrink-0 items-center gap-3">
+                <span
+                  className={`text-xs font-medium ${
+                    report.sent_at
+                      ? "text-[var(--status-done-label)]"
+                      : "text-[var(--muted)]"
+                  }`}
+                >
+                  {report.sent_at ? "Sent" : "Draft"}
+                </span>
+                <span className="text-sm text-[var(--accent)]">Open</span>
+              </span>
             </Link>
           </li>
         ))

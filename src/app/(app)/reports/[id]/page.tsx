@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { AdminOnly } from "@/components/admin-only";
 import { GenerateReportForm } from "@/components/generate-report-form";
 import { ProjectStoreView } from "@/components/project-store-view";
+import { ReportPeriodMark } from "@/components/report-period-mark";
 import { formatDateTime } from "@/lib/format-date";
 import { resolveReportWindow, type ReportWindow } from "@/lib/reports";
 import { toPublicConnection } from "@/lib/shopify/connection";
@@ -146,19 +147,31 @@ export default async function ProjectReportsPage({
                 <li key={report.id}>
                   <Link
                     href={`/reports/${id}/${report.id}`}
-                    className="flex items-start justify-between gap-4 px-1 py-4 hover:bg-[var(--surface)]/60"
+                    className="flex items-center justify-between gap-4 px-1 py-3 hover:bg-[var(--surface)]/60"
                   >
-                    <div>
+                    <ReportPeriodMark period={report.period} />
+                    <div className="min-w-0 flex-1">
                       <p className="font-medium">{report.title}</p>
                       <p className="mt-1 text-xs text-[var(--muted)]">
                         {reportKindLabel(report.kind)} · Created{" "}
                         {formatDateTime(report.created_at)}
                         {report.sent_at
                           ? ` · Sent ${formatDateTime(report.sent_at)}`
-                          : " · Draft"}
+                          : null}
                       </p>
                     </div>
-                    <span className="text-sm text-[var(--accent)]">Open</span>
+                    <span className="flex shrink-0 items-center gap-3">
+                      <span
+                        className={`text-xs font-medium ${
+                          report.sent_at
+                            ? "text-[var(--status-done-label)]"
+                            : "text-[var(--muted)]"
+                        }`}
+                      >
+                        {report.sent_at ? "Sent" : "Draft"}
+                      </span>
+                      <span className="text-sm text-[var(--accent)]">Open</span>
+                    </span>
                   </Link>
                 </li>
               ))
