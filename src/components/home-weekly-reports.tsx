@@ -217,7 +217,10 @@ export async function HomeWeeklyReports() {
       : { data: [] };
 
   const reportById = new Map((reports ?? []).map((report) => [report.id, report]));
-  const latestStoreReport = new Map<string, (typeof storeReportRows)[number]>();
+  const latestStoreReport = new Map<
+    string,
+    NonNullable<typeof storeReportRows>[number]
+  >();
   for (const report of storeReportRows ?? []) {
     const key = `${report.project_id}:${report.period}`;
     if (!latestStoreReport.has(key)) latestStoreReport.set(key, report);
