@@ -47,6 +47,7 @@ export function TaskCardQuickActions({
   onDueDateChange,
   onBeforeStatusChange,
   allowDueDate = true,
+  dueDateLocked = false,
 }: {
   taskId: string;
   projectId: string;
@@ -62,6 +63,8 @@ export function TaskCardQuickActions({
   onBeforeStatusChange?: (status: TaskStatus) => boolean;
   /** Questions and similar types cannot be scheduled. */
   allowDueDate?: boolean;
+  /** Admin chose this date, so priority rescheduling leaves it in place. */
+  dueDateLocked?: boolean;
 }) {
   const router = useRouter();
   const statusId = useId();
@@ -177,7 +180,7 @@ export function TaskCardQuickActions({
   async function changeDueDate(next: string | null) {
     const normalized = next?.slice(0, 10) || null;
     const current = dueDate?.slice(0, 10) || null;
-    if (normalized === current) {
+    if (normalized === current && (!normalized || dueDateLocked)) {
       setMenu(null);
       return;
     }
@@ -340,7 +343,11 @@ export function TaskCardQuickActions({
           aria-haspopup="dialog"
           aria-expanded={menu === "date"}
           aria-label={dueDate ? `Change due date, ${formatDue(dueDate)}` : "Set due date"}
-          title="Change due date"
+          title={
+            dueDateLocked
+              ? "Fixed date. Clear it to schedule from priority again."
+              : "Change due date. A date you set stays on that day."
+          }
           onClick={() => toggle("date")}
           className={`rounded px-1 py-0.5 text-xs tabular-nums outline-none ring-[var(--accent)] hover:bg-black/5 focus-visible:ring-2 ${
             pending ? "opacity-60" : ""
@@ -349,8 +356,17 @@ export function TaskCardQuickActions({
           {dueDate ? formatDue(dueDate) : "No date"}
         </button>
       ) : (
-        <span className="rounded px-1 py-0.5 text-xs text-[var(--muted)]">
-          No date
+        <span
+          className={`rounded px-1 py-0.5 text-xs tabular-nums ${
+            overdue ? "font-medium text-[var(--danger)]" : "text-[var(--muted)]"
+          }`}
+          title={
+            dueDate
+              ? "Estimated from the current priority order"
+              : undefined
+          }
+        >
+          {dueDate ? formatDue(dueDate) : "No date"}
         </span>
       )}
       {menuPanel}

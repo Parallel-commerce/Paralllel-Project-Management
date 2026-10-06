@@ -89,6 +89,20 @@ body {
 }
 
 /*
+ * Native select arrows ignore padding and sit on the border.
+ * Draw one chevron, 8px in from the right, on every dropdown.
+ */
+select:not([multiple]) {
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='M2.25 4.5 6 8.25 9.75 4.5' stroke='%23111111' stroke-width='1.25' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 12px 12px;
+  padding-inline-end: 28px;
+}
+
+/*
  * iOS Safari zooms (and crops) the page when a focused field is under 16px.
  * Base covers inherited text-sm; utilities cover text-sm/text-xs on the field.
  * Larger sizes such as text-xl are left alone.

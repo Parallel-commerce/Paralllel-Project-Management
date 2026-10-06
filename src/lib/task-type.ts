@@ -33,11 +33,11 @@ export function taskTypeHint(type: TaskType | null | undefined) {
     case "question":
       return "No due date — we’ll answer when we can.";
     case "new_feature":
-      return "New work for the store. Leave the date empty to auto-schedule.";
+      return "New work for the store. Scheduled from the priority order.";
     case "improvement":
-      return "An upgrade to something that already exists. Auto-schedules if empty.";
+      return "An upgrade to something that already exists. Scheduled from priority.";
     case "shopify_admin":
-      return "Admin / settings work in Shopify. Auto-schedules if empty.";
+      return "Admin / settings work in Shopify. Scheduled from priority.";
     default:
       return "Optional. Choosing a type helps us schedule it correctly.";
   }

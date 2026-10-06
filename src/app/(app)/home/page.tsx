@@ -54,7 +54,7 @@ export default async function HomeDashboardPage() {
     supabase
       .from("tasks")
       .select(
-        "id, key, title, due_date, status, task_type, list_id, project_id, projects(name), lists(name)",
+        "id, key, title, due_date, due_date_locked, status, task_type, list_id, project_id, projects(name), lists(name)",
       )
       .eq("assigned_to", user.id)
       .neq("status", "done")
@@ -63,7 +63,7 @@ export default async function HomeDashboardPage() {
       .limit(5),
     supabase
       .from("project_members")
-      .select("role")
+      .select("project_id, role")
       .eq("user_id", user.id),
   ]);
 
@@ -93,9 +93,16 @@ export default async function HomeDashboardPage() {
 
   const name = firstName(profile?.full_name, profile?.email || user.email || "");
   const isPlatformAdmin = !!profile?.is_platform_admin;
-  const isProjectAdmin = (memberships ?? []).some(
-    (membership) => (membership.role as ProjectRole) === "admin",
-  );
+  const adminProjectIds = isPlatformAdmin
+    ? [...new Set(listOptions.map((list) => list.projectId))]
+    : [
+        ...new Set(
+          (memberships ?? [])
+            .filter((membership) => (membership.role as ProjectRole) === "admin")
+            .map((membership) => membership.project_id as string),
+        ),
+      ];
+  const isProjectAdmin = adminProjectIds.length > 0 && !isPlatformAdmin;
   const isInternal =
     isPlatformAdmin ||
     isProjectAdmin ||
@@ -176,6 +183,11 @@ export default async function HomeDashboardPage() {
                       taskType={(task.task_type as TaskType | null) ?? null}
                       taskKey={(task.key as string | null) ?? null}
                       dueDate={(task.due_date as string | null) ?? null}
+                      dueDateLocked={!!task.due_date_locked}
+                      canEditDueDate={
+                        isPlatformAdmin ||
+                        adminProjectIds.includes(task.project_id as string)
+                      }
                       projectName={(project?.name as string) ?? "Project"}
                       listName={(list?.name as string) ?? "List"}
                       todayIso={today}
@@ -201,7 +213,7 @@ export default async function HomeDashboardPage() {
               <HomeQuickTaskForm
                 lists={listOptions}
                 currentUserId={user.id}
-                allowOverbook={isInternal}
+                adminProjectIds={adminProjectIds}
               />
             </div>
           </section>

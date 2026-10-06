@@ -15,6 +15,7 @@ import { useMemo, useState } from "react";
 
 import { TaskCardQuickActions } from "@/components/task-card-actions";
 import { TaskTypeTag } from "@/components/task-type-tag";
+import { taskTypeOmitsDueDate } from "@/lib/task-type";
 import { taskStatusColors } from "@/lib/task-status";
 import type { TaskStatus, TaskType } from "@/types/database";
 
@@ -22,6 +23,7 @@ export type CalendarTask = {
   id: string;
   title: string;
   due_date: string | null;
+  due_date_locked?: boolean;
   status: TaskStatus;
   task_type?: TaskType | null;
   project_id?: string;
@@ -33,6 +35,7 @@ export type CalendarTask = {
 type TaskPatch = {
   status?: TaskStatus;
   due_date?: string | null;
+  due_date_locked?: boolean;
 };
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -59,12 +62,14 @@ function CalendarQuickActions({
   onOpen,
   onTaskChange,
   onBeforeStatusChange,
+  canEditDueDate = false,
 }: {
   task: CalendarTask;
   todayIso: string;
   onOpen: () => void;
   onTaskChange?: (taskId: string, patch: TaskPatch) => void;
   onBeforeStatusChange?: (task: CalendarTask, next: TaskStatus) => boolean;
+  canEditDueDate?: boolean;
 }) {
   if (!task.project_id || !task.list_id || !onTaskChange) return null;
 
@@ -78,9 +83,14 @@ function CalendarQuickActions({
         dueDate={task.due_date}
         todayIso={todayIso}
         onOpen={onOpen}
+        allowDueDate={canEditDueDate && !taskTypeOmitsDueDate(task.task_type)}
+        dueDateLocked={!!task.due_date_locked}
         onStatusChange={(status) => onTaskChange(task.id, { status })}
         onDueDateChange={(dueDate) =>
-          onTaskChange(task.id, { due_date: dueDate })
+          onTaskChange(task.id, {
+            due_date: dueDate,
+            due_date_locked: !!dueDate,
+          })
         }
         onBeforeStatusChange={
           onBeforeStatusChange
@@ -102,6 +112,7 @@ export function MyWorkCalendar({
   onBeforeStatusChange,
   showContext = true,
   highlightedWeekdays = [],
+  canEditDueDate = false,
 }: {
   tasks: CalendarTask[];
   todayIso: string;
@@ -113,7 +124,15 @@ export function MyWorkCalendar({
   showContext?: boolean;
   /** 0 = Sunday … 6 = Saturday */
   highlightedWeekdays?: number[];
+  /** Admins can change dates. Everyone else sees the date only. */
+  canEditDueDate?: boolean | ((task: CalendarTask) => boolean);
 }) {
+  function editable(task: CalendarTask) {
+    return typeof canEditDueDate === "function"
+      ? canEditDueDate(task)
+      : canEditDueDate;
+  }
+
   const [month, setMonth] = useState(() => {
     const seed = selectedDay || todayIso;
     try {
@@ -355,6 +374,7 @@ export function MyWorkCalendar({
                       onOpen={() => onOpenTask(task.id)}
                       onTaskChange={onTaskChange}
                       onBeforeStatusChange={onBeforeStatusChange}
+                      canEditDueDate={editable(task)}
                     />
                   </li>
                 );
@@ -404,6 +424,7 @@ export function MyWorkCalendar({
                       onOpen={() => onOpenTask(task.id)}
                       onTaskChange={onTaskChange}
                       onBeforeStatusChange={onBeforeStatusChange}
+                      canEditDueDate={editable(task)}
                     />
                   </span>
                 </li>

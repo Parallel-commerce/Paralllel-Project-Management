@@ -10,11 +10,15 @@ import {
 } from "@/lib/actions/users";
 import {
   allocateNextAvailableDay,
-  allocateSequentialDueDates,
   dayIsOccupied,
   hasActiveCadence,
   type ScheduleConfig,
 } from "@/lib/allocate-due-dates";
+import {
+  compareTodoPriority,
+  planTodoDueDates,
+  type TodoScheduleUpdate,
+} from "@/lib/schedule-todos";
 import { logActivity, notifyUser, sendSignInCode } from "@/lib/notify";
 import { PROJECT_LOGO_BUCKET } from "@/lib/project-logo";
 import { projectReportPath } from "@/lib/report-paths";
@@ -914,6 +918,87 @@ async function loadProjectSchedule(
   };
 }
 
+/**
+ * Rewrite to-do due dates from priority order.
+ * Admin-locked dates stay on their day and block that day for everyone else.
+ */
+async function rescheduleListTodos(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  projectId: string,
+  listId: string,
+  options?: {
+    orderedTodoIds?: string[];
+    updateImportance?: boolean;
+  },
+): Promise<{ updates: TodoScheduleUpdate[] } | { error: string }> {
+  const { data: rows, error: loadError } = await supabase
+    .from("tasks")
+    .select(
+      "id, status, due_date, due_date_locked, task_type, importance, created_at",
+    )
+    .eq("project_id", projectId)
+    .eq("list_id", listId)
+    .is("archived_at", null);
+
+  if (loadError) return { error: loadError.message };
+
+  const tasks = (rows ?? []).map((row) => ({
+    id: row.id as string,
+    status: row.status as string,
+    due_date: (row.due_date as string | null) ?? null,
+    due_date_locked: !!row.due_date_locked,
+    task_type: (row.task_type as TaskType | null) ?? null,
+    importance: (row.importance as number | null) ?? 0,
+    created_at: (row.created_at as string | null) ?? null,
+  }));
+
+  const todos = tasks.filter((row) => row.status === "todo");
+  const orderedTodoIds =
+    options?.orderedTodoIds ??
+    [...todos].sort(compareTodoPriority).map((row) => row.id);
+
+  const schedule = await loadProjectSchedule(supabase, projectId);
+  const updates = planTodoDueDates({
+    orderedTodoIds,
+    tasks,
+    schedule,
+  });
+  const byId = new Map(tasks.map((row) => [row.id, row]));
+  const updateImportance = options?.updateImportance ?? false;
+
+  for (const update of updates) {
+    const existing = byId.get(update.id);
+    const previousDay = existing?.due_date?.slice(0, 10) ?? null;
+    const sameDate = previousDay === update.due_date;
+    const sameLock = !!existing?.due_date_locked === update.due_date_locked;
+    const sameImportance = (existing?.importance ?? 0) === update.importance;
+    if (sameDate && sameLock && (!updateImportance || sameImportance)) {
+      continue;
+    }
+
+    const payload: {
+      due_date: string | null;
+      due_date_locked: boolean;
+      importance?: number;
+    } = {
+      due_date: update.due_date,
+      due_date_locked: update.due_date_locked,
+    };
+    if (updateImportance) payload.importance = update.importance;
+
+    const { error } = await supabase
+      .from("tasks")
+      .update(payload)
+      .eq("id", update.id)
+      .eq("project_id", projectId)
+      .eq("list_id", listId);
+
+    if (error) return { error: error.message };
+  }
+
+  return { updates };
+}
+
 async function getProjectAccess(
   supabase: Awaited<ReturnType<typeof createClient>>,
   projectId: string,
@@ -1185,6 +1270,11 @@ export async function createTask(projectId: string, listId: string, formData: Fo
       title,
       description: description || null,
       due_date: dueResolved.dueDate,
+      due_date_locked:
+        access.isAdmin &&
+        !!dueDateRaw &&
+        !!dueResolved.dueDate &&
+        !taskTypeOmitsDueDate(taskType),
       status,
       task_type: taskType,
       importance: importanceResult,
@@ -1282,6 +1372,13 @@ export async function createTask(projectId: string, listId: string, formData: Fo
     clientVisible,
   });
 
+  if (!taskTypeOmitsDueDate(taskType)) {
+    const rescheduled = await rescheduleListTodos(supabase, projectId, listId);
+    if ("error" in rescheduled) {
+      return { error: rescheduled.error };
+    }
+  }
+
   revalidatePath(`/projects/${projectId}/lists/${listId}`);
   revalidatePath(`/projects/${projectId}`);
   revalidatePath("/tasks");
@@ -1343,7 +1440,7 @@ export async function updateTask(
   const { data: before } = await supabase
     .from("tasks")
     .select(
-      `title, description, due_date, status, task_type, importance, assigned_to, reported_by, created_by, ${THEME_COMMIT_SELECT}`,
+      `title, description, due_date, due_date_locked, status, task_type, importance, assigned_to, reported_by, created_by, ${THEME_COMMIT_SELECT}`,
     )
     .eq("id", taskId)
     .maybeSingle();
@@ -1352,44 +1449,40 @@ export async function updateTask(
     return { error: "Task not found." };
   }
 
+  const previousDueDate = before.due_date?.slice(0, 10) ?? null;
+  const previousLocked = !!before.due_date_locked;
   let nextDueDate: string | null;
-  if (!access.isAdmin) {
-    if (taskTypeOmitsDueDate(taskType)) {
-      nextDueDate = null;
-    } else if (
-      taskTypePrefersFirstAvailable(taskType) &&
-      !before.due_date
-    ) {
-      const dueResolved = await resolveTaskDueDate({
-        supabase,
-        projectId,
-        requestedDueDate: "",
-        isAdmin: false,
-        excludeTaskId: taskId,
-        autoAllocate: true,
-        taskType,
-      });
-      if ("error" in dueResolved) {
-        return { error: dueResolved.error };
-      }
-      nextDueDate = dueResolved.dueDate;
-    } else {
-      nextDueDate = before.due_date?.slice(0, 10) ?? null;
-    }
-  } else {
+  let nextDueDateLocked: boolean;
+
+  if (taskTypeOmitsDueDate(taskType)) {
+    nextDueDate = null;
+    nextDueDateLocked = false;
+  } else if (!access.isAdmin) {
+    nextDueDate = previousDueDate;
+    nextDueDateLocked = previousLocked;
+  } else if (!dueDateRaw) {
+    // Cleared: drop the pin and let priority fill the date in.
+    nextDueDate = null;
+    nextDueDateLocked = false;
+  } else if (dueDateRaw.slice(0, 10) !== previousDueDate) {
     const dueResolved = await resolveTaskDueDate({
       supabase,
       projectId,
       requestedDueDate: dueDateRaw,
       isAdmin: true,
       excludeTaskId: taskId,
-      autoAllocate: taskTypePrefersFirstAvailable(taskType),
+      autoAllocate: false,
       taskType,
     });
     if ("error" in dueResolved) {
       return { error: dueResolved.error };
     }
     nextDueDate = dueResolved.dueDate;
+    nextDueDateLocked = !!nextDueDate;
+  } else {
+    // The form echoed the current date. Don't treat that as a new pin.
+    nextDueDate = previousDueDate;
+    nextDueDateLocked = previousLocked;
   }
 
   const visibility = await getListVisibility(supabase, listId);
@@ -1398,7 +1491,9 @@ export async function updateTask(
 
   const nextDescription = description || null;
   const nextAssignee = assignedTo || null;
-  const nextImportance = importanceResult;
+  const nextImportance = access.isAdmin
+    ? importanceResult
+    : (before.importance ?? 0);
   const themeFields = await themeFieldsForWrite(
     supabase,
     projectId,
@@ -1415,7 +1510,8 @@ export async function updateTask(
     before &&
     before.title === title &&
     (before.description ?? null) === nextDescription &&
-    (before.due_date ?? null) === nextDueDate &&
+    previousDueDate === nextDueDate &&
+    previousLocked === nextDueDateLocked &&
     before.status === status &&
     (before.task_type ?? null) === taskType &&
     (before.importance ?? 0) === nextImportance &&
@@ -1434,6 +1530,7 @@ export async function updateTask(
       title,
       description: nextDescription,
       due_date: nextDueDate,
+      due_date_locked: nextDueDateLocked,
       status,
       task_type: taskType,
       importance: nextImportance,
@@ -1538,6 +1635,20 @@ export async function updateTask(
     clientVisible,
   });
 
+  const scheduleChanged =
+    previousDueDate !== nextDueDate ||
+    previousLocked !== nextDueDateLocked ||
+    before.status !== status ||
+    (before.task_type ?? null) !== taskType ||
+    (before.importance ?? 0) !== nextImportance;
+
+  if (scheduleChanged) {
+    const rescheduled = await rescheduleListTodos(supabase, projectId, listId);
+    if ("error" in rescheduled) {
+      return { error: rescheduled.error };
+    }
+  }
+
   revalidatePath(`/projects/${projectId}/lists/${listId}`);
   revalidatePath(`/projects/${projectId}`);
   revalidatePath("/tasks");
@@ -1620,6 +1731,13 @@ export async function updateTaskStatus(
     clientVisible,
   });
 
+  if (before?.status !== status) {
+    const rescheduled = await rescheduleListTodos(supabase, projectId, listId);
+    if ("error" in rescheduled) {
+      return { error: rescheduled.error };
+    }
+  }
+
   revalidatePath(`/projects/${projectId}/lists/${listId}`);
   revalidatePath(`/projects/${projectId}`);
   revalidatePath("/tasks");
@@ -1674,7 +1792,7 @@ export async function updateTaskDueDate(
 
   const { data: before } = await supabase
     .from("tasks")
-    .select("title, due_date, task_type")
+    .select("title, due_date, due_date_locked, task_type")
     .eq("id", taskId)
     .maybeSingle();
 
@@ -1698,7 +1816,8 @@ export async function updateTaskDueDate(
   }
 
   const previous = before.due_date?.slice(0, 10) ?? null;
-  if (previous === nextDueDate) {
+  const alreadyLocked = !!before.due_date_locked;
+  if (previous === nextDueDate && alreadyLocked === !!nextDueDate) {
     return { success: true, dueDate: nextDueDate };
   }
 
@@ -1719,43 +1838,59 @@ export async function updateTaskDueDate(
 
   const { error } = await supabase
     .from("tasks")
-    .update({ due_date: nextDueDate })
+    .update({
+      due_date: nextDueDate,
+      due_date_locked: !!nextDueDate,
+    })
     .eq("id", taskId);
 
   if (error) {
     return { error: error.message };
   }
 
+  const rescheduled = await rescheduleListTodos(supabase, projectId, listId);
+  if ("error" in rescheduled) {
+    return { error: rescheduled.error };
+  }
+
+  const resulting =
+    rescheduled.updates.find((update) => update.id === taskId)?.due_date ??
+    nextDueDate;
+
   const summary = nextDueDate
     ? `Set the due date on “${before.title}” to ${formatDueLabel(nextDueDate)}`
-    : `Cleared the due date on “${before.title}”`;
+    : resulting
+      ? `Returned “${before.title}” to the priority schedule (${formatDueLabel(resulting)})`
+      : `Cleared the due date on “${before.title}”`;
 
-  await logActivity({
-    projectId,
-    actorId: user.id,
-    entityType: "task",
-    entityId: taskId,
-    action: "updated",
-    summary,
-    metadata: {
-      from: previous,
-      to: nextDueDate,
-      list_visibility: visibility,
-    },
-    clientVisible,
-  });
+  if (previous !== resulting || !!nextDueDate) {
+    await logActivity({
+      projectId,
+      actorId: user.id,
+      entityType: "task",
+      entityId: taskId,
+      action: "updated",
+      summary,
+      metadata: {
+        from: previous,
+        to: resulting,
+        due_date_locked: !!nextDueDate,
+        list_visibility: visibility,
+      },
+      clientVisible,
+    });
+  }
 
   revalidatePath(`/projects/${projectId}/lists/${listId}`);
   revalidatePath(`/projects/${projectId}`);
   revalidatePath("/tasks");
   revalidatePath("/home");
-  return { success: true, dueDate: nextDueDate };
+  return { success: true, dueDate: resulting };
 }
 
 /**
- * Reorder todo tasks by drag order, then reschedule each onto the next free
- * allocated work day (one open todo per day). Non-todo open tasks keep their
- * dates and still occupy capacity.
+ * Reorder todo tasks by drag order, then reschedule unlocked to-dos onto the
+ * next free work day. Dates an admin set stay put and still occupy that day.
  */
 export async function reorderAndRescheduleTodos(
   projectId: string,
@@ -1764,7 +1899,7 @@ export async function reorderAndRescheduleTodos(
 ): Promise<
   | {
       success: true;
-      updates: { id: string; importance: number; due_date: string | null }[];
+      updates: TodoScheduleUpdate[];
     }
   | { error: string }
 > {
@@ -1815,80 +1950,14 @@ export async function reorderAndRescheduleTodos(
     };
   }
 
-  const schedule = await loadProjectSchedule(supabase, projectId);
-  const shouldReschedule = hasActiveCadence(schedule.cadence);
-  const occupancy: Record<string, number> = {};
-  if (shouldReschedule) {
-    for (const row of rows ?? []) {
-      if (row.status === "todo" || row.status === "done") continue;
-      const day =
-        typeof row.due_date === "string" ? row.due_date.slice(0, 10) : "";
-      if (!day) continue;
-      occupancy[day] = (occupancy[day] ?? 0) + 1;
-    }
+  const rescheduled = await rescheduleListTodos(supabase, projectId, listId, {
+    orderedTodoIds: orderedTaskIds,
+    updateImportance: true,
+  });
+  if ("error" in rescheduled) {
+    return { error: rescheduled.error };
   }
-
-  // Bugs first (earliest free days), then other scheduled todos in drag order.
-  // Questions stay unscheduled.
-  const scheduleIds = shouldReschedule
-    ? [
-        ...orderedTaskIds.filter((id) => {
-          const type = (byId.get(id)?.task_type as TaskType | null) ?? null;
-          return taskTypePrefersFirstAvailable(type);
-        }),
-        ...orderedTaskIds.filter((id) => {
-          const type = (byId.get(id)?.task_type as TaskType | null) ?? null;
-          return (
-            !taskTypeOmitsDueDate(type) &&
-            !taskTypePrefersFirstAvailable(type)
-          );
-        }),
-      ]
-    : [];
-
-  const datesById = new Map<string, string | null>();
-  if (shouldReschedule) {
-    const dates = allocateSequentialDueDates(
-      schedule,
-      scheduleIds.length,
-      occupancy,
-    );
-    scheduleIds.forEach((id, index) => {
-      datesById.set(id, dates[index] ?? null);
-    });
-  }
-
-  const updates: { id: string; importance: number; due_date: string | null }[] =
-    [];
-  const total = orderedTaskIds.length;
-
-  for (let index = 0; index < orderedTaskIds.length; index++) {
-    const id = orderedTaskIds[index];
-    const importance = total - index;
-    const existing = byId.get(id);
-    const type = (existing?.task_type as TaskType | null) ?? null;
-    const dueDate = taskTypeOmitsDueDate(type)
-      ? null
-      : shouldReschedule
-        ? (datesById.get(id) ?? null)
-        : (existing?.due_date?.slice(0, 10) ?? null);
-    updates.push({ id, importance, due_date: dueDate });
-
-    const { error } = await supabase
-      .from("tasks")
-      .update(
-        shouldReschedule || taskTypeOmitsDueDate(type)
-          ? { importance, due_date: dueDate }
-          : { importance },
-      )
-      .eq("id", id)
-      .eq("project_id", projectId)
-      .eq("list_id", listId);
-
-    if (error) {
-      return { error: error.message };
-    }
-  }
+  const updates = rescheduled.updates;
 
   const visibility = await getListVisibility(supabase, listId);
   await logActivity({
@@ -1966,6 +2035,11 @@ export async function deleteTask(
     clientVisible,
   });
 
+  const rescheduled = await rescheduleListTodos(supabase, projectId, listId);
+  if ("error" in rescheduled) {
+    return { error: rescheduled.error };
+  }
+
   revalidatePath(`/projects/${projectId}/lists/${listId}`);
   revalidatePath(`/projects/${projectId}/lists/${listId}/archive`);
   revalidatePath(`/projects/${projectId}`);
@@ -2040,6 +2114,11 @@ export async function restoreArchivedTask(
     metadata: { list_visibility: visibility },
     clientVisible,
   });
+
+  const rescheduled = await rescheduleListTodos(supabase, projectId, listId);
+  if ("error" in rescheduled) {
+    return { error: rescheduled.error };
+  }
 
   revalidatePath(`/projects/${projectId}/lists/${listId}`);
   revalidatePath(`/projects/${projectId}/lists/${listId}/archive`);

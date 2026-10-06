@@ -267,6 +267,13 @@ export default async function MyTasksPage({
       todayIso={today}
       initialTaskId={params.task ?? null}
       projectContext={projectContext}
+      adminProjectIds={
+        isPlatformAdmin
+          ? [...new Set(lists.map((list) => list.projectId))]
+          : (memberships ?? [])
+              .filter((row) => (row.role as ProjectRole) === "admin")
+              .map((row) => row.project_id as string)
+      }
       runningEntry={(runningResult.data as TimeEntryRow | null) ?? null}
     />
   );

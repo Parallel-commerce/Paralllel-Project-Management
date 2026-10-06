@@ -7,6 +7,7 @@ import { useState, type ReactNode } from "react";
 import { StatusTag } from "@/components/status-tag";
 import { TaskCardQuickActions } from "@/components/task-card-actions";
 import { TaskTypeTag } from "@/components/task-type-tag";
+import { taskTypeOmitsDueDate } from "@/lib/task-type";
 import type { TaskStatus, TaskType } from "@/types/database";
 
 export type TaskWorkLinkProps = {
@@ -27,7 +28,11 @@ export type TaskWorkLinkProps = {
   onTaskChange?: (patch: {
     status?: TaskStatus;
     due_date?: string | null;
+    due_date_locked?: boolean;
   }) => void;
+  /** Admins can change the date. Everyone else sees it only. */
+  canEditDueDate?: boolean;
+  dueDateLocked?: boolean;
 };
 
 function formatDue(value: string) {
@@ -93,6 +98,8 @@ export function TaskWorkLink({
   projectId,
   listId,
   onTaskChange,
+  canEditDueDate = false,
+  dueDateLocked = false,
 }: TaskWorkLinkProps) {
   const [status, setStatus] = useState(statusProp);
   const [dueDate, setDueDate] = useState(dueDateProp ?? null);
@@ -166,13 +173,15 @@ export function TaskWorkLink({
               todayIso={todayIso}
               href={href}
               onOpen={onOpen}
+              allowDueDate={canEditDueDate && !taskTypeOmitsDueDate(taskType)}
+              dueDateLocked={dueDateLocked}
               onStatusChange={(next) => {
                 setStatus(next);
                 onTaskChange?.({ status: next });
               }}
               onDueDateChange={(next) => {
                 setDueDate(next);
-                onTaskChange?.({ due_date: next });
+                onTaskChange?.({ due_date: next, due_date_locked: !!next });
               }}
             />
           ) : (

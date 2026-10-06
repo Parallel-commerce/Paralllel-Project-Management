@@ -72,6 +72,7 @@ function todayIso() {
 type TaskPatch = {
   status?: TaskStatus;
   due_date?: string | null;
+  due_date_locked?: boolean;
   importance?: number;
 };
 
@@ -200,9 +201,13 @@ function TaskCard({
             allowDueDate={
               quickEdit.canSchedule && !taskTypeOmitsDueDate(task.task_type)
             }
+            dueDateLocked={!!task.due_date_locked}
             onStatusChange={(status) => quickEdit.patchTask(task.id, { status })}
             onDueDateChange={(dueDate) =>
-              quickEdit.patchTask(task.id, { due_date: dueDate })
+              quickEdit.patchTask(task.id, {
+                due_date: dueDate,
+                due_date_locked: !!dueDate,
+              })
             }
             onBeforeStatusChange={(status) =>
               quickEdit.prepareStatusChange(task, status)
@@ -300,9 +305,13 @@ function TaskListRowContent({
             allowDueDate={
               quickEdit.canSchedule && !taskTypeOmitsDueDate(task.task_type)
             }
+            dueDateLocked={!!task.due_date_locked}
             onStatusChange={(status) => quickEdit.patchTask(task.id, { status })}
             onDueDateChange={(dueDate) =>
-              quickEdit.patchTask(task.id, { due_date: dueDate })
+              quickEdit.patchTask(task.id, {
+                due_date: dueDate,
+                due_date_locked: !!dueDate,
+              })
             }
             onBeforeStatusChange={(status) =>
               quickEdit.prepareStatusChange(task, status)
@@ -468,7 +477,7 @@ function StatusListSection({
           </h2>
           {sortable ? (
             <p className="w-full text-xs text-[var(--muted)] sm:ml-auto sm:w-auto">
-              Drag to set priority — due dates reschedule automatically
+              Drag to set priority — dates follow that order. Dates you set stay put.
             </p>
           ) : reorderHint ? (
             <p className="w-full text-xs text-[var(--muted)] sm:ml-auto sm:w-auto">
@@ -855,6 +864,7 @@ export function TaskBoard({
             ...task,
             importance: update.importance,
             due_date: update.due_date,
+            due_date_locked: update.due_date_locked,
           };
         }),
       );
@@ -1223,6 +1233,7 @@ export function TaskBoard({
             }}
             showContext={false}
             highlightedWeekdays={scheduledWeekdays}
+            canEditDueDate={allowOverbook}
           />
           {undated.length > 0 ? (
             <section className="mt-6">

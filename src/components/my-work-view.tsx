@@ -141,6 +141,7 @@ export function MyWorkView({
   initialTaskId,
   projectContext,
   runningEntry,
+  adminProjectIds = [],
 }: {
   view: WorkView;
   layout: WorkLayout;
@@ -151,6 +152,7 @@ export function MyWorkView({
   initialTaskId?: string | null;
   projectContext: Record<string, ProjectWorkContext>;
   runningEntry: TimeEntryRow | null;
+  adminProjectIds?: string[];
 }) {
   const router = useRouter();
   const [tasks, setTasks] = useState(incomingTasks);
@@ -162,7 +164,11 @@ export function MyWorkView({
 
   function patchTask(
     taskId: string,
-    patch: { status?: TaskStatus; due_date?: string | null },
+    patch: {
+      status?: TaskStatus;
+      due_date?: string | null;
+      due_date_locked?: boolean;
+    },
   ) {
     setTasks((current) =>
       current.map((task) =>
@@ -312,6 +318,10 @@ export function MyWorkView({
             selectedDay={selectedDay}
             onSelectDay={setSelectedDay}
             onTaskChange={patchTask}
+            canEditDueDate={(task) =>
+              !!task.project_id &&
+              (projectContext[task.project_id]?.isTimeAdmin ?? false)
+            }
             onOpenTask={(taskId) => {
               const match = tasks.find((task) => task.id === taskId);
               if (match) openTask(match);
@@ -339,6 +349,10 @@ export function MyWorkView({
                       taskId={task.id}
                       projectId={task.project_id}
                       listId={task.list_id}
+                      canEditDueDate={
+                        projectContext[task.project_id]?.isTimeAdmin ?? false
+                      }
+                      dueDateLocked={!!task.due_date_locked}
                       onOpen={() => openTask(task)}
                       onTaskChange={(patch) => patchTask(task.id, patch)}
                     />
@@ -384,6 +398,10 @@ export function MyWorkView({
                           taskId={task.id}
                           projectId={task.project_id}
                           listId={task.list_id}
+                          canEditDueDate={
+                            projectContext[task.project_id]?.isTimeAdmin ?? false
+                          }
+                          dueDateLocked={!!task.due_date_locked}
                           onOpen={() => openTask(task)}
                           onTaskChange={(patch) => patchTask(task.id, patch)}
                         />
@@ -439,6 +457,7 @@ export function MyWorkView({
                 key={selectedDay ?? "no-day"}
                 lists={lists}
                 currentUserId={currentUserId}
+                adminProjectIds={adminProjectIds}
                 defaultDueDate={
                   layout === "calendar" ? selectedDay : null
                 }

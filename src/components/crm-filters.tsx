@@ -31,7 +31,7 @@ function FilterSelect({
 
   return (
     <label
-      className={`relative flex min-h-9 min-w-0 cursor-pointer items-center gap-2 px-3 py-1.5 transition sm:min-w-[13rem] ${
+      className={`relative flex min-h-9 min-w-0 cursor-pointer items-center gap-2 py-1.5 pl-3 pr-2 transition sm:min-w-[13rem] ${
         active
           ? "bg-[var(--accent-soft)]"
           : "bg-[var(--surface)] hover:bg-white"

@@ -165,6 +165,8 @@ export type Task = {
   title: string;
   description: string | null;
   due_date: string | null;
+  /** True when an admin chose the due date. Priority rescheduling leaves it in place. */
+  due_date_locked: boolean;
   status: TaskStatus;
   task_type: TaskType | null;
   importance: number;
@@ -943,6 +945,7 @@ export type Database = {
           title: string;
           description?: string | null;
           due_date?: string | null;
+          due_date_locked?: boolean;
           status?: TaskStatus;
           task_type?: TaskType | null;
           importance?: number;
@@ -967,6 +970,7 @@ export type Database = {
           title?: string;
           description?: string | null;
           due_date?: string | null;
+          due_date_locked?: boolean;
           status?: TaskStatus;
           task_type?: TaskType | null;
           importance?: number;

@@ -1,5 +1,6 @@
 "use client";
 
+import { format, parseISO } from "date-fns";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
@@ -530,14 +531,10 @@ export function TaskModal({
                     {!canSchedule
                       ? omitsDueDate
                         ? "Questions don’t need a date."
-                        : prefersFirstAvailable
-                          ? "Bugs are put on the next free work day automatically."
-                          : "An admin will schedule this on a free work day."
+                        : "This date is when the work would be done if the current priority stays the same. Only an admin can change it."
                       : omitsDueDate
                         ? "Questions don’t need a date."
-                        : prefersFirstAvailable
-                          ? "Bugs are put on the next free work day unless you pick one."
-                          : "Leave empty and we’ll place it on the next free work day."}
+                        : "Leave empty to schedule from priority. A date you set stays on that day."}
                   </p>
                 </div>
                 {!canSchedule ? (
@@ -553,7 +550,9 @@ export function TaskModal({
                     />
                     {mode === "edit" && task?.due_date && !omitsDueDate ? (
                       <p className="rounded-md border border-[var(--border)] bg-[var(--surface-2)]/50 px-3 py-3 text-sm">
-                        Due {task.due_date.slice(0, 10)}
+                        Due{" "}
+                        {format(parseISO(task.due_date.slice(0, 10)), "d MMM yyyy")}
+                        {task.due_date_locked ? " · set by an admin" : ""}
                       </p>
                     ) : omitsDueDate ? (
                       <div className="rounded-md border border-dashed border-[var(--border)] bg-[var(--surface-2)]/50 px-3 py-3 text-sm text-[var(--muted)]">
@@ -561,7 +560,7 @@ export function TaskModal({
                       </div>
                     ) : (
                       <div className="rounded-md border border-dashed border-[var(--border)] bg-[var(--surface-2)]/50 px-3 py-3 text-sm text-[var(--muted)]">
-                        Scheduling is managed by an admin.
+                        Scheduled from priority once it’s on the list.
                       </div>
                     )}
                   </>
@@ -674,6 +673,18 @@ export function TaskModal({
                         ))}
                       </select>
                     </label>
+                    {themeDeploysEnabled(themeDeploys) && !isClient ? (
+                      <div className="sm:col-span-2">
+                        <ThemeDeploySelect
+                          value={themeCommit}
+                          commits={themeDeploys.commits}
+                          currentSha={task?.theme_commit_sha}
+                          currentMessage={task?.theme_commit_message}
+                          error={themeDeploys.error}
+                          onChange={setThemeCommit}
+                        />
+                      </div>
+                    ) : null}
                     {mode === "edit" || !isClient ? (
                       <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)] sm:col-span-2">
                         Status
@@ -694,19 +705,12 @@ export function TaskModal({
                     )}
                   </div>
                 )}
-                {themeDeploysEnabled(themeDeploys) && !isClient ? (
-                  <ThemeDeploySelect
-                    value={themeCommit}
-                    commits={themeDeploys.commits}
-                    currentSha={task?.theme_commit_sha}
-                    currentMessage={task?.theme_commit_message}
-                    error={themeDeploys.error}
-                    onChange={setThemeCommit}
+                {themeDeploysEnabled(themeDeploys) && !isClient ? null : (
+                  <input
+                    type="hidden"
+                    name="theme_commit"
+                    value={themeDeploys === null ? themeCommit : ""}
                   />
-                ) : themeDeploys === null ? (
-                  <input type="hidden" name="theme_commit" value={themeCommit} />
-                ) : (
-                  <input type="hidden" name="theme_commit" value="" />
                 )}
               </section>
 

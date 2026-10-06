@@ -54,7 +54,7 @@ function OptionPicker({
         aria-labelledby={labelId}
         disabled={disabled}
         onClick={onToggle}
-        className="flex min-h-10 w-full items-center justify-between gap-2 rounded-md border border-[var(--border)] bg-white px-3 py-2 text-left text-sm text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2 disabled:opacity-60"
+        className="flex min-h-10 w-full items-center justify-between gap-2 rounded-md border border-[var(--border)] bg-white py-2 pl-3 pr-2 text-left text-sm text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2 disabled:opacity-60"
       >
         <span className="min-w-0 truncate">
           {valueLabel ?? placeholder}
@@ -91,13 +91,14 @@ export function HomeQuickTaskForm({
   lists,
   currentUserId,
   defaultDueDate = null,
-  allowOverbook = false,
+  adminProjectIds = [],
   onCreated,
 }: {
   lists: HomeListOption[];
   currentUserId: string;
   defaultDueDate?: string | null;
-  allowOverbook?: boolean;
+  /** Projects where this user can choose a due date. */
+  adminProjectIds?: string[];
   onCreated?: (taskId: string) => void;
 }) {
   const projects = useMemo(() => {
@@ -144,6 +145,7 @@ export function HomeQuickTaskForm({
     () => projects.find((project) => project.id === projectId) ?? null,
     [projects, projectId],
   );
+  const canScheduleSelected = !!selectedProject && adminProjectIds.includes(selectedProject.id);
 
   const selectedList = useMemo(
     () => listsForProject.find((list) => list.id === listId) ?? null,
@@ -357,13 +359,15 @@ export function HomeQuickTaskForm({
         </OptionPicker>
       </div>
 
-      {omitsDueDate || !allowOverbook ? (
+      {omitsDueDate || !canScheduleSelected ? (
         <div className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
           <span>Due date</span>
           <p className="rounded-md border border-dashed border-[var(--border)] bg-[var(--surface-2)]/50 px-3 py-2 text-[var(--foreground)]">
             {omitsDueDate
               ? "Questions are not scheduled"
-              : "Scheduling is managed by an admin"}
+              : !selectedProject
+                ? "Choose a project to schedule this."
+                : "Set from priority. Only an admin can choose a date."}
           </p>
           <input type="hidden" name="due_date" value="" />
         </div>
@@ -373,12 +377,12 @@ export function HomeQuickTaskForm({
           label={
             prefersFirstAvailable
               ? "Due date (first available if empty)"
-              : "Due date (auto if empty)"
+              : "Due date (stays put if you set one)"
           }
           defaultValue={prefersFirstAvailable ? "" : defaultDueDate ?? ""}
           highlightedWeekdays={selectedProject?.scheduledWeekdays ?? []}
           projectId={selectedProject?.id}
-          allowOverbook={allowOverbook}
+          allowOverbook
         />
       )}
 

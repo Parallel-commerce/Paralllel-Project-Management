@@ -25,6 +25,7 @@ type AttentionTask = {
   key: string | null;
   title: string;
   due_date: string | null;
+  due_date_locked: boolean;
   status: TaskStatus;
   task_type: TaskType | null;
   list_id: string;
@@ -80,7 +81,9 @@ export async function AdminHomeInsights() {
       .lt("due_date", today),
     supabase
       .from("tasks")
-      .select("id, key, title, due_date, status, task_type, list_id, project_id")
+      .select(
+        "id, key, title, due_date, due_date_locked, status, task_type, list_id, project_id",
+      )
       .is("archived_at", null)
       .neq("status", "done")
       .not("due_date", "is", null)
@@ -89,7 +92,9 @@ export async function AdminHomeInsights() {
       .limit(5),
     supabase
       .from("tasks")
-      .select("id, key, title, due_date, status, task_type, list_id, project_id")
+      .select(
+        "id, key, title, due_date, due_date_locked, status, task_type, list_id, project_id",
+      )
       .is("archived_at", null)
       .eq("status", "requiring_feedback")
       .order("updated_at", { ascending: false })
@@ -157,6 +162,7 @@ export async function AdminHomeInsights() {
       key: (row.key as string | null) ?? null,
       title: row.title as string,
       due_date: (row.due_date as string | null) ?? null,
+      due_date_locked: !!row.due_date_locked,
       status: row.status as TaskStatus,
       task_type: (row.task_type as TaskType | null) ?? null,
       list_id: row.list_id as string,
@@ -175,6 +181,7 @@ export async function AdminHomeInsights() {
       key: (row.key as string | null) ?? null,
       title: row.title as string,
       due_date: (row.due_date as string | null) ?? null,
+      due_date_locked: !!row.due_date_locked,
       status: row.status as TaskStatus,
       task_type: (row.task_type as TaskType | null) ?? null,
       list_id: row.list_id as string,
@@ -333,6 +340,8 @@ export async function AdminHomeInsights() {
                   taskType={task.task_type}
                   taskKey={task.key}
                   dueDate={task.due_date}
+                  dueDateLocked={task.due_date_locked}
+                  canEditDueDate
                   projectName={task.projectName}
                   listName={task.listName}
                   todayIso={today}
