@@ -1004,11 +1004,7 @@ async function getProjectAccess(
   projectId: string,
   userId: string,
 ): Promise<{
-  role: ProjectRole;
-  isPlatformAdmin: boolean;
   isAdmin: boolean;
-  isInternal: boolean;
-  isClient: boolean;
 }> {
   const [{ data: membership }, { data: profile }] = await Promise.all([
     supabase
@@ -1026,65 +1022,9 @@ async function getProjectAccess(
 
   const role = (membership?.role ?? "client") as ProjectRole;
   const isPlatformAdmin = !!profile?.is_platform_admin;
-  const isAdmin = role === "admin" || isPlatformAdmin;
-  const isInternal = isPlatformAdmin || role === "admin" || role === "member";
   return {
-    role,
-    isPlatformAdmin,
-    isAdmin,
-    isInternal,
-    isClient: !isInternal,
+    isAdmin: role === "admin" || isPlatformAdmin,
   };
-}
-
-async function assertClientChangeQuota(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  projectId: string,
-  isClient: boolean,
-): Promise<{ error: string } | null> {
-  if (!isClient) return null;
-
-  const { data: limit, error: limitError } = await supabase.rpc(
-    "project_monthly_change_limit",
-    { p_project_id: projectId },
-  );
-
-  if (limitError) {
-    return { error: limitError.message };
-  }
-
-  if (limit === null || limit === undefined) return null;
-
-  const now = new Date();
-  const monthStart = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
-  ).toISOString();
-
-  const { count, error } = await supabase
-    .from("tasks")
-    .select("*", { count: "exact", head: true })
-    .eq("project_id", projectId)
-    .is("archived_at", null)
-    .gte("created_at", monthStart);
-
-  if (error) {
-    return { error: error.message };
-  }
-
-  const numericLimit = Number(limit);
-  if ((count ?? 0) >= numericLimit) {
-    if (numericLimit === 0) {
-      return {
-        error:
-          "This Maintain plan does not include change requests. Ask Parallel to log billable work for you.",
-      };
-    }
-    return {
-      error: `This plan includes ${numericLimit} change${numericLimit === 1 ? "" : "s"} per month, and that allowance has been used. Ask Parallel if you need another change.`,
-    };
-  }
-
-  return null;
 }
 
 async function resolveTaskDueDate(options: {
@@ -1176,14 +1116,6 @@ export async function createTask(projectId: string, listId: string, formData: Fo
   }
 
   const access = await getProjectAccess(supabase, projectId, user.id);
-  const quotaError = await assertClientChangeQuota(
-    supabase,
-    projectId,
-    access.isClient,
-  );
-  if (quotaError) {
-    return quotaError;
-  }
 
   const dueResolved = await resolveTaskDueDate({
     supabase,
