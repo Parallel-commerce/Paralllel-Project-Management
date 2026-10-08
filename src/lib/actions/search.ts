@@ -114,7 +114,7 @@ export async function searchApp(rawQuery: string): Promise<SearchResults> {
 
   const { data: isCrm } = await supabase.rpc("is_crm_user");
 
-  const [projectResult, listResult, taskResult, companyResult, contactResult] =
+  const [projectResult, listResult, taskResult, subtaskResult, companyResult, contactResult] =
     await Promise.all([
     supabase
       .from("projects")
@@ -136,6 +136,14 @@ export async function searchApp(rawQuery: string): Promise<SearchResults> {
       .or(orIlike(["title", "key", "description"], query))
       .order("updated_at", { ascending: false })
       .limit(16),
+    supabase
+      .from("task_subtasks")
+      .select(
+        "id, title, description, task_id, tasks(title, list_id, project_id, lists(name), projects(name))",
+      )
+      .or(orIlike(["title", "description"], query))
+      .order("updated_at", { ascending: false })
+      .limit(12),
     isCrm
       ? supabase
           .from("companies")
@@ -157,6 +165,7 @@ export async function searchApp(rawQuery: string): Promise<SearchResults> {
     projectResult.error?.message ||
     listResult.error?.message ||
     taskResult.error?.message ||
+    subtaskResult.error?.message ||
     companyResult.error?.message ||
     contactResult.error?.message;
   if (error) {
@@ -188,7 +197,8 @@ export async function searchApp(rawQuery: string): Promise<SearchResults> {
   ).map(toSearchHit);
 
   const tasks = sortHits(
-    (taskResult.data ?? []).map((task) => {
+    [
+    ...(taskResult.data ?? []).map((task) => {
       const projectName = nestedName(task.projects, "Project");
       const listName = nestedName(task.lists, "List");
       const archived = !!task.archived_at;
@@ -207,6 +217,25 @@ export async function searchApp(rawQuery: string): Promise<SearchResults> {
         score: matchScore(query, task.key, task.title) + (archived ? 0 : 4),
       };
     }),
+    ...(subtaskResult.data ?? []).flatMap((subtask) => {
+      const task = Array.isArray(subtask.tasks) ? subtask.tasks[0] : subtask.tasks;
+      const projectId = task?.project_id;
+      const listId = task?.list_id;
+      if (!projectId || !listId || !task) return [];
+      const projectName = nestedName(task.projects, "Project");
+      const listName = nestedName(task.lists, "List");
+      const taskTitle = task.title || "Task";
+      return [
+        {
+          id: subtask.id,
+          href: `/projects/${projectId}/lists/${listId}?task=${subtask.task_id}&subtask=${subtask.id}`,
+          title: subtask.title,
+          subtitle: ["Subtask", taskTitle, projectName, listName].join(" · "),
+          score: matchScore(query, subtask.title, subtask.description),
+        },
+      ];
+    }),
+    ],
   ).map(toSearchHit);
 
   const companies = sortHits(

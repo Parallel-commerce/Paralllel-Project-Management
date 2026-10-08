@@ -9,6 +9,7 @@ import {
   HomeQuickTaskForm,
   type HomeListOption,
 } from "@/components/home-quick-task-form";
+import { SubtaskLink, type AssignedSubtask } from "@/components/task-subtasks";
 import { MyWorkCalendar } from "@/components/my-work-calendar";
 import {
   TaskModal,
@@ -121,6 +122,32 @@ function membersForTask(
   return members;
 }
 
+function SubtaskWorkSection({
+  subtasks,
+  todayIso,
+}: {
+  subtasks: AssignedSubtask[];
+  todayIso: string;
+}) {
+  return (
+    <section aria-labelledby="assigned-subtasks">
+      <h2 id="assigned-subtasks" className="text-sm font-medium">
+        Subtasks
+        <span className="ml-1.5 font-normal text-[var(--muted)]">
+          {subtasks.length}
+        </span>
+      </h2>
+      <ul className="mt-2 space-y-2">
+        {subtasks.map((subtask) => (
+          <li key={subtask.id}>
+            <SubtaskLink subtask={subtask} todayIso={todayIso} />
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function emptyCopy(view: WorkView) {
   if (view === "mine") {
     return "When tasks are assigned to you, they’ll show up in this list.";
@@ -135,6 +162,7 @@ export function MyWorkView({
   view,
   layout,
   tasks: incomingTasks,
+  subtasks = [],
   lists,
   currentUserId,
   todayIso,
@@ -146,6 +174,7 @@ export function MyWorkView({
   view: WorkView;
   layout: WorkLayout;
   tasks: MyWorkTask[];
+  subtasks?: AssignedSubtask[];
   lists: HomeListOption[];
   currentUserId: string;
   todayIso: string;
@@ -327,7 +356,7 @@ export function MyWorkView({
               if (match) openTask(match);
             }}
           />
-          {tasks.length === 0 ? (
+          {tasks.length === 0 && subtasks.length === 0 ? (
             <p className="mt-4 text-sm text-[var(--muted)]">
               {emptyCopy(view)} Use New task to add one.
             </p>
@@ -361,10 +390,13 @@ export function MyWorkView({
               </ul>
             </section>
           ) : null}
+          {subtasks.length > 0 ? (
+            <SubtaskWorkSection subtasks={subtasks} todayIso={todayIso} />
+          ) : null}
         </div>
       ) : (
         <div className="mt-5 max-w-3xl sm:mt-6">
-          {tasks.length === 0 ? (
+          {tasks.length === 0 && subtasks.length === 0 ? (
             <EmptyState view={view} />
           ) : (
             <div className="space-y-6">
@@ -410,6 +442,9 @@ export function MyWorkView({
                   </ul>
                 </section>
               ))}
+              {subtasks.length > 0 ? (
+                <SubtaskWorkSection subtasks={subtasks} todayIso={todayIso} />
+              ) : null}
             </div>
           )}
         </div>

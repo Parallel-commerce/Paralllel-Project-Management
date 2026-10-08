@@ -158,6 +158,19 @@ export type List = {
   updated_at: string;
 };
 
+export type TaskSubtask = {
+  id: string;
+  task_id: string;
+  title: string;
+  description: string | null;
+  assigned_to: string | null;
+  due_date: string | null;
+  created_by: string;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type Task = {
   id: string;
   list_id: string;
@@ -935,6 +948,45 @@ export type Database = {
           updated_at?: string;
         };
         Relationships: [];
+      };
+      task_subtasks: {
+        Row: TaskSubtask;
+        Insert: {
+          id?: string;
+          task_id: string;
+          title: string;
+          description?: string | null;
+          assigned_to?: string | null;
+          due_date?: string | null;
+          created_by: string;
+          completed_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          title?: string;
+          description?: string | null;
+          assigned_to?: string | null;
+          due_date?: string | null;
+          completed_at?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "task_subtasks_task_id_fkey";
+            columns: ["task_id"];
+            isOneToOne: false;
+            referencedRelation: "tasks";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "task_subtasks_assigned_to_fkey";
+            columns: ["assigned_to"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       tasks: {
         Row: Task;

@@ -80,11 +80,14 @@ export default async function ProjectPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ task?: string; reply?: string }>;
+  searchParams: Promise<{ task?: string; reply?: string; subtask?: string }>;
 }) {
   const { id } = await params;
-  const { task: initialTaskId, reply: initialReplyCommentId } =
-    await searchParams;
+  const {
+    task: initialTaskId,
+    reply: initialReplyCommentId,
+    subtask: highlightSubtaskId,
+  } = await searchParams;
   const { supabase, user } = await requireSessionUser();
 
   const [
@@ -292,6 +295,7 @@ export default async function ProjectPage({
             projectId={id}
             listId={board.list.id}
             tasks={board.tasks}
+            subtasksByTaskId={board.subtasksByTaskId}
             members={board.members}
             defaultAssigneeId={board.defaultAssigneeId}
             currentUserId={user.id}
@@ -304,6 +308,7 @@ export default async function ProjectPage({
             scheduledWeekdays={board.scheduledWeekdays}
             themeDeploys={board.themeDeploys}
             allowOverbook={board.isAdmin}
+            initialSubtaskId={highlightSubtaskId ?? null}
           />
         </section>
       ) : (

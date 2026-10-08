@@ -8,6 +8,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { AdminOnly } from "@/components/admin-only";
 import { DueDatePicker } from "@/components/due-date-picker";
 import { TaskAttachments } from "@/components/task-attachments";
+import { TaskSubtasks } from "@/components/task-subtasks";
 import { TaskComments } from "@/components/task-comments";
 import { TaskStatusHistory } from "@/components/task-status-history";
 import { TaskTypeTag } from "@/components/task-type-tag";
@@ -87,6 +88,7 @@ export function TaskModal({
   isTimeAdmin = false,
   runningEntry = null,
   initialReplyCommentId = null,
+  highlightSubtaskId = null,
   contextLabel = null,
   contextHref = null,
   scheduledWeekdays = [],
@@ -107,6 +109,7 @@ export function TaskModal({
   isTimeAdmin?: boolean;
   runningEntry?: TimeEntryRow | null;
   initialReplyCommentId?: string | null;
+  highlightSubtaskId?: string | null;
   contextLabel?: string | null;
   contextHref?: string | null;
   scheduledWeekdays?: number[];
@@ -918,6 +921,14 @@ export function TaskModal({
 
             {mode === "edit" && task ? (
               <>
+                <TaskSubtasks
+                  projectId={projectId}
+                  taskId={task.id}
+                  members={members}
+                  currentUserId={currentUserId}
+                  canModerate={isTimeAdmin}
+                  highlightId={highlightSubtaskId}
+                />
                 <TaskStatusHistory
                   projectId={projectId}
                   taskId={task.id}

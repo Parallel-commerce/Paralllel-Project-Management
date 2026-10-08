@@ -23,6 +23,10 @@ import { createContext, useContext, useMemo, useState, useTransition, type React
 
 import { MyWorkCalendar } from "@/components/my-work-calendar";
 import { TaskCardQuickActions } from "@/components/task-card-actions";
+import {
+  TaskSubtaskExpander,
+  type TaskSubtaskPreview,
+} from "@/components/task-subtasks";
 import { TaskTypeTag } from "@/components/task-type-tag";
 import { taskTypeLabel, taskTypeOmitsDueDate } from "@/lib/task-type";
 import { ThemeDeploySelect } from "@/components/theme-deploy-select";
@@ -86,6 +90,38 @@ type QuickEdit = {
 };
 
 const QuickEditContext = createContext<QuickEdit | null>(null);
+
+type BoardSubtasks = {
+  byTaskId: Record<string, TaskSubtaskPreview[]>;
+  projectId: string;
+  highlightId: string | null;
+  openSubtask: (task: TaskWithPeople, subtaskId: string) => void;
+};
+
+const BoardSubtaskContext = createContext<BoardSubtasks | null>(null);
+
+function TaskSubtaskToggle({
+  task,
+  interactive = true,
+}: {
+  task: TaskWithPeople;
+  interactive?: boolean;
+}) {
+  const board = useContext(BoardSubtaskContext);
+  const subtasks = board?.byTaskId[task.id] ?? [];
+  if (!board || subtasks.length === 0) return null;
+  return (
+    <div className="mt-2">
+      <TaskSubtaskExpander
+        projectId={board.projectId}
+        subtasks={subtasks}
+        highlightId={board.highlightId}
+        interactive={interactive}
+        onOpen={(subtaskId) => board.openSubtask(task, subtaskId)}
+      />
+    </div>
+  );
+}
 
 function endOfWeekIso() {
   const now = new Date();
@@ -225,6 +261,9 @@ function TaskCard({
           Due {task.due_date}
         </p>
       ) : null}
+      <div className="pl-6">
+        <TaskSubtaskToggle task={task} interactive={!dragging} />
+      </div>
     </article>
   );
 }
@@ -337,12 +376,15 @@ function TaskListRow({
   trackedSeconds?: number;
 }) {
   return (
-    <li className="flex flex-col gap-2 px-3 py-3 hover:bg-[var(--surface)]/80 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-      <TaskListRowContent
-        task={task}
-        onOpen={onOpen}
-        trackedSeconds={trackedSeconds}
-      />
+    <li className="px-3 py-3 hover:bg-[var(--surface)]/80">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+        <TaskListRowContent
+          task={task}
+          onOpen={onOpen}
+          trackedSeconds={trackedSeconds}
+        />
+      </div>
+      <TaskSubtaskToggle task={task} />
     </li>
   );
 }
@@ -372,15 +414,16 @@ function SortableTaskListRow({
         transform: CSS.Transform.toString(transform),
         transition,
       }}
-      className={`flex flex-col gap-2 px-3 py-3 hover:bg-[var(--surface)]/80 sm:flex-row sm:items-center sm:justify-between sm:gap-4 ${
+      className={`px-3 py-3 hover:bg-[var(--surface)]/80 ${
         isDragging ? "relative z-10 bg-[var(--surface)] opacity-80 shadow-md" : ""
       }`}
     >
-      <TaskListRowContent
-        task={task}
-        onOpen={onOpen}
-        trackedSeconds={trackedSeconds}
-        dragHandle={
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+        <TaskListRowContent
+          task={task}
+          onOpen={onOpen}
+          trackedSeconds={trackedSeconds}
+          dragHandle={
           <button
             type="button"
             className="mt-0.5 cursor-grab touch-none text-[var(--muted)] active:cursor-grabbing"
@@ -392,6 +435,8 @@ function SortableTaskListRow({
           </button>
         }
       />
+      </div>
+      <TaskSubtaskToggle task={task} interactive={!isDragging} />
     </li>
   );
 }
@@ -681,10 +726,12 @@ export function TaskBoard({
   projectId,
   listId,
   tasks: initialTasks,
+  subtasksByTaskId = {},
   members,
   currentUserId,
   defaultAssigneeId = null,
   initialTaskId,
+  initialSubtaskId = null,
   initialReplyCommentId = null,
   canTrackTime = false,
   isTimeAdmin = false,
@@ -697,10 +744,12 @@ export function TaskBoard({
   projectId: string;
   listId: string;
   tasks: TaskWithPeople[];
+  subtasksByTaskId?: Record<string, TaskSubtaskPreview[]>;
   members: ProfileOption[];
   currentUserId: string;
   defaultAssigneeId?: string | null;
   initialTaskId?: string | null;
+  initialSubtaskId?: string | null;
   initialReplyCommentId?: string | null;
   canTrackTime?: boolean;
   isTimeAdmin?: boolean;
@@ -716,6 +765,9 @@ export function TaskBoard({
     if (!initialTaskId) return null;
     return initialTasks.find((task) => task.id === initialTaskId) ?? null;
   });
+  const [focusedSubtaskId, setFocusedSubtaskId] = useState<string | null>(
+    initialSubtaskId ?? null,
+  );
   const [activeId, setActiveId] = useState<string | null>(null);
   const [pendingDone, setPendingDone] = useState<TaskWithPeople | null>(null);
   const [pendingChoice, setPendingChoice] = useState("");
@@ -1022,8 +1074,27 @@ export function TaskBoard({
     prepareStatusChange,
   };
 
+  function openTask(task: TaskWithPeople) {
+    setFocusedSubtaskId(null);
+    setEditing(task);
+  }
+
+  const boardSubtasks = useMemo<BoardSubtasks>(
+    () => ({
+      byTaskId: subtasksByTaskId,
+      projectId,
+      highlightId: focusedSubtaskId,
+      openSubtask: (task, subtaskId) => {
+        setFocusedSubtaskId(subtaskId);
+        setEditing(task);
+      },
+    }),
+    [focusedSubtaskId, projectId, subtasksByTaskId],
+  );
+
   return (
     <QuickEditContext.Provider value={quickEdit}>
+    <BoardSubtaskContext.Provider value={boardSubtasks}>
     <div>
       <div className="mb-4 flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1222,7 +1293,7 @@ export function TaskBoard({
             onOpenTask={(taskId) => {
               const match = tasks.find((task) => task.id === taskId);
               if (!match) return;
-              setEditing(match);
+              openTask(match);
               if (match.due_date) setSelectedDay(match.due_date.slice(0, 10));
             }}
             onTaskChange={patchTask}
@@ -1243,7 +1314,7 @@ export function TaskBoard({
                   <TaskListRow
                     key={task.id}
                     task={task}
-                    onOpen={() => setEditing(task)}
+                    onOpen={() => openTask(task)}
                     trackedSeconds={timeSecondsByTaskId?.[task.id]}
                   />
                 ))}
@@ -1274,7 +1345,7 @@ export function TaskBoard({
               status={status.value}
               label={status.label}
               tasks={grouped[status.value]}
-              onOpen={setEditing}
+              onOpen={openTask}
               timeSecondsByTaskId={timeSecondsByTaskId}
               sortable={status.value === "todo" && canReorderTodos}
               onReorder={
@@ -1307,7 +1378,7 @@ export function TaskBoard({
                   status={status.value}
                   label={status.label}
                   tasks={grouped[status.value]}
-                  onOpen={setEditing}
+                  onOpen={openTask}
                   timeSecondsByTaskId={timeSecondsByTaskId}
                 />
               </div>
@@ -1358,11 +1429,15 @@ export function TaskBoard({
           isTimeAdmin={isTimeAdmin}
           runningEntry={runningEntry}
           initialReplyCommentId={initialReplyCommentId}
+          highlightSubtaskId={focusedSubtaskId}
           scheduledWeekdays={scheduledWeekdays}
           themeDeploys={themeDeploys}
           allowOverbook={allowOverbook}
           canSchedule={allowOverbook}
-          onClose={() => setEditing(null)}
+          onClose={() => {
+            setEditing(null);
+            setFocusedSubtaskId(null);
+          }}
         />
       ) : null}
 
@@ -1422,6 +1497,7 @@ export function TaskBoard({
         </div>
       ) : null}
     </div>
+    </BoardSubtaskContext.Provider>
     </QuickEditContext.Provider>
   );
 }

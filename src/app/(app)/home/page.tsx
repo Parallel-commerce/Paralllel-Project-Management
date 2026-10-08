@@ -8,6 +8,7 @@ import {
   type HomeListOption,
 } from "@/components/home-quick-task-form";
 import { RecentComments } from "@/components/recent-comments";
+import { SubtaskLink, type AssignedSubtask } from "@/components/task-subtasks";
 import { TaskWorkLink } from "@/components/task-work-link";
 import { getCurrentProfile, requireSessionUser } from "@/lib/auth";
 import { projectLogoPublicUrl } from "@/lib/project-logo";
@@ -40,6 +41,7 @@ export default async function HomeDashboardPage() {
     { data: projects },
     { data: listRows },
     { data: upcomingRows },
+    { data: upcomingSubtasks },
     { data: memberships },
   ] = await Promise.all([
     supabase
@@ -59,6 +61,15 @@ export default async function HomeDashboardPage() {
       .eq("assigned_to", user.id)
       .neq("status", "done")
       .is("archived_at", null)
+      .order("due_date", { ascending: true, nullsFirst: false })
+      .limit(5),
+    supabase
+      .from("task_subtasks")
+      .select(
+        "id, title, due_date, task_id, tasks(title, list_id, project_id, lists(name), projects(name))",
+      )
+      .eq("assigned_to", user.id)
+      .is("completed_at", null)
       .order("due_date", { ascending: true, nullsFirst: false })
       .limit(5),
     supabase
@@ -90,6 +101,38 @@ export default async function HomeDashboardPage() {
     if (byProject !== 0) return byProject;
     return a.name.localeCompare(b.name);
   });
+
+  const upcoming = [
+    ...(upcomingRows ?? []).map((task) => ({
+      kind: "task" as const,
+      due: (task.due_date as string | null) ?? null,
+      task,
+    })),
+    ...(upcomingSubtasks ?? []).flatMap((row) => {
+      const task = Array.isArray(row.tasks) ? row.tasks[0] : row.tasks;
+      const projectId = (task?.project_id as string | undefined) ?? "";
+      const listId = (task?.list_id as string | undefined) ?? "";
+      if (!task || !projectId || !listId) return [];
+      const list = Array.isArray(task.lists) ? task.lists[0] : task.lists;
+      const project = Array.isArray(task.projects)
+        ? task.projects[0]
+        : task.projects;
+      const subtask: AssignedSubtask = {
+        id: row.id,
+        title: row.title,
+        dueDate: row.due_date,
+        projectId,
+        projectName: (project?.name as string | undefined) ?? "Project",
+        listId,
+        listName: (list?.name as string | undefined) ?? "List",
+        taskId: row.task_id,
+        taskTitle: task.title || "Task",
+      };
+      return [{ kind: "subtask" as const, due: row.due_date, subtask }];
+    }),
+  ]
+    .sort((a, b) => (a.due ?? "9999-12-31").localeCompare(b.due ?? "9999-12-31"))
+    .slice(0, 5);
 
   const name = firstName(profile?.full_name, profile?.email || user.email || "");
   const isPlatformAdmin = !!profile?.is_platform_admin;
@@ -159,12 +202,20 @@ export default async function HomeDashboardPage() {
             </Link>
           </div>
           <ul className="mt-3 space-y-2 sm:mt-4">
-            {(upcomingRows ?? []).length === 0 ? (
+            {upcoming.length === 0 ? (
               <li className="rounded-xl border border-dashed border-[var(--border)] px-4 py-6 text-sm text-[var(--muted)] sm:py-8">
                 Nothing assigned right now. Create a task or check My work.
               </li>
             ) : (
-              (upcomingRows ?? []).map((task) => {
+              upcoming.map((item) => {
+                if (item.kind === "subtask") {
+                  return (
+                    <li key={`subtask-${item.subtask.id}`}>
+                      <SubtaskLink subtask={item.subtask} todayIso={today} />
+                    </li>
+                  );
+                }
+                const task = item.task;
                 const project = Array.isArray(task.projects)
                   ? task.projects[0]
                   : task.projects;

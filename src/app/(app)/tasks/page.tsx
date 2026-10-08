@@ -1,3 +1,4 @@
+import type { AssignedSubtask } from "@/components/task-subtasks";
 import {
   MyWorkView,
   type MyWorkTask,
@@ -79,7 +80,9 @@ export default async function MyTasksPage({
       .order("due_date", { ascending: true });
   }
 
-  const [{ data: taskRows }, { data: listRows }, { data: memberships }] =
+  const showSubtasks = view === "mine" || view === "overdue" || view === "week";
+
+  const [{ data: taskRows }, { data: listRows }, { data: memberships }, { data: subtaskRows }] =
     await Promise.all([
       taskQuery,
       supabase
@@ -90,6 +93,16 @@ export default async function MyTasksPage({
         .from("project_members")
         .select("project_id, role")
         .eq("user_id", user.id),
+      showSubtasks
+        ? supabase
+            .from("task_subtasks")
+            .select(
+              "id, title, due_date, task_id, tasks(title, list_id, project_id, lists(name), projects(name))",
+            )
+            .eq("assigned_to", user.id)
+            .is("completed_at", null)
+            .order("due_date", { ascending: true, nullsFirst: false })
+        : Promise.resolve({ data: [] }),
     ]);
 
   const filteredRows = (taskRows ?? []).filter((row) => {
@@ -257,11 +270,37 @@ export default async function MyTasksPage({
       return a.name.localeCompare(b.name);
     });
 
+  const subtasks: AssignedSubtask[] = (subtaskRows ?? [])
+    .map((row) => {
+      const task = Array.isArray(row.tasks) ? row.tasks[0] : row.tasks;
+      const projectId = (task?.project_id as string | undefined) ?? "";
+      const listId = (task?.list_id as string | undefined) ?? "";
+      const dueDate = (row.due_date as string | null) ?? null;
+      if (!task || !projectId || !listId) return null;
+      if (view === "overdue" && !(dueDate && dueDate < today)) return null;
+      if (view === "week" && !(dueDate && dueDate >= today && dueDate <= weekEnd)) {
+        return null;
+      }
+      return {
+        id: row.id as string,
+        title: row.title as string,
+        dueDate,
+        projectId,
+        projectName: nestedName(task.projects, "Project"),
+        listId,
+        listName: nestedName(task.lists, "List"),
+        taskId: row.task_id as string,
+        taskTitle: (task.title as string) || "Task",
+      };
+    })
+    .filter((subtask): subtask is AssignedSubtask => !!subtask);
+
   return (
     <MyWorkView
       view={view}
       layout={layout}
       tasks={tasks}
+      subtasks={subtasks}
       lists={lists}
       currentUserId={user.id}
       todayIso={today}

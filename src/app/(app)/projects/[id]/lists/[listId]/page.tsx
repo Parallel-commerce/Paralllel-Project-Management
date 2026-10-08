@@ -12,11 +12,14 @@ export default async function ListBoardPage({
   searchParams,
 }: {
   params: Promise<{ id: string; listId: string }>;
-  searchParams: Promise<{ task?: string; reply?: string }>;
+  searchParams: Promise<{ task?: string; reply?: string; subtask?: string }>;
 }) {
   const { id, listId } = await params;
-  const { task: initialTaskId, reply: initialReplyCommentId } =
-    await searchParams;
+  const {
+    task: initialTaskId,
+    reply: initialReplyCommentId,
+    subtask: highlightSubtaskId,
+  } = await searchParams;
   const { supabase, user } = await requireSessionUser();
 
   const [
@@ -66,6 +69,7 @@ export default async function ListBoardPage({
     const qs = new URLSearchParams();
     if (initialTaskId) qs.set("task", initialTaskId);
     if (initialReplyCommentId) qs.set("reply", initialReplyCommentId);
+    if (highlightSubtaskId) qs.set("subtask", highlightSubtaskId);
     const suffix = qs.toString() ? `?${qs.toString()}` : "";
     redirect(`/projects/${id}${suffix}`);
   }
@@ -122,6 +126,7 @@ export default async function ListBoardPage({
           projectId={id}
           listId={listId}
           tasks={board.tasks}
+          subtasksByTaskId={board.subtasksByTaskId}
           members={board.members}
           defaultAssigneeId={board.defaultAssigneeId}
           currentUserId={user.id}
@@ -134,6 +139,7 @@ export default async function ListBoardPage({
           scheduledWeekdays={board.scheduledWeekdays}
           themeDeploys={board.themeDeploys}
           allowOverbook={board.isAdmin}
+          initialSubtaskId={highlightSubtaskId ?? null}
         />
       </div>
     </div>

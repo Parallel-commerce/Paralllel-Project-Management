@@ -1,6 +1,8 @@
 import type { ProfileOption, TaskWithPeople } from "@/components/task-modal";
+import type { TaskSubtaskPreview } from "@/components/task-subtasks";
 import type { TimeEntryRow } from "@/components/time-tracking-panel";
 import { loadThemeDeploys } from "@/lib/load-theme-deploys";
+import { personDisplayName } from "@/lib/person";
 import { scheduledWeekdaysFromProject } from "@/lib/scheduled-weekdays";
 import { createClient } from "@/lib/supabase/server";
 import { TASK_TABLE_COLUMNS } from "@/lib/task-columns";
@@ -17,6 +19,7 @@ export type ListBoardPayload = {
     created_by: string;
   };
   tasks: TaskWithPeople[];
+  subtasksByTaskId: Record<string, TaskSubtaskPreview[]>;
   members: ProfileOption[];
   defaultAssigneeId: string | null;
   canTrackTime: boolean;
@@ -69,7 +72,7 @@ export async function loadListBoardPayload(
     p_project_id: projectId,
   });
 
-  const [{ data: memberRows }, { data: taskRows }, themeDeploys] =
+  const [{ data: memberRows }, { data: taskRows }, { data: subtaskRows }, themeDeploys] =
     await Promise.all([
       supabase
         .from("project_members")
@@ -82,6 +85,15 @@ export async function loadListBoardPayload(
         .is("archived_at", null)
         .order("importance", { ascending: false })
         .order("due_date", { ascending: true, nullsFirst: true })
+        .order("created_at", { ascending: true }),
+      supabase
+        .from("task_subtasks")
+        .select(
+          "id, task_id, title, assigned_to, due_date, completed_at, tasks!inner(list_id)",
+        )
+        .eq("tasks.list_id", listId)
+        .order("completed_at", { ascending: true, nullsFirst: true })
+        .order("due_date", { ascending: true, nullsFirst: false })
         .order("created_at", { ascending: true }),
       loadThemeDeploys(supabase, projectId),
     ]);
@@ -109,13 +121,16 @@ export async function loadListBoardPayload(
     null;
 
   const personIds = [
-    ...new Set(
-      (taskRows ?? []).flatMap((task) =>
+    ...new Set([
+      ...(taskRows ?? []).flatMap((task) =>
         [task.created_by, task.reported_by, task.assigned_to].filter(
           (value): value is string => !!value,
         ),
       ),
-    ),
+      ...(subtaskRows ?? [])
+        .map((subtask) => subtask.assigned_to)
+        .filter((value): value is string => !!value),
+    ]),
   ];
 
   const taskIds = (taskRows ?? []).map((task) => task.id as string);
@@ -178,6 +193,26 @@ export async function loadListBoardPayload(
         : null,
     })) ?? [];
 
+  const subtasksByTaskId: Record<string, TaskSubtaskPreview[]> = {};
+  for (const subtask of subtaskRows ?? []) {
+    const assignee = subtask.assigned_to
+      ? (profileById[subtask.assigned_to] ?? null)
+      : null;
+    const preview: TaskSubtaskPreview = {
+      id: subtask.id,
+      taskId: subtask.task_id,
+      title: subtask.title,
+      dueDate: subtask.due_date,
+      completedAt: subtask.completed_at,
+      assigneeName: assignee
+        ? personDisplayName(assignee, assignee.email || "Someone")
+        : null,
+    };
+    const group = subtasksByTaskId[subtask.task_id] ?? [];
+    group.push(preview);
+    subtasksByTaskId[subtask.task_id] = group;
+  }
+
   const timeSecondsByTaskId: Record<string, number> = {};
   for (const row of timeTotalsResult.data ?? []) {
     const taskId = row.task_id as string;
@@ -193,6 +228,7 @@ export async function loadListBoardPayload(
       created_by: list.created_by,
     },
     tasks,
+    subtasksByTaskId,
     members: activeMembers,
     defaultAssigneeId,
     canTrackTime,
