@@ -967,6 +967,7 @@ export type Database = {
           updated_at?: string;
         };
         Update: {
+          list_id?: string;
           title?: string;
           description?: string | null;
           due_date?: string | null;

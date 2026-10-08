@@ -18,7 +18,10 @@ import {
 import {
   createTask,
   deleteTask,
+  listTaskMoveTargets,
+  moveTaskToList,
   updateTask,
+  type TaskMoveTarget,
 } from "@/lib/actions/projects";
 import { listThemeDeploys } from "@/lib/actions/theme-deploys";
 import { personDisplayName } from "@/lib/person";
@@ -138,6 +141,10 @@ export function TaskModal({
   const [selectedType, setSelectedType] = useState<TaskType | "">(
     () => task?.task_type ?? "",
   );
+  const [moveLists, setMoveLists] = useState<TaskMoveTarget[]>([]);
+  const [listChoice, setListChoice] = useState(listId);
+  const [listSelectKey, setListSelectKey] = useState(0);
+  const [movingList, setMovingList] = useState(false);
   const omitsDueDate = taskTypeOmitsDueDate(selectedType || null);
   const prefersFirstAvailable = taskTypePrefersFirstAvailable(
     selectedType || null,
@@ -169,7 +176,20 @@ export function TaskModal({
     setMobileCommentsOpen(Boolean(initialReplyCommentId));
     setThemeCommit(themeCommitChoiceFromTask(task ?? {}));
     setSelectedType(task?.task_type ?? "");
-  }, [task?.id, initialReplyCommentId, task?.task_type]);
+    setListChoice(listId);
+    setMovingList(false);
+  }, [task?.id, initialReplyCommentId, task?.task_type, listId]);
+
+  useEffect(() => {
+    if (mode !== "edit") return;
+    let cancelled = false;
+    void listTaskMoveTargets(projectId).then((result) => {
+      if (!cancelled) setMoveLists(result.lists);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [mode, projectId]);
 
   useEffect(() => {
     if (themeDeploysProp) {
@@ -267,6 +287,74 @@ export function TaskModal({
       persistEdit({ closeAfter: true });
       return;
     }
+    onClose();
+  }
+
+  async function moveToList(nextListId: string) {
+    if (mode !== "edit" || !task || nextListId === listId || movingList) return;
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+
+    setListChoice(nextListId);
+    setMovingList(true);
+    setError(null);
+
+    if (formRef.current) {
+      const snapshot = formSnapshot(formRef.current);
+      const parsed = JSON.parse(snapshot) as { title: string };
+      if (!parsed.title) {
+        setError("Title is required.");
+        setSaveState("error");
+        setListChoice(listId);
+        setListSelectKey((value) => value + 1);
+        setMovingList(false);
+        return;
+      }
+      if (snapshot !== lastSavedSnapshotRef.current) {
+        const formData = new FormData(formRef.current);
+        const nextStatus = String(formData.get("status") ?? "todo");
+        if (
+          themeDeploysEnabled(themeDeploys) &&
+          nextStatus === "done" &&
+          task.status !== "done" &&
+          !themeCommit
+        ) {
+          setError(THEME_DEPLOY_REQUIRED_MESSAGE);
+          setSaveState("error");
+          setListChoice(listId);
+          setListSelectKey((value) => value + 1);
+          setMovingList(false);
+          return;
+        }
+        const saved = await updateTask(projectId, listId, task.id, formData);
+        if (saved?.error) {
+          setError(saved.error);
+          setSaveState("error");
+          setListChoice(listId);
+          setListSelectKey((value) => value + 1);
+          setMovingList(false);
+          return;
+        }
+        lastSavedSnapshotRef.current = snapshot;
+      }
+    }
+
+    const result = await moveTaskToList(projectId, listId, task.id, nextListId);
+    if ("error" in result && result.error && !("moved" in result && result.moved)) {
+      setError(result.error);
+      setSaveState("error");
+      setListChoice(listId);
+      setListSelectKey((value) => value + 1);
+      setMovingList(false);
+      return;
+    }
+
+    const destinationId = result.listId ?? nextListId;
+    router.push(
+      `/projects/${projectId}/lists/${destinationId}?task=${task.id}`,
+    );
     onClose();
   }
 
@@ -394,9 +482,57 @@ export function TaskModal({
                 : undefined
             }
           >
+            {editing && task && moveLists.length > 1 ? (
+              <label className="mt-5 flex flex-col gap-1.5 text-sm text-[var(--muted)]">
+                List
+                <select
+                  key={listSelectKey}
+                  value={listChoice}
+                  disabled={movingList || pending}
+                  onChange={(event) => {
+                    const nextListId = event.target.value;
+                    const next = moveLists.find((list) => list.id === nextListId);
+                    if (!next || nextListId === listId) {
+                      setListChoice(listId);
+                      return;
+                    }
+                    const label =
+                      next.visibility === "private"
+                        ? `${next.name} (private)`
+                        : next.name;
+                    if (
+                      !window.confirm(
+                        `Move this task to ${label}? To-dos on both lists will be rescheduled.`,
+                      )
+                    ) {
+                      setListChoice(listId);
+                      setListSelectKey((value) => value + 1);
+                      return;
+                    }
+                    void moveToList(nextListId);
+                  }}
+                  className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2 disabled:opacity-60"
+                >
+                  {moveLists.map((list) => (
+                    <option key={list.id} value={list.id}>
+                      {list.name}
+                      {list.visibility === "private" ? " · private" : ""}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-xs">
+                  {movingList
+                    ? "Moving…"
+                    : "Comments, files, and the task number stay with it. To-dos are rescheduled on both lists."}
+                </span>
+              </label>
+            ) : null}
+
             <form
               ref={formRef}
-              className="mt-5 flex flex-col gap-6"
+              className={`flex flex-col gap-6 ${
+                editing && moveLists.length > 1 ? "mt-6" : "mt-5"
+              }`}
               onSubmit={(event) => {
                 event.preventDefault();
                 if (mode === "edit") {

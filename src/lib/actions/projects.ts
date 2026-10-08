@@ -1913,6 +1913,152 @@ export async function reorderAndRescheduleTodos(
   return { success: true, updates };
 }
 
+export type TaskMoveTarget = {
+  id: string;
+  name: string;
+  visibility: ListVisibility;
+};
+
+/** Lists in this project the current user can move a task onto. */
+export async function listTaskMoveTargets(projectId: string): Promise<{
+  lists: TaskMoveTarget[];
+  error?: string;
+}> {
+  const { supabase } = await requireUser();
+  const { data, error } = await supabase
+    .from("lists")
+    .select("id, name, visibility")
+    .eq("project_id", projectId)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    return { lists: [], error: error.message };
+  }
+
+  return {
+    lists: (data ?? []).map((row) => ({
+      id: row.id as string,
+      name: row.name as string,
+      visibility: row.visibility as ListVisibility,
+    })),
+  };
+}
+
+export async function moveTaskToList(
+  projectId: string,
+  fromListId: string,
+  taskId: string,
+  toListId: string,
+) {
+  if (fromListId === toListId) {
+    return { success: true as const, listId: toListId };
+  }
+
+  const { supabase, user } = await requireUser();
+
+  const { data: task } = await supabase
+    .from("tasks")
+    .select("id, title, key, list_id, project_id")
+    .eq("id", taskId)
+    .eq("project_id", projectId)
+    .eq("list_id", fromListId)
+    .maybeSingle();
+
+  if (!task) {
+    return { error: "Task not found." };
+  }
+
+  const [{ data: source }, { data: destination }] = await Promise.all([
+    supabase
+      .from("lists")
+      .select("id, name, visibility, project_id")
+      .eq("id", fromListId)
+      .maybeSingle(),
+    supabase
+      .from("lists")
+      .select("id, name, visibility, project_id")
+      .eq("id", toListId)
+      .maybeSingle(),
+  ]);
+
+  if (!destination || destination.project_id !== projectId) {
+    return { error: "Choose a list in this project." };
+  }
+
+  const { data: moved, error } = await supabase
+    .from("tasks")
+    .update({ list_id: toListId })
+    .eq("id", taskId)
+    .eq("list_id", fromListId)
+    .eq("project_id", projectId)
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  if (!moved) {
+    return { error: "Could not move this task to that list." };
+  }
+
+  const sourceVisibility = (source?.visibility ?? "private") as ListVisibility;
+  const destinationVisibility = destination.visibility as ListVisibility;
+  const sourceName = source?.name ?? "its previous list";
+  const destinationName = destination.name as string;
+  const clientVisible =
+    sourceVisibility === "public" && destinationVisibility === "public";
+
+  await logActivity({
+    projectId,
+    actorId: user.id,
+    entityType: "task",
+    entityId: taskId,
+    action: "moved",
+    summary: `Moved “${task.title}” from ${sourceName} to ${destinationName}`,
+    metadata: {
+      from_list_id: fromListId,
+      to_list_id: toListId,
+      from_list_name: source?.name ?? null,
+      to_list_name: destinationName,
+      task_key: task.key,
+    },
+    clientVisible,
+  });
+
+  const sourceSchedule = await rescheduleListTodos(
+    supabase,
+    projectId,
+    fromListId,
+  );
+  const destinationSchedule = await rescheduleListTodos(
+    supabase,
+    projectId,
+    toListId,
+  );
+
+  revalidatePath(`/projects/${projectId}/lists/${fromListId}`);
+  revalidatePath(`/projects/${projectId}/lists/${toListId}`);
+  revalidatePath(`/projects/${projectId}/lists/${fromListId}/archive`);
+  revalidatePath(`/projects/${projectId}/lists/${toListId}/archive`);
+  revalidatePath(`/projects/${projectId}`);
+  revalidatePath("/tasks");
+  revalidatePath("/home");
+
+  const scheduleError =
+    "error" in sourceSchedule
+      ? sourceSchedule.error
+      : "error" in destinationSchedule
+        ? destinationSchedule.error
+        : null;
+
+  if (scheduleError) {
+    return { error: scheduleError, moved: true as const, listId: toListId };
+  }
+
+  return { success: true as const, listId: toListId };
+}
+
 export async function deleteTask(
   projectId: string,
   listId: string,
