@@ -382,7 +382,7 @@ export function TaskModal({
       <div
         role="dialog"
         aria-modal="true"
-        className={`relative flex w-full flex-col rounded-t-2xl border border-[var(--border)] bg-[var(--surface)] shadow-lg sm:rounded-xl ${
+        className={`relative flex w-full min-w-0 max-w-full flex-col overflow-x-hidden rounded-t-2xl border border-[var(--border)] bg-[var(--surface)] shadow-lg sm:rounded-xl ${
           editing
             ? `max-h-[92dvh] max-w-3xl lg:h-[min(92dvh,56rem)] lg:max-w-6xl lg:overflow-hidden ${
                 mobileCommentsOpen ? "h-[92dvh] overflow-hidden" : "overflow-y-auto"
@@ -471,12 +471,12 @@ export function TaskModal({
         <div
           className={
             editing
-              ? "flex min-h-0 flex-1 flex-col lg:flex-row lg:overflow-hidden"
+              ? "flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row lg:overflow-hidden"
               : ""
           }
         >
           <div
-            className={`px-5 pb-5 sm:px-6 sm:pb-6 ${
+            className={`min-w-0 px-5 pb-5 sm:px-6 sm:pb-6 ${
               editing ? "min-h-0 lg:flex-1 lg:overflow-y-auto md:px-7 md:pb-7" : ""
             }`}
             style={
@@ -486,7 +486,7 @@ export function TaskModal({
             }
           >
             {editing && task && moveLists.length > 1 ? (
-              <label className="mt-5 flex flex-col gap-1.5 text-sm text-[var(--muted)]">
+              <label className="mt-5 flex min-w-0 flex-col gap-1.5 text-sm text-[var(--muted)]">
                 List
                 <select
                   key={listSelectKey}
@@ -514,7 +514,7 @@ export function TaskModal({
                     }
                     void moveToList(nextListId);
                   }}
-                  className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2 disabled:opacity-60"
+                  className="w-full min-w-0 max-w-full rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2 disabled:opacity-60"
                 >
                   {moveLists.map((list) => (
                     <option key={list.id} value={list.id}>
@@ -533,7 +533,7 @@ export function TaskModal({
 
             <form
               ref={formRef}
-              className={`flex flex-col gap-6 ${
+              className={`flex min-w-0 flex-col gap-6 [&>*]:min-w-0 ${
                 editing && moveLists.length > 1 ? "mt-6" : "mt-5"
               }`}
               onSubmit={(event) => {
@@ -729,12 +729,12 @@ export function TaskModal({
                   />
                 )}
                 {!isClient ? (
-                  <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
+                  <label className="flex min-w-0 flex-col gap-1.5 text-sm text-[var(--muted)]">
                     Importance
                     <select
                       name="importance"
                       defaultValue={nearestImportanceLevel(task?.importance)}
-                      className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
+                      className="w-full min-w-0 max-w-full rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
                     >
                       {TASK_IMPORTANCE_LEVELS.map((level) => (
                         <option key={level.value} value={level.value}>
@@ -779,13 +779,13 @@ export function TaskModal({
                     </div>
                   </>
                 ) : (
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
+                  <div className="grid min-w-0 grid-cols-1 gap-3 *:min-w-0 sm:grid-cols-2">
+                    <label className="flex min-w-0 flex-col gap-1.5 text-sm text-[var(--muted)]">
                       Reporter
                       <select
                         name="reported_by"
                         defaultValue={task?.reported_by ?? currentUserId}
-                        className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
+                        className="w-full min-w-0 max-w-full rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
                       >
                         {members.map((member) => (
                           <option key={member.id} value={member.id}>
@@ -794,7 +794,7 @@ export function TaskModal({
                         ))}
                       </select>
                     </label>
-                    <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
+                    <label className="flex min-w-0 flex-col gap-1.5 text-sm text-[var(--muted)]">
                       Assignee
                       <select
                         name="assigned_to"
@@ -802,7 +802,7 @@ export function TaskModal({
                           task?.assigned_to ??
                           (mode === "create" ? (defaultAssigneeId ?? "") : "")
                         }
-                        className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
+                        className="w-full min-w-0 max-w-full rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
                       >
                         <option value="">Unassigned</option>
                         {members.map((member) => (
@@ -813,7 +813,7 @@ export function TaskModal({
                       </select>
                     </label>
                     {themeDeploysEnabled(themeDeploys) && !isClient ? (
-                      <div className="sm:col-span-2">
+                      <div className="min-w-0 sm:col-span-2">
                         <ThemeDeploySelect
                           value={themeCommit}
                           commits={themeDeploys.commits}
@@ -825,12 +825,12 @@ export function TaskModal({
                       </div>
                     ) : null}
                     {mode === "edit" || !isClient ? (
-                      <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)] sm:col-span-2">
+                      <label className="flex min-w-0 flex-col gap-1.5 text-sm text-[var(--muted)] sm:col-span-2">
                         Status
                         <select
                           name="status"
                           defaultValue={task?.status ?? "todo"}
-                          className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
+                          className="w-full min-w-0 max-w-full rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
                         >
                           {TASK_STATUSES.map((status) => (
                             <option key={status.value} value={status.value}>

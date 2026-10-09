@@ -49,14 +49,14 @@ export function ThemeDeploySelect({
       : [];
 
   return (
-    <label className="flex flex-col gap-1.5 text-sm text-[var(--muted)]">
+    <label className="flex min-w-0 flex-col gap-1.5 text-sm text-[var(--muted)]">
       Theme deploy
       <select
         id={id}
         name={name}
         value={value}
         onChange={(event) => onChange?.(event.target.value)}
-        className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
+        className="w-full min-w-0 max-w-full rounded-md border border-[var(--border)] bg-white px-3 py-2 text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2"
       >
         <option value="">Select a commit…</option>
         <option value={THEME_COMMIT_NONE}>No theme deploy</option>

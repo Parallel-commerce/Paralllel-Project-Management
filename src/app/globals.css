@@ -100,6 +100,12 @@ select:not([multiple]) {
   background-position: right 8px center;
   background-size: 12px 12px;
   padding-inline-end: 28px;
+  /*
+   * iOS sizes a select to its longest option. That minimum width escapes
+   * flex and auto grid tracks and pushes the task sheet off-screen.
+   */
+  max-width: 100%;
+  min-width: 0;
 }
 
 /*

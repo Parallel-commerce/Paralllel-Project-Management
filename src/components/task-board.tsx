@@ -1183,7 +1183,7 @@ export function TaskBoard({
         </div>
 
         {filtersOpen ? (
-          <div className="grid gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid min-w-0 grid-cols-1 gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 *:min-w-0 sm:grid-cols-2 xl:grid-cols-3">
             <label className="flex flex-col gap-1 text-xs text-[var(--muted)]">
               Search
               <input
@@ -1198,7 +1198,7 @@ export function TaskBoard({
               <select
                 value={assigneeFilter}
                 onChange={(event) => setAssigneeFilter(event.target.value)}
-                className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--foreground)]"
+                className="w-full min-w-0 max-w-full rounded-md border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--foreground)]"
               >
                 <option value="all">Anyone</option>
                 <option value="unassigned">Unassigned</option>
@@ -1214,7 +1214,7 @@ export function TaskBoard({
               <select
                 value={reporterFilter}
                 onChange={(event) => setReporterFilter(event.target.value)}
-                className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--foreground)]"
+                className="w-full min-w-0 max-w-full rounded-md border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--foreground)]"
               >
                 <option value="all">Anyone</option>
                 {members.map((member) => (
@@ -1231,7 +1231,7 @@ export function TaskBoard({
                 onChange={(event) =>
                   setStatusFilter(event.target.value as "all" | TaskStatus)
                 }
-                className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--foreground)]"
+                className="w-full min-w-0 max-w-full rounded-md border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--foreground)]"
               >
                 <option value="all">All statuses</option>
                 {TASK_STATUSES.map((status) => (
@@ -1248,7 +1248,7 @@ export function TaskBoard({
                 onChange={(event) =>
                   setTypeFilter(event.target.value as TypeFilter)
                 }
-                className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--foreground)]"
+                className="w-full min-w-0 max-w-full rounded-md border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--foreground)]"
               >
                 <option value="all">All types</option>
                 <option value="none">No type</option>
@@ -1266,7 +1266,7 @@ export function TaskBoard({
                 onChange={(event) =>
                   setDueFilter(event.target.value as DueFilter)
                 }
-                className="rounded-md border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--foreground)]"
+                className="w-full min-w-0 max-w-full rounded-md border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--foreground)]"
               >
                 <option value="all">Any due date</option>
                 <option value="overdue">Overdue</option>

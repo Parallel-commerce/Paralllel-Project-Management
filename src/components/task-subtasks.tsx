@@ -124,7 +124,7 @@ function FieldLabel({
 }
 
 const fieldClass =
-  "rounded-md border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2";
+  "w-full min-w-0 max-w-full rounded-md border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--foreground)] outline-none ring-[var(--accent)] focus:ring-2";
 
 function SubtaskFields({
   members,
@@ -137,8 +137,8 @@ function SubtaskFields({
 }) {
   const choices = assigneeChoices(members, subtask?.assignee ?? null);
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
-      <label className="flex flex-col gap-1.5 sm:col-span-2">
+    <div className="grid min-w-0 grid-cols-1 gap-3 *:min-w-0 sm:grid-cols-2">
+      <label className="flex min-w-0 flex-col gap-1.5 sm:col-span-2">
         <FieldLabel>Task</FieldLabel>
         <input
           name="title"
@@ -149,7 +149,7 @@ function SubtaskFields({
           className={fieldClass}
         />
       </label>
-      <label className="flex flex-col gap-1.5 sm:col-span-2">
+      <label className="flex min-w-0 flex-col gap-1.5 sm:col-span-2">
         <FieldLabel optional>Description</FieldLabel>
         <textarea
           name="description"
@@ -160,7 +160,7 @@ function SubtaskFields({
           className={fieldClass}
         />
       </label>
-      <label className="flex flex-col gap-1.5">
+      <label className="flex min-w-0 flex-col gap-1.5">
         <FieldLabel optional>Assignee</FieldLabel>
         <select
           name="assigned_to"
@@ -434,7 +434,7 @@ export function TaskSubtasks({
 
       <form
         key={formKey}
-        className="mt-4 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 sm:p-4"
+        className="mt-4 min-w-0 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 sm:p-4"
         onSubmit={(event) => {
           event.preventDefault();
           const formData = new FormData(event.currentTarget);

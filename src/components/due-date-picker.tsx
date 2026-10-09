@@ -184,7 +184,7 @@ export function DueDatePicker({
   return (
     <div
       ref={rootRef}
-      className="relative flex flex-col gap-1.5 text-sm text-[var(--muted)]"
+      className="relative flex min-w-0 flex-col gap-1.5 text-sm text-[var(--muted)]"
     >
       {label ? <label htmlFor={id}>{label}</label> : null}
       {name ? <input type="hidden" name={name} value={value} /> : null}
