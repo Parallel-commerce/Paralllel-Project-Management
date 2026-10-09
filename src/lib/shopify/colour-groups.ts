@@ -10,8 +10,11 @@ import {
 import { decryptSecret } from "@/lib/shopify/crypto";
 import { missingColourGroupScopes } from "@/lib/shopify/scopes";
 
-const COLOUR_GROUP_TYPE = "$app:colour_group";
-const COLOUR_GROUP_KEY = "colour_group";
+const MERCHANT_TYPE = "colour_group";
+const MERCHANT_NAMESPACE = "custom";
+const MERCHANT_KEY = "colour_group";
+const APP_TYPE = "$app:colour_group";
+const APP_KEY = "colour_group";
 const PAGE_SIZE = 100;
 const MAX_PAGES = 80;
 const METAFIELD_BATCH = 25;
@@ -24,6 +27,12 @@ type ProductNode = {
   title: string;
   status: string;
   colourGroup: { value: string | null } | null;
+  appColourGroup: { value: string | null } | null;
+};
+
+type ColourGroupSchema = {
+  productsKey: string;
+  nameKey: string | null;
 };
 
 type ColourGroup = {
@@ -65,19 +74,49 @@ function handleHash(value: string) {
   return (hash >>> 0).toString(36);
 }
 
+function uniqueHandle(key: string, usedHandles: Map<string, string>) {
+  const base = colourGroupHandle(key);
+  const owner = usedHandles.get(base);
+  if (!owner || owner === key) {
+    usedHandles.set(base, key);
+    return base;
+  }
+
+  for (let serial = 2; serial < 1000; serial += 1) {
+    const suffix = serial === 2 ? handleHash(key) : `${handleHash(key)}-${serial}`;
+    const trimmed = base.slice(0, Math.max(1, 80 - suffix.length - 1));
+    const handle = `${trimmed}-${suffix}`.replace(/-+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
+    const taken = usedHandles.get(handle);
+    if (!taken || taken === key) {
+      usedHandles.set(handle, key);
+      return handle;
+    }
+  }
+
+  throw new Error(`Could not build a unique colour group handle for ${key}.`);
+}
+
 export function buildColourGroups(
   products: { id: string; title: string; status: string }[],
 ) {
-  const buckets = new Map<string, { names: Map<string, number>; productIds: string[] }>();
+  const buckets = new Map<
+    string,
+    { names: Map<string, number>; productIds: string[]; colours: Set<string> }
+  >();
 
   for (const product of products) {
     if (product.status === "ARCHIVED") continue;
     const parsed = parseColourTitle(product.title);
     if (!parsed) continue;
     const key = groupKey(parsed.baseName);
-    const bucket = buckets.get(key) ?? { names: new Map<string, number>(), productIds: [] };
+    const bucket = buckets.get(key) ?? {
+      names: new Map<string, number>(),
+      productIds: [],
+      colours: new Set<string>(),
+    };
     bucket.names.set(parsed.baseName, (bucket.names.get(parsed.baseName) ?? 0) + 1);
     bucket.productIds.push(product.id);
+    bucket.colours.add(groupKey(parsed.colour));
     buckets.set(key, bucket);
   }
 
@@ -85,19 +124,259 @@ export function buildColourGroups(
   const groups: ColourGroup[] = [];
 
   for (const [key, bucket] of buckets) {
+    if (bucket.colours.size < 2) continue;
     const name = [...bucket.names.entries()].sort(
       (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]),
     )[0][0];
-    let handle = colourGroupHandle(key);
-    const owner = usedHandles.get(handle);
-    if (owner && owner !== key) {
-      handle = `${handle}-${handleHash(key)}`.slice(0, 80);
-    }
-    usedHandles.set(handle, key);
+    const handle = uniqueHandle(key, usedHandles);
     groups.push({ key, name, handle, productIds: bucket.productIds });
   }
 
   return groups;
+}
+
+export type StoredColourGroup = {
+  id: string;
+  handle: string;
+  name: string;
+  productIds: string[];
+};
+
+type PlannedGroup = {
+  key: string;
+  name: string;
+  handle: string;
+  productIds: string[];
+  existingId: string | null;
+  productsChanged: boolean;
+  nameChanged: boolean;
+};
+
+export type ColourGroupPlan = {
+  planned: PlannedGroup[];
+  created: { name: string; products: string[] }[];
+  added: { group: string; product: string }[];
+  moved: { product: string; from: string; to: string }[];
+  removed: { group: string; product: string }[];
+  linked: { group: string; product: string }[];
+  removedGroups: { name: string; empty: boolean }[];
+};
+
+function sameIds(left: string[], right: string[]) {
+  if (left.length !== right.length) return false;
+  const ids = new Set(left);
+  return right.every((id) => ids.has(id));
+}
+
+function productLabel(id: string, titles: Map<string, string>) {
+  return titles.get(id) ?? "A product that is no longer in the catalogue";
+}
+
+export function planColourGroupSync(
+  existing: StoredColourGroup[],
+  desired: ColourGroup[],
+  titles: Map<string, string>,
+  metafieldByProduct: Map<string, string | null>,
+): ColourGroupPlan {
+  const existingById = new Map(existing.map((group) => [group.id, group]));
+  const unmatched = new Set(existingById.keys());
+  const assigned = new Map<string, string | null>();
+
+  const claim = (key: string, id: string) => {
+    if (!unmatched.has(id) || assigned.has(key)) return false;
+    unmatched.delete(id);
+    assigned.set(key, id);
+    return true;
+  };
+
+  for (const group of desired) {
+    const hit = existing.find((item) => unmatched.has(item.id) && item.handle === group.handle);
+    if (hit) claim(group.key, hit.id);
+  }
+
+  for (const group of desired) {
+    if (assigned.has(group.key)) continue;
+    const hit = existing.find(
+      (item) => unmatched.has(item.id) && groupKey(item.name) === group.key,
+    );
+    if (hit) claim(group.key, hit.id);
+  }
+
+  for (const item of existing) {
+    if (!unmatched.has(item.id)) continue;
+    const hits = desired.filter(
+      (group) =>
+        !assigned.has(group.key) &&
+        item.productIds.some((id) => group.productIds.includes(id)),
+    );
+    if (hits.length === 1) claim(hits[0].key, item.id);
+  }
+
+  for (const group of desired) {
+    if (!assigned.has(group.key)) assigned.set(group.key, null);
+  }
+
+  const previousGroup = new Map<string, { id: string; name: string }>();
+  for (const group of existing) {
+    for (const id of group.productIds) {
+      if (!previousGroup.has(id)) previousGroup.set(id, { id: group.id, name: group.name });
+    }
+  }
+
+  const desiredIds = new Set(desired.flatMap((group) => group.productIds));
+  const planned: PlannedGroup[] = [];
+  const created: ColourGroupPlan["created"] = [];
+  const added: ColourGroupPlan["added"] = [];
+  const moved: ColourGroupPlan["moved"] = [];
+  const removed: ColourGroupPlan["removed"] = [];
+  const linked: ColourGroupPlan["linked"] = [];
+
+  for (const group of desired) {
+    const existingId = assigned.get(group.key) ?? null;
+    const stored = existingId ? existingById.get(existingId) : undefined;
+    planned.push({
+      ...group,
+      existingId,
+      productsChanged: !stored || !sameIds(stored.productIds, group.productIds),
+      nameChanged: !stored || stored.name !== group.name,
+    });
+
+    if (!stored) {
+      created.push({
+        name: group.name,
+        products: group.productIds.map((id) => productLabel(id, titles)).sort((a, b) => a.localeCompare(b)),
+      });
+      for (const id of group.productIds) {
+        const from = previousGroup.get(id);
+        if (!from) continue;
+        moved.push({ product: productLabel(id, titles), from: from.name, to: group.name });
+      }
+      continue;
+    }
+
+    const previous = new Set(stored.productIds);
+    for (const id of group.productIds) {
+      const label = productLabel(id, titles);
+      if (!previous.has(id)) {
+        const from = previousGroup.get(id);
+        if (from && from.id !== stored.id) {
+          moved.push({ product: label, from: from.name, to: group.name });
+        } else {
+          added.push({ group: group.name, product: label });
+        }
+      } else if (metafieldByProduct.get(id) !== stored.id) {
+        linked.push({ group: group.name, product: label });
+      }
+    }
+
+    for (const id of stored.productIds) {
+      if (!group.productIds.includes(id) && !desiredIds.has(id)) {
+        removed.push({ group: group.name, product: productLabel(id, titles) });
+      }
+    }
+  }
+
+  const removedGroups = [...unmatched].map((id) => {
+    const group = existingById.get(id)!;
+    for (const productId of group.productIds) {
+      if (!desiredIds.has(productId)) {
+        removed.push({ group: group.name, product: productLabel(productId, titles) });
+      }
+    }
+    return { name: group.name, empty: group.productIds.length === 0 };
+  });
+
+  const byProduct = (left: { product: string }, right: { product: string }) =>
+    left.product.localeCompare(right.product) || JSON.stringify(left).localeCompare(JSON.stringify(right));
+
+  created.sort((a, b) => a.name.localeCompare(b.name));
+  added.sort(byProduct);
+  moved.sort(byProduct);
+  removed.sort(byProduct);
+  linked.sort(byProduct);
+  removedGroups.sort((a, b) => a.name.localeCompare(b.name));
+
+  return { planned, created, added, moved, removed, linked, removedGroups };
+}
+
+function joinNames(names: string[]) {
+  const shown = names.slice(0, 8);
+  const extra = names.length - shown.length;
+  return extra > 0 ? `${shown.join(", ")}, and ${extra} more` : shown.join(", ");
+}
+
+function changeLines(lines: string[]) {
+  const shown = lines.slice(0, 25);
+  const extra = lines.length - shown.length;
+  const body = shown.map((line) => `• ${line}`);
+  if (extra > 0) body.push(`• and ${extra} more`);
+  return body.join("\n");
+}
+
+export function formatColourGroupSummary(
+  groups: { productIds: string[] }[],
+  plan: Pick<ColourGroupPlan, "created" | "added" | "moved" | "removed" | "linked" | "removedGroups">,
+  appGroupsRemoved = 0,
+) {
+  const products = groups.reduce((count, group) => count + group.productIds.length, 0);
+  const lines = [`${groups.length} groups, ${products} products`];
+
+  const sections: string[] = [];
+  if (plan.created.length) {
+    sections.push(
+      `Created (${plan.created.length})\n${changeLines(
+        plan.created.map((group) =>
+          group.products.length ? `${group.name} — ${joinNames(group.products)}` : group.name,
+        ),
+      )}`,
+    );
+  }
+  if (plan.added.length) {
+    sections.push(
+      `Added (${plan.added.length})\n${changeLines(
+        plan.added.map((item) => `${item.product} → ${item.group}`),
+      )}`,
+    );
+  }
+  if (plan.moved.length) {
+    sections.push(
+      `Moved (${plan.moved.length})\n${changeLines(
+        plan.moved.map((item) => `${item.product} from ${item.from} to ${item.to}`),
+      )}`,
+    );
+  }
+  if (plan.removed.length) {
+    sections.push(
+      `Removed (${plan.removed.length})\n${changeLines(
+        plan.removed.map((item) => `${item.product} from ${item.group}`),
+      )}`,
+    );
+  }
+  if (plan.removedGroups.length) {
+    sections.push(
+      `Removed groups (${plan.removedGroups.length})\n${changeLines(
+        plan.removedGroups.map((group) => (group.empty ? `${group.name} (empty)` : group.name)),
+      )}`,
+    );
+  }
+  if (plan.linked.length) {
+    sections.push(
+      `Linked (${plan.linked.length})\n${changeLines(
+        plan.linked.map((item) => `${item.product} → ${item.group}`),
+      )}`,
+    );
+  }
+  if (appGroupsRemoved > 0) {
+    sections.push(
+      `Removed ${appGroupsRemoved} extra groups saved beside the store colour groups. The theme does not read those.`,
+    );
+  }
+
+  if (!sections.length) {
+    sections.push("No groups created. No products added or removed.");
+  }
+
+  return [...lines, ...sections].join("\n\n");
 }
 
 function metaobjectGid(value: string | null | undefined) {
@@ -155,79 +434,85 @@ function assertUserErrors(
   throw new Error(errors.map((error) => error.message).join(" "));
 }
 
-async function ensureDefinitions(shop: string, accessToken: string) {
+function assertFieldKey(key: string) {
+  if (!/^[A-Za-z0-9_]+$/.test(key)) {
+    throw new Error(`Unexpected colour group field name: ${key}`);
+  }
+  return key;
+}
+
+async function resolveColourGroupSchema(shop: string, accessToken: string): Promise<ColourGroupSchema> {
   const existing = await admin<{
-    metaobjectDefinitionByType: { id: string } | null;
-    metafieldDefinitions: { nodes: { id: string }[] };
+    metaobjectDefinitionByType: {
+      id: string;
+      displayNameKey: string | null;
+      fieldDefinitions: { key: string; type: { name: string } }[];
+    } | null;
+    metafieldDefinitions: { nodes: { id: string; type: { name: string } }[] };
   }>(
     shop,
     accessToken,
     /* GraphQL */ `
       query ColourGroupDefinitions {
-        metaobjectDefinitionByType(type: "${COLOUR_GROUP_TYPE}") {
+        metaobjectDefinitionByType(type: "${MERCHANT_TYPE}") {
           id
+          displayNameKey
+          fieldDefinitions {
+            key
+            type {
+              name
+            }
+          }
         }
         metafieldDefinitions(
           first: 1
           ownerType: PRODUCT
-          namespace: "$app"
-          key: "${COLOUR_GROUP_KEY}"
+          namespace: "${MERCHANT_NAMESPACE}"
+          key: "${MERCHANT_KEY}"
         ) {
           nodes {
             id
+            type {
+              name
+            }
           }
         }
       }
     `,
   );
 
-  let definitionId = existing.metaobjectDefinitionByType?.id ?? null;
-
-  if (!definitionId) {
-    const created = await admin<{
-      metaobjectDefinitionCreate: {
-        metaobjectDefinition: { id: string } | null;
-        userErrors: { field?: string[] | null; message: string; code?: string }[];
-      };
-    }>(
-      shop,
-      accessToken,
-      /* GraphQL */ `
-        mutation ColourGroupDefinition {
-          metaobjectDefinitionCreate(
-            definition: {
-              type: "${COLOUR_GROUP_TYPE}"
-              name: "Colour group"
-              description: "Products that are colour variants of the same item."
-              displayNameKey: "name"
-              access: { admin: MERCHANT_READ, storefront: PUBLIC_READ }
-              fieldDefinitions: [
-                { key: "name", name: "Name", type: "single_line_text_field", required: true }
-                { key: "products", name: "Products", type: "list.product_reference" }
-              ]
-            }
-          ) {
-            metaobjectDefinition {
-              id
-            }
-            userErrors {
-              field
-              message
-              code
-            }
-          }
-        }
-      `,
+  const definition = existing.metaobjectDefinitionByType;
+  if (!definition) {
+    throw new Error(
+      "This store has no colour_group metaobject. The theme reads groups from that metaobject and the custom.colour_group product field.",
     );
-    assertUserErrors(created.metaobjectDefinitionCreate.userErrors);
-    definitionId = created.metaobjectDefinitionCreate.metaobjectDefinition?.id ?? null;
   }
 
-  if (!definitionId) {
-    throw new Error("Shopify did not return the colour group definition.");
+  const productFields = definition.fieldDefinitions.filter(
+    (field) => field.type.name === "list.product_reference",
+  );
+  const productsField =
+    productFields.find((field) => field.key === "products") ?? productFields[0];
+  if (!productsField) {
+    throw new Error("The colour_group metaobject has no product list, so groups cannot be updated.");
   }
 
-  if (!existing.metafieldDefinitions.nodes.length) {
+  const textFields = definition.fieldDefinitions.filter(
+    (field) => field.type.name === "single_line_text_field",
+  );
+  const nameField =
+    textFields.find((field) => field.key === definition.displayNameKey) ??
+    textFields.find((field) => field.key === "name") ??
+    null;
+
+  const metafield = existing.metafieldDefinitions.nodes[0];
+  if (metafield && metafield.type.name !== "metaobject_reference") {
+    throw new Error(
+      "The custom.colour_group product field is not a colour group reference, so the theme cannot read these groups.",
+    );
+  }
+
+  if (!metafield) {
     const created = await admin<{
       metafieldDefinitionCreate: {
         userErrors: { field?: string[] | null; message: string; code?: string }[];
@@ -240,8 +525,8 @@ async function ensureDefinitions(shop: string, accessToken: string) {
           metafieldDefinitionCreate(
             definition: {
               name: "Colour group"
-              namespace: "$app"
-              key: "${COLOUR_GROUP_KEY}"
+              namespace: "${MERCHANT_NAMESPACE}"
+              key: "${MERCHANT_KEY}"
               description: "Colour-variant group for this product."
               type: "metaobject_reference"
               ownerType: PRODUCT
@@ -260,10 +545,15 @@ async function ensureDefinitions(shop: string, accessToken: string) {
           }
         }
       `,
-      { definitionId },
+      { definitionId: definition.id },
     );
     assertUserErrors(created.metafieldDefinitionCreate.userErrors);
   }
+
+  return {
+    productsKey: assertFieldKey(productsField.key),
+    nameKey: nameField ? assertFieldKey(nameField.key) : null,
+  };
 }
 
 async function fetchProducts(shop: string, accessToken: string) {
@@ -291,7 +581,10 @@ async function fetchProducts(shop: string, accessToken: string) {
               id
               title
               status
-              colourGroup: metafield(key: "${COLOUR_GROUP_KEY}") {
+              colourGroup: metafield(namespace: "${MERCHANT_NAMESPACE}", key: "${MERCHANT_KEY}") {
+                value
+              }
+              appColourGroup: metafield(key: "${APP_KEY}") {
                 value
               }
             }
@@ -322,24 +615,31 @@ function productIdsFromValue(value: string | null | undefined) {
   }
 }
 
-type ExistingGroup = { id: string; handle: string; productCount: number };
-
-async function fetchMetaobjects(shop: string, accessToken: string) {
-  const metaobjects: ExistingGroup[] = [];
+async function fetchMetaobjects(shop: string, accessToken: string, schema: ColourGroupSchema) {
+  const metaobjects: StoredColourGroup[] = [];
   let cursor: string | null = null;
+  const nameSelection = schema.nameKey
+    ? `name: field(key: "${schema.nameKey}") { value }`
+    : "";
 
   for (let page = 0; page < MAX_PAGES; page += 1) {
     const data: {
       metaobjects: {
         pageInfo: PageInfo;
-        nodes: { id: string; handle: string; products: { value: string | null } | null }[];
+        nodes: {
+          id: string;
+          handle: string;
+          displayName: string;
+          name?: { value: string | null } | null;
+          products: { value: string | null } | null;
+        }[];
       };
     } = await admin(
       shop,
       accessToken,
       /* GraphQL */ `
         query ExistingColourGroups($cursor: String) {
-          metaobjects(type: "${COLOUR_GROUP_TYPE}", first: ${PAGE_SIZE}, after: $cursor) {
+          metaobjects(type: "${MERCHANT_TYPE}", first: ${PAGE_SIZE}, after: $cursor) {
             pageInfo {
               hasNextPage
               endCursor
@@ -347,7 +647,9 @@ async function fetchMetaobjects(shop: string, accessToken: string) {
             nodes {
               id
               handle
-              products: field(key: "products") {
+              displayName
+              ${nameSelection}
+              products: field(key: "${schema.productsKey}") {
                 value
               }
             }
@@ -357,10 +659,12 @@ async function fetchMetaobjects(shop: string, accessToken: string) {
       { cursor },
     );
     for (const node of data.metaobjects.nodes) {
+      const named = node.name?.value?.trim() || node.displayName.trim();
       metaobjects.push({
         id: node.id,
         handle: node.handle,
-        productCount: productIdsFromValue(node.products?.value).length,
+        name: named || node.handle,
+        productIds: productIdsFromValue(node.products?.value),
       });
     }
     if (!data.metaobjects.pageInfo.hasNextPage) return metaobjects;
@@ -371,9 +675,23 @@ async function fetchMetaobjects(shop: string, accessToken: string) {
   throw new Error("There are more colour groups than one run can read.");
 }
 
+function groupFields(
+  schema: ColourGroupSchema,
+  group: { name: string; productIds: string[] },
+  includeName: boolean,
+) {
+  const fields: { key: string; value: string }[] = [];
+  if (includeName && schema.nameKey) {
+    fields.push({ key: schema.nameKey, value: group.name });
+  }
+  fields.push({ key: schema.productsKey, value: JSON.stringify(group.productIds) });
+  return fields;
+}
+
 async function upsertGroup(
   shop: string,
   accessToken: string,
+  schema: ColourGroupSchema,
   group: ColourGroup,
 ) {
   const data = await admin<{
@@ -385,15 +703,10 @@ async function upsertGroup(
     shop,
     accessToken,
     /* GraphQL */ `
-      mutation UpsertColourGroup($handle: String!, $name: String!, $products: String!) {
+      mutation UpsertColourGroup($handle: String!, $fields: [MetaobjectFieldInput!]!) {
         metaobjectUpsert(
-          handle: { type: "${COLOUR_GROUP_TYPE}", handle: $handle }
-          metaobject: {
-            fields: [
-              { key: "name", value: $name }
-              { key: "products", value: $products }
-            ]
-          }
+          handle: { type: "${MERCHANT_TYPE}", handle: $handle }
+          metaobject: { fields: $fields }
         ) {
           metaobject {
             id
@@ -409,8 +722,7 @@ async function upsertGroup(
     `,
     {
       handle: group.handle,
-      name: group.name,
-      products: JSON.stringify(group.productIds),
+      fields: groupFields(schema, group, true),
     },
   );
   assertUserErrors(data.metaobjectUpsert.userErrors);
@@ -419,10 +731,48 @@ async function upsertGroup(
   return id;
 }
 
+async function updateGroup(
+  shop: string,
+  accessToken: string,
+  schema: ColourGroupSchema,
+  id: string,
+  group: { name: string; productIds: string[] },
+  includeName: boolean,
+) {
+  const data = await admin<{
+    metaobjectUpdate: {
+      metaobject: { id: string } | null;
+      userErrors: { message: string; code?: string }[];
+    };
+  }>(
+    shop,
+    accessToken,
+    /* GraphQL */ `
+      mutation UpdateColourGroup($id: ID!, $fields: [MetaobjectFieldInput!]!) {
+        metaobjectUpdate(id: $id, metaobject: { fields: $fields }) {
+          metaobject {
+            id
+          }
+          userErrors {
+            field
+            message
+            code
+          }
+        }
+      }
+    `,
+    { id, fields: groupFields(schema, group, includeName) },
+  );
+  assertUserErrors(data.metaobjectUpdate.userErrors);
+  if (!data.metaobjectUpdate.metaobject?.id) {
+    throw new Error(`Shopify did not update the colour group ${group.name}.`);
+  }
+}
+
 async function setMetafields(
   shop: string,
   accessToken: string,
-  metafields: { ownerId: string; key: string; value: string }[],
+  metafields: { ownerId: string; namespace: string; key: string; type: string; value: string }[],
 ) {
   for (let index = 0; index < metafields.length; index += METAFIELD_BATCH) {
     const batch = metafields.slice(index, index + METAFIELD_BATCH);
@@ -455,12 +805,14 @@ async function clearMetafields(
   shop: string,
   accessToken: string,
   ownerIds: string[],
+  namespace: string,
+  key: string,
 ) {
   for (let index = 0; index < ownerIds.length; index += METAFIELD_BATCH) {
     const batch = ownerIds.slice(index, index + METAFIELD_BATCH).map((ownerId) => ({
       ownerId,
-      namespace: "$app",
-      key: COLOUR_GROUP_KEY,
+      namespace,
+      key,
     }));
     const data = await admin<{
       metafieldsDelete: { userErrors: { message: string }[] };
@@ -509,12 +861,52 @@ async function deleteMetaobject(shop: string, accessToken: string, id: string) {
   assertUserErrors(data.metaobjectDelete.userErrors);
 }
 
-function summarize(groups: ColourGroup[], unlinked: number, emptyRemoved: number) {
-  const products = groups.reduce((count, group) => count + group.productIds.length, 0);
-  const parts = [`${groups.length} groups, ${products} products`];
-  if (unlinked) parts.push(`${unlinked} unlinked`);
-  if (emptyRemoved) parts.push(`${emptyRemoved} empty groups removed`);
-  return parts.join(", ");
+async function removeLegacyAppGroups(
+  shop: string,
+  accessToken: string,
+  products: ProductNode[],
+) {
+  const ownerIds = products
+    .map((product) => (metaobjectGid(product.appColourGroup?.value) ? product.id : null))
+    .filter((id): id is string => Boolean(id));
+  await clearMetafields(shop, accessToken, ownerIds, "$app", APP_KEY);
+
+  const ids: string[] = [];
+  let cursor: string | null = null;
+  for (let page = 0; page < MAX_PAGES; page += 1) {
+    const data: {
+      metaobjects: { pageInfo: PageInfo; nodes: { id: string }[] };
+    } = await admin(
+      shop,
+      accessToken,
+      /* GraphQL */ `
+        query LegacyColourGroups($cursor: String) {
+          metaobjects(type: "${APP_TYPE}", first: ${PAGE_SIZE}, after: $cursor) {
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
+            nodes {
+              id
+            }
+          }
+        }
+      `,
+      { cursor },
+    );
+    ids.push(...data.metaobjects.nodes.map((node) => node.id));
+    if (!data.metaobjects.pageInfo.hasNextPage) break;
+    cursor = data.metaobjects.pageInfo.endCursor;
+    if (!cursor) throw new Error("Shopify metaobject pagination did not return a cursor.");
+    if (page === MAX_PAGES - 1) {
+      throw new Error("There are more colour groups than one run can read.");
+    }
+  }
+
+  for (const id of ids) {
+    await deleteMetaobject(shop, accessToken, id);
+  }
+  return ids.length;
 }
 
 export async function syncProjectColourGroups(
@@ -555,48 +947,89 @@ export async function syncProjectColourGroups(
   }
 
   try {
-    await ensureDefinitions(row.shop_domain, accessToken);
+    const schema = await resolveColourGroupSchema(row.shop_domain, accessToken);
     const products = await fetchProducts(row.shop_domain, accessToken);
-    const existing = await fetchMetaobjects(row.shop_domain, accessToken);
+    const existing = await fetchMetaobjects(row.shop_domain, accessToken, schema);
     const groups = buildColourGroups(products);
-    const groupIdByHandle = new Map<string, string>();
+    const titles = new Map(products.map((product) => [product.id, product.title]));
+    const metafieldByProduct = new Map(
+      products.map((product) => [product.id, metaobjectGid(product.colourGroup?.value)]),
+    );
+    const plan = planColourGroupSync(existing, groups, titles, metafieldByProduct);
+    const groupIdByKey = new Map<string, string>();
 
-    for (const group of groups) {
-      const id = await upsertGroup(row.shop_domain, accessToken, group);
-      groupIdByHandle.set(group.handle, id);
+    for (const group of plan.planned) {
+      const writeName = Boolean(schema.nameKey) && group.nameChanged;
+      if (group.existingId && !group.productsChanged && !writeName) {
+        groupIdByKey.set(group.key, group.existingId);
+        continue;
+      }
+      if (group.existingId) {
+        await updateGroup(row.shop_domain, accessToken, schema, group.existingId, group, writeName);
+        groupIdByKey.set(group.key, group.existingId);
+      } else {
+        const id = await upsertGroup(row.shop_domain, accessToken, schema, group);
+        groupIdByKey.set(group.key, id);
+      }
     }
 
     const productGroupId = new Map<string, string>();
-    for (const group of groups) {
-      const id = groupIdByHandle.get(group.handle);
+    for (const group of plan.planned) {
+      const id = groupIdByKey.get(group.key);
       if (!id) continue;
       for (const productId of group.productIds) productGroupId.set(productId, id);
     }
 
-    const toSet: { ownerId: string; key: string; value: string }[] = [];
+    const toSet: { ownerId: string; namespace: string; key: string; type: string; value: string }[] = [];
     const toClear: string[] = [];
     for (const product of products) {
       const desired = productGroupId.get(product.id) ?? null;
       const current = metaobjectGid(product.colourGroup?.value);
       if (desired && desired !== current) {
-        toSet.push({ ownerId: product.id, key: COLOUR_GROUP_KEY, value: desired });
+        toSet.push({
+          ownerId: product.id,
+          namespace: MERCHANT_NAMESPACE,
+          key: MERCHANT_KEY,
+          type: "metaobject_reference",
+          value: desired,
+        });
       } else if (!desired && current) {
         toClear.push(product.id);
       }
     }
 
     await setMetafields(row.shop_domain, accessToken, toSet);
-    await clearMetafields(row.shop_domain, accessToken, toClear);
+    await clearMetafields(row.shop_domain, accessToken, toClear, MERCHANT_NAMESPACE, MERCHANT_KEY);
 
-    const keepIds = new Set(groupIdByHandle.values());
-    let emptyRemoved = 0;
+    const kept = new Set(groupIdByKey.values());
     for (const metaobject of existing) {
-      if (keepIds.has(metaobject.id)) continue;
+      if (kept.has(metaobject.id)) continue;
       await deleteMetaobject(row.shop_domain, accessToken, metaobject.id);
-      if (metaobject.productCount === 0) emptyRemoved += 1;
     }
 
-    const summary = summarize(groups, toClear.length, emptyRemoved);
+    let appGroupsRemoved = 0;
+    try {
+      appGroupsRemoved = await removeLegacyAppGroups(row.shop_domain, accessToken, products);
+    } catch (cleanupError) {
+      const cleanupMessage =
+        cleanupError instanceof Error ? cleanupError.message : "Could not remove the extra groups.";
+      if (/does not exist|no metaobject definition|unknown type/i.test(cleanupMessage)) {
+        appGroupsRemoved = 0;
+      } else {
+        const summary = `${formatColourGroupSummary(groups, plan, 0)}\n\nThe store groups were updated. Extra groups saved beside them could not be removed: ${cleanupMessage}`;
+        await supabase
+          .from("project_shopify_connections")
+          .update({
+            colour_grouping_last_run_at: new Date().toISOString(),
+            colour_grouping_last_error: null,
+            colour_grouping_last_summary: summary,
+          })
+          .eq("project_id", projectId);
+        return { ok: true, summary };
+      }
+    }
+
+    const summary = formatColourGroupSummary(groups, plan, appGroupsRemoved);
     await supabase
       .from("project_shopify_connections")
       .update({
@@ -650,8 +1083,12 @@ export async function listProjectColourGroups(
     return { error: "Could not read the stored Shopify token. Reconnect the store." };
   }
 
+  const schema = await resolveColourGroupSchema(row.shop_domain, accessToken);
   const groups: ColourGroupMemberList[] = [];
   let cursor: string | null = null;
+  const nameSelection = schema.nameKey
+    ? `name: field(key: "${schema.nameKey}") { value }`
+    : "";
 
   for (let page = 0; page < MAX_PAGES; page += 1) {
     const dataPage: {
@@ -659,7 +1096,8 @@ export async function listProjectColourGroups(
         pageInfo: PageInfo;
         nodes: {
           handle: string;
-          name: { value: string | null } | null;
+          displayName: string;
+          name?: { value: string | null } | null;
           products: {
             references: {
               nodes: { title?: string }[];
@@ -673,17 +1111,16 @@ export async function listProjectColourGroups(
       accessToken,
       /* GraphQL */ `
         query ColourGroupReview($cursor: String) {
-          metaobjects(type: "${COLOUR_GROUP_TYPE}", first: 25, after: $cursor) {
+          metaobjects(type: "${MERCHANT_TYPE}", first: 25, after: $cursor) {
             pageInfo {
               hasNextPage
               endCursor
             }
             nodes {
               handle
-              name: field(key: "name") {
-                value
-              }
-              products: field(key: "products") {
+              displayName
+              ${nameSelection}
+              products: field(key: "${schema.productsKey}") {
                 references(first: 100) {
                   nodes {
                     ... on Product {
@@ -708,7 +1145,7 @@ export async function listProjectColourGroups(
         .filter(Boolean)
         .sort((a, b) => a.localeCompare(b));
       groups.push({
-        name: node.name?.value?.trim() || node.handle,
+        name: node.name?.value?.trim() || node.displayName.trim() || node.handle,
         products,
         truncated: Boolean(node.products?.references?.pageInfo.hasNextPage),
       });

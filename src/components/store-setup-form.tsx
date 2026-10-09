@@ -48,8 +48,8 @@ function ColourGroupList({
         className={inputClass}
       />
       <p className="mt-2 text-sm text-[var(--muted)]">
-        {groups.length} groups, {productCount} products
-        {needle ? ` · ${visible.length} match` : ""}
+        {groups.length} groups in Shopify, {productCount} products
+        {needle ? `. ${visible.length} match` : ""}
       </p>
       <div className="mt-2 max-h-96 space-y-1 overflow-y-auto rounded-md border border-[var(--border)] bg-white p-2">
         {visible.length ? (
@@ -65,11 +65,14 @@ function ColourGroupList({
                     <li key={`${product}-${productIndex}`}>{product}</li>
                   ))}
                 </ul>
-              ) : (
-                <p className="mt-1 pb-1 pl-4 text-sm text-[var(--muted)]">
-                  No products. The next run removes this group.
+              ) : null}
+              {group.products.length < 2 ? (
+                <p className="pb-1 pl-4 text-sm text-[var(--muted)]">
+                  {group.products.length === 1
+                    ? "One colour is not a group. The next run removes it."
+                    : "No products. The next run removes this group."}
                 </p>
-              )}
+              ) : null}
               {group.truncated ? (
                 <p className="pb-1 pl-4 text-sm text-[var(--muted)]">
                   This group has more products than the list shows.
@@ -371,10 +374,12 @@ export function StoreSetupForm({
         <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5">
           <h2 className="font-medium">Colour groups</h2>
           <p className="mt-1 text-sm text-[var(--muted)]">
-            Products titled <span className="text-[var(--foreground)]">Name (Colour)</span>{" "}
-            are grouped into one metaobject, and each product points at that group.
-            A daily job picks up new products and removes groups that have no
-            products. Turn this on separately for each store.
+            A group is created when two or more colours share a name, such as{" "}
+            <span className="text-[var(--foreground)]">Name (Colour)</span>. A single
+            colour stays ungrouped. Each run adds a colour when another one of that
+            name appears, removes products that have gone, and deletes a group that
+            no longer has two colours. The summary names what was created, added,
+            and removed.
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
             <button
@@ -433,15 +438,16 @@ export function StoreSetupForm({
             </p>
           ) : null}
           {connection.colour_grouping_last_summary ? (
-            <p className="mt-3 text-sm text-[var(--muted)]">
-              Last run: {connection.colour_grouping_last_summary}
-              {connection.colour_grouping_last_run_at
-                ? ` · ${new Date(connection.colour_grouping_last_run_at).toLocaleString("en-GB")}`
-                : ""}
+            <p className="mt-3 whitespace-pre-line text-sm text-[var(--muted)]">
+              {`Last run${
+                connection.colour_grouping_last_run_at
+                  ? ` · ${new Date(connection.colour_grouping_last_run_at).toLocaleString("en-GB")}`
+                  : ""
+              }\n${connection.colour_grouping_last_summary}`}
             </p>
           ) : null}
-          {groupSummary ? (
-            <p className="mt-3 text-sm text-[var(--muted)]">{groupSummary}</p>
+          {groupSummary && groupSummary !== connection.colour_grouping_last_summary ? (
+            <p className="mt-3 whitespace-pre-line text-sm text-[var(--muted)]">{groupSummary}</p>
           ) : null}
           {colourGroupingOn && colourGroupingScopesReady ? (
             <div className="mt-4">
