@@ -560,6 +560,62 @@ function parseYmd(value: string): ZoneYmd {
   return { year: year ?? 1970, month: month ?? 1, day: day ?? 1 };
 }
 
+function daysInMonth(year: number, month: number) {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+function addCalendarYears(parts: ZoneYmd, years: number): ZoneYmd {
+  const year = parts.year + years;
+  return {
+    year,
+    month: parts.month,
+    day: Math.min(parts.day, daysInMonth(year, parts.month)),
+  };
+}
+
+/** Same calendar date shifted by whole years. 29 Feb clamps to 28 Feb. */
+export function shiftYmdYears(ymd: string, years: number) {
+  return ymdKey(addCalendarYears(parseYmd(ymd), years));
+}
+
+/** Shop-local timestamp for ShopifyQL SINCE / UNTIL, without a timezone suffix. */
+export function shopLocalTimestamp(date: Date, timeZone: string) {
+  const parts = zonedParts(date, timeZone);
+  return `${parts.year}-${pad2(parts.month)}-${pad2(parts.day)}T${pad2(parts.hour)}:${pad2(parts.minute)}:${pad2(parts.second)}`;
+}
+
+/** Same shop-local clock time shifted by whole years. */
+export function shiftInstantYears(date: Date, timeZone: string, years: number) {
+  const parts = zonedParts(date, timeZone);
+  const shifted = addCalendarYears(
+    { year: parts.year, month: parts.month, day: parts.day },
+    years,
+  );
+  return zonedTimeToUtc(shifted, timeZone, {
+    hour: parts.hour,
+    minute: parts.minute,
+    second: parts.second,
+  });
+}
+
+export function zonedDayBounds(ymd: string, timeZone: string) {
+  const parts = parseYmd(ymd);
+  return {
+    ymd: ymdKey(parts),
+    startUtc: zonedTimeToUtc(parts, timeZone, {
+      hour: 0,
+      minute: 0,
+      second: 0,
+    }),
+    endUtc: zonedTimeToUtc(parts, timeZone, {
+      hour: 23,
+      minute: 59,
+      second: 59,
+      ms: 999,
+    }),
+  };
+}
+
 export function storeReportTitle(
   period: ReportPeriod | undefined,
   start: string,

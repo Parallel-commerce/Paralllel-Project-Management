@@ -44,6 +44,30 @@ export function vsPreviousDayCopy(change: number | null): {
   return { label: "Flat", trend: "flat" };
 }
 
+/** Signed year-on-year change. Shows the percent even when the move is small. */
+export function yearAgoChangeCopy(change: number | null): {
+  label: string;
+  trend: ScorecardTrend;
+} | null {
+  if (change == null) return null;
+  const rounded = round1(change);
+  const abs = formatStoreNumber(Math.abs(rounded));
+  if (rounded > 0) return { label: `↑ ${abs}%`, trend: "up" };
+  if (rounded < 0) return { label: `↓ ${abs}%`, trend: "down" };
+  return { label: "0%", trend: "flat" };
+}
+
+export function yearAgoComparison(
+  current: number | string | null | undefined,
+  previous: number | string | null | undefined,
+) {
+  const prior = snapshotNumber(previous);
+  return {
+    prior,
+    change: yearAgoChangeCopy(changePct(snapshotNumber(current), prior)),
+  };
+}
+
 export function uniqueDailySnapshots(rows: ProjectStoreSnapshot[]) {
   const byDate = new Map<string, ProjectStoreSnapshot>();
   for (const row of rows) {

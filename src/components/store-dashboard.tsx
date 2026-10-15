@@ -1,11 +1,12 @@
 import { DailySnapshotPages } from "@/components/daily-snapshot-pages";
 import { formatDate, formatDateTime, formatDayMonth } from "@/lib/format-date";
+import { shiftYmdYears } from "@/lib/store-report";
 import {
   snapshotChangePct,
   snapshotNumber,
   uniqueDailySnapshots,
   vsPreviousDayCopy,
-  type SnapshotMetricKey,
+  yearAgoComparison,
 } from "@/lib/store-snapshot";
 import type { ProjectStoreSnapshot, ScorecardTrend } from "@/types/database";
 
@@ -45,6 +46,21 @@ function trendClass(trend: ScorecardTrend | undefined) {
   return "text-[var(--muted)]";
 }
 
+function periodMetric(
+  label: string,
+  current: number | string | null | undefined,
+  prior: number | string | null | undefined,
+  format: (value: number | string | null | undefined) => string,
+) {
+  const comparison = yearAgoComparison(current, prior);
+  return {
+    label,
+    value: current == null ? "—" : format(current),
+    prior: comparison.prior == null ? null : format(prior),
+    change: comparison.change,
+  };
+}
+
 export function StoreDashboard({
   snapshot,
   history,
@@ -62,94 +78,115 @@ export function StoreDashboard({
       : undefined;
   const daily = uniqueDailySnapshots(history?.length ? history : [snapshot]);
   const latestDaily = daily[0] ?? null;
-  const previousDaily = daily[1] ?? null;
   const yesterdayDate = latestDaily?.snapshot_date
     ? formatDayMonth(latestDaily.snapshot_date)
     : null;
-
-  function yesterdayHint(key: SnapshotMetricKey) {
-    if (!latestDaily || !previousDaily) return undefined;
-    return vsPreviousDayCopy(
-      snapshotChangePct(latestDaily, previousDaily, key),
-    );
-  }
-
-  const ordersHint = yesterdayHint("orders_1d");
-  const salesHintDay = yesterdayHint("sales_1d");
-  const sessionsHint = yesterdayHint("sessions_1d");
-  const conversionHint = yesterdayHint("conversion_rate_1d");
-
-  const rows = [
-    {
-      label: "Orders",
-      yesterday: latestDaily ? formatCount(latestDaily.orders_1d) : "—",
-      week: formatCount(snapshot.orders_7d),
-      month: formatCount(snapshot.orders_30d),
-      hint: ordersHint?.label,
-      hintTrend: ordersHint?.trend,
-    },
-    {
-      label: "Sales",
-      yesterday: latestDaily
-        ? formatMoney(latestDaily.sales_1d, latestDaily.currency ?? currency)
-        : "—",
-      week: formatMoney(snapshot.sales_7d, currency),
-      month: formatMoney(snapshot.sales_30d, currency),
-      hint: salesHintDay?.label,
-      hintTrend: salesHintDay?.trend,
-    },
-    {
-      label: "Sessions",
-      yesterday: latestDaily ? formatCount(latestDaily.sessions_1d) : "—",
-      week: formatCount(snapshot.sessions_7d),
-      month: formatCount(snapshot.sessions_30d),
-      hint: sessionsHint?.label,
-      hintTrend: sessionsHint?.trend,
-    },
-    {
-      label: "Conversion",
-      yesterday: latestDaily
-        ? formatPercent(latestDaily.conversion_rate_1d)
-        : "—",
-      week: formatPercent(snapshot.conversion_rate_7d),
-      month: formatPercent(snapshot.conversion_rate_30d),
-      hint: conversionHint?.label,
-      hintTrend: conversionHint?.trend,
-    },
-  ];
+  const yesterdayLastYear = latestDaily?.snapshot_date
+    ? formatDate(shiftYmdYears(latestDaily.snapshot_date, -1))
+    : null;
+  const dayMoney = (value: number | string | null | undefined) =>
+    formatMoney(value, latestDaily?.currency ?? currency);
+  const weekMoney = (value: number | string | null | undefined) =>
+    formatMoney(value, currency);
 
   const periods = [
     {
       label: "Yesterday",
       sub: yesterdayDate,
-      values: rows.map((row) => ({
-        label: row.label,
-        value: row.yesterday,
-        hint: row.hint,
-        hintTrend: row.hintTrend,
-      })),
+      compare: yesterdayLastYear ? `vs ${yesterdayLastYear}` : null,
+      values: [
+        periodMetric(
+          "Orders",
+          latestDaily?.orders_1d,
+          latestDaily?.orders_1d_prev_year,
+          formatCount,
+        ),
+        periodMetric(
+          "Sales",
+          latestDaily?.sales_1d,
+          latestDaily?.sales_1d_prev_year,
+          dayMoney,
+        ),
+        periodMetric(
+          "Sessions",
+          latestDaily?.sessions_1d,
+          latestDaily?.sessions_1d_prev_year,
+          formatCount,
+        ),
+        periodMetric(
+          "Conversion",
+          latestDaily?.conversion_rate_1d,
+          latestDaily?.conversion_rate_1d_prev_year,
+          formatPercent,
+        ),
+      ],
     },
     {
       label: "7 days",
       sub: null as string | null,
-      values: rows.map((row) => ({
-        label: row.label,
-        value: row.week,
-        hint: undefined as string | undefined,
-        hintTrend: undefined as ScorecardTrend | undefined,
-      })),
+      compare: "vs last year",
+      values: [
+        periodMetric(
+          "Orders",
+          snapshot.orders_7d,
+          snapshot.orders_7d_prev_year,
+          formatCount,
+        ),
+        periodMetric(
+          "Sales",
+          snapshot.sales_7d,
+          snapshot.sales_7d_prev_year,
+          weekMoney,
+        ),
+        periodMetric(
+          "Sessions",
+          snapshot.sessions_7d,
+          snapshot.sessions_7d_prev_year,
+          formatCount,
+        ),
+        periodMetric(
+          "Conversion",
+          snapshot.conversion_rate_7d,
+          snapshot.conversion_rate_7d_prev_year,
+          formatPercent,
+        ),
+      ],
     },
     {
       label: "30 days",
       sub: null as string | null,
-      values: rows.map((row) => ({
-        label: row.label,
-        value: row.month,
-        hint: undefined as string | undefined,
-        hintTrend: undefined as ScorecardTrend | undefined,
-      })),
+      compare: "vs last year",
+      values: [
+        periodMetric(
+          "Orders",
+          snapshot.orders_30d,
+          snapshot.orders_30d_prev_year,
+          formatCount,
+        ),
+        periodMetric(
+          "Sales",
+          snapshot.sales_30d,
+          snapshot.sales_30d_prev_year,
+          weekMoney,
+        ),
+        periodMetric(
+          "Sessions",
+          snapshot.sessions_30d,
+          snapshot.sessions_30d_prev_year,
+          formatCount,
+        ),
+        periodMetric(
+          "Conversion",
+          snapshot.conversion_rate_30d,
+          snapshot.conversion_rate_30d_prev_year,
+          formatPercent,
+        ),
+      ],
     },
   ];
+  const hasYearAgo = periods.some((period) =>
+    period.values.some((metric) => metric.prior != null),
+  );
 
   const domain =
     snapshot.primary_domain?.replace(/^https?:\/\//, "") ?? snapshot.shop_domain;
@@ -184,12 +221,18 @@ export function StoreDashboard({
                 : "border-t border-[var(--border)] sm:border-t-0 sm:border-l"
             }
           >
-            <div className="flex items-baseline justify-between gap-3 px-4 pt-3">
-              <h3 className="font-display text-lg tracking-tight">
-                {period.label}
-              </h3>
-              {period.sub ? (
-                <p className="text-xs text-[var(--muted)]">{period.sub}</p>
+            <div className="px-4 pt-3">
+              <div className="flex items-baseline justify-between gap-3">
+                <h3 className="font-display text-lg tracking-tight">
+                  {period.label}
+                </h3>
+                {period.sub ? (
+                  <p className="text-xs text-[var(--muted)]">{period.sub}</p>
+                ) : null}
+              </div>
+              {period.compare &&
+              period.values.some((metric) => metric.prior != null) ? (
+                <p className="text-[11px] text-[var(--muted)]">{period.compare}</p>
               ) : null}
             </div>
             <dl className="px-4 pt-1 pb-3">
@@ -199,16 +242,30 @@ export function StoreDashboard({
                   className="flex items-baseline justify-between gap-3 border-b border-[var(--border)]/80 py-1.5 last:border-0"
                 >
                   <dt className="text-xs text-[var(--muted)]">{metric.label}</dt>
-                  <dd className="text-right">
-                    <span className="font-display text-lg tracking-tight tabular-nums">
+                  <dd
+                    className="text-right"
+                    aria-label={
+                      metric.prior
+                        ? `${metric.label}: ${metric.value}. Last year: ${metric.prior}${metric.change ? `. ${metric.change.label}` : ""}`
+                        : undefined
+                    }
+                  >
+                    <div className="font-display text-lg leading-tight tracking-tight tabular-nums">
                       {metric.value}
-                    </span>
-                    {metric.hint ? (
-                      <span
-                        className={`ml-2 text-xs tabular-nums ${trendClass(metric.hintTrend)}`}
-                      >
-                        {metric.hint}
-                      </span>
+                    </div>
+                    {metric.prior ? (
+                      <div className="flex flex-wrap items-baseline justify-end gap-x-1.5 text-[11px] leading-4 tabular-nums">
+                        <span className="whitespace-nowrap text-[var(--muted)]">
+                          {metric.prior}
+                        </span>
+                        {metric.change ? (
+                          <span
+                            className={`whitespace-nowrap ${trendClass(metric.change.trend)}`}
+                          >
+                            {metric.change.label}
+                          </span>
+                        ) : null}
+                      </div>
                     ) : null}
                   </dd>
                 </div>
@@ -220,6 +277,9 @@ export function StoreDashboard({
       <p className="text-xs text-[var(--muted)]">
         Orders and sales are Online Store only. POS and other channels stay in
         reports.
+        {hasYearAgo
+          ? " The smaller figure under each total is the same period last year."
+          : " Year-on-year figures appear after the next sync from Settings."}
       </p>
 
       {(salesHint || reportsHint) && (

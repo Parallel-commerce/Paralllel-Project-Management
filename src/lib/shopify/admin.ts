@@ -1,7 +1,16 @@
-import { lastCompleteLocalDay } from "@/lib/store-report";
+import {
+  lastCompleteLocalDay,
+  shiftInstantYears,
+  shiftYmdYears,
+  shopLocalTimestamp,
+  zonedDayBounds,
+} from "@/lib/store-report";
 import { isHeadlineOnlineOrder } from "@/lib/shopify/channels";
 import { shopAdminOrigin } from "@/lib/shopify/domain";
-import { fetchSnapshotTraffic } from "@/lib/shopify/sessions";
+import {
+  fetchSnapshotSalesYearAgo,
+  fetchSnapshotTraffic,
+} from "@/lib/shopify/sessions";
 
 export const SHOPIFY_API_VERSION = "2026-04";
 
@@ -44,12 +53,24 @@ export type StoreSnapshotData = {
   sales7d: number | null;
   orders30d: number | null;
   sales30d: number | null;
+  orders1dPrevYear: number | null;
+  sales1dPrevYear: number | null;
+  orders7dPrevYear: number | null;
+  sales7dPrevYear: number | null;
+  orders30dPrevYear: number | null;
+  sales30dPrevYear: number | null;
   sessions1d: number | null;
   conversionRate1d: number | null;
   sessions7d: number | null;
   conversionRate7d: number | null;
   sessions30d: number | null;
   conversionRate30d: number | null;
+  sessions1dPrevYear: number | null;
+  conversionRate1dPrevYear: number | null;
+  sessions7dPrevYear: number | null;
+  conversionRate7dPrevYear: number | null;
+  sessions30dPrevYear: number | null;
+  conversionRate30dPrevYear: number | null;
   salesAvailable: boolean;
   reportsAvailable: boolean;
   themeName: string | null;
@@ -207,6 +228,13 @@ export function roundMoney(value: number) {
   return Math.round(value * 100) / 100;
 }
 
+function salesYearClause(since: Date, until: Date, timeZone: string) {
+  const sincePrev = shiftInstantYears(since, timeZone, -1);
+  const untilPrev = shiftInstantYears(until, timeZone, -1);
+  const stamp = (date: Date) => shopLocalTimestamp(date, timeZone);
+  return `SINCE ${stamp(since)} UNTIL ${stamp(until)}\nCOMPARE TO ${stamp(sincePrev)} UNTIL ${stamp(untilPrev)}`;
+}
+
 function orderQuerySince(since: Date, until?: Date) {
   const untilClause = until
     ? ` created_at:<='${until.toISOString()}'`
@@ -292,6 +320,7 @@ export async function fetchStoreSnapshot(
   const completeDay = lastCompleteLocalDay(now, timeZone);
   const since7d = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
   const since30d = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const priorDay = zonedDayBounds(shiftYmdYears(completeDay.ymd, -1), timeZone);
 
   let orders1d: number | null = null;
   let sales1d: number | null = null;
@@ -299,8 +328,15 @@ export async function fetchStoreSnapshot(
   let sales7d: number | null = null;
   let orders30d: number | null = null;
   let sales30d: number | null = null;
+  let orders1dPrevYear: number | null = null;
+  let sales1dPrevYear: number | null = null;
+  let orders7dPrevYear: number | null = null;
+  let sales7dPrevYear: number | null = null;
+  let orders30dPrevYear: number | null = null;
+  let sales30dPrevYear: number | null = null;
   let salesAvailable = true;
   let orderCurrency: string | null = null;
+  let yearAgoError: string | null = null;
 
   try {
     const [day, week, month] = await Promise.all([
@@ -328,7 +364,25 @@ export async function fetchStoreSnapshot(
     }
   }
 
-  const traffic = await fetchSnapshotTraffic(shop, accessToken, completeDay.ymd);
+  const [traffic, salesYearAgo] = await Promise.all([
+    fetchSnapshotTraffic(shop, accessToken, completeDay.ymd),
+    salesAvailable
+      ? fetchSnapshotSalesYearAgo(shop, accessToken, {
+          day: `SINCE ${completeDay.ymd} UNTIL ${completeDay.ymd}\nCOMPARE TO previous_year`,
+          week: salesYearClause(since7d, now, timeZone),
+          month: salesYearClause(since30d, now, timeZone),
+        })
+      : Promise.resolve(null),
+  ]);
+  if (salesYearAgo) {
+    orders1dPrevYear = salesYearAgo.orders1d;
+    sales1dPrevYear = salesYearAgo.sales1d;
+    orders7dPrevYear = salesYearAgo.orders7d;
+    sales7dPrevYear = salesYearAgo.sales7d;
+    orders30dPrevYear = salesYearAgo.orders30d;
+    sales30dPrevYear = salesYearAgo.sales30d;
+    yearAgoError = salesYearAgo.error;
+  }
 
   return {
     shopName: shopNode?.name ?? null,
@@ -344,12 +398,24 @@ export async function fetchStoreSnapshot(
     sales7d,
     orders30d,
     sales30d,
+    orders1dPrevYear,
+    sales1dPrevYear,
+    orders7dPrevYear,
+    sales7dPrevYear,
+    orders30dPrevYear,
+    sales30dPrevYear,
     sessions1d: traffic.sessions1d,
     conversionRate1d: traffic.conversionRate1d,
     sessions7d: traffic.sessions7d,
     conversionRate7d: traffic.conversionRate7d,
     sessions30d: traffic.sessions30d,
     conversionRate30d: traffic.conversionRate30d,
+    sessions1dPrevYear: traffic.sessions1dPrevYear,
+    conversionRate1dPrevYear: traffic.conversionRate1dPrevYear,
+    sessions7dPrevYear: traffic.sessions7dPrevYear,
+    conversionRate7dPrevYear: traffic.conversionRate7dPrevYear,
+    sessions30dPrevYear: traffic.sessions30dPrevYear,
+    conversionRate30dPrevYear: traffic.conversionRate30dPrevYear,
     salesAvailable,
     reportsAvailable: traffic.reportsAvailable,
     themeName: theme?.name ?? null,
@@ -371,6 +437,44 @@ export async function fetchStoreSnapshot(
         "1d": traffic.conversionRate1d,
         "7d": traffic.conversionRate7d,
         "30d": traffic.conversionRate30d,
+      },
+      year_ago: {
+        day: priorDay.ymd,
+        orders: {
+          "1d": orders1dPrevYear,
+          "7d": orders7dPrevYear,
+          "30d": orders30dPrevYear,
+        },
+        sales: {
+          "1d": sales1dPrevYear,
+          "7d": sales7dPrevYear,
+          "30d": sales30dPrevYear,
+        },
+        sessions: {
+          "1d": traffic.sessions1dPrevYear,
+          "7d": traffic.sessions7dPrevYear,
+          "30d": traffic.sessions30dPrevYear,
+        },
+        conversion_rate: {
+          "1d": traffic.conversionRate1dPrevYear,
+          "7d": traffic.conversionRate7dPrevYear,
+          "30d": traffic.conversionRate30dPrevYear,
+        },
+        error: yearAgoError,
+        shopifyql_current: salesYearAgo
+          ? {
+              orders: {
+                "1d": salesYearAgo.orders1dCurrent,
+                "7d": salesYearAgo.orders7dCurrent,
+                "30d": salesYearAgo.orders30dCurrent,
+              },
+              sales: {
+                "1d": salesYearAgo.sales1dCurrent,
+                "7d": salesYearAgo.sales7dCurrent,
+                "30d": salesYearAgo.sales30dCurrent,
+              },
+            }
+          : null,
       },
     },
   };

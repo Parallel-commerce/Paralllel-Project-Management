@@ -92,8 +92,9 @@ export async function ProjectStoreView({
         )}
         <p className="mt-1 text-sm text-[var(--muted)]">
           Live snapshot of this store’s Online Store orders and sales, plus
-          sessions, conversion, and the published theme. Daily history is the
-          last complete shop day.
+          sessions, conversion, and the published theme. Yesterday, the last 7
+          days, and the last 30 days are each compared with the same dates last
+          year. Daily history is the last complete shop day.
           {embedded ? null : (
             <>
               {" "}
