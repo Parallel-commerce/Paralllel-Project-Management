@@ -214,6 +214,14 @@ export function TaskModal({
     };
   }, []);
 
+  useEffect(() => {
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, []);
+
   function persistEdit(options?: { closeAfter?: boolean }) {
     if (mode !== "edit" || !task || !formRef.current) return;
     const form = formRef.current;
@@ -368,8 +376,7 @@ export function TaskModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4"
-      onClick={requestClose}
+      className="fixed inset-0 z-[60] bg-[var(--surface)]"
       onKeyDown={(event) => {
         if (event.key !== "Escape" || event.defaultPrevented) return;
         if (mobileCommentsOpen && isMobileTaskLayout()) {
@@ -382,22 +389,16 @@ export function TaskModal({
       <div
         role="dialog"
         aria-modal="true"
-        className={`relative flex w-full min-w-0 max-w-full flex-col overflow-x-hidden rounded-t-2xl border border-[var(--border)] bg-[var(--surface)] shadow-lg sm:rounded-xl ${
-          editing
-            ? `max-h-[92dvh] max-w-3xl lg:h-[min(92dvh,56rem)] lg:max-w-6xl lg:overflow-hidden ${
-                mobileCommentsOpen ? "h-[92dvh] overflow-hidden" : "overflow-y-auto"
-              }`
-            : "max-h-[92dvh] max-w-xl overflow-y-auto"
+        className={`relative flex h-full min-h-0 w-full min-w-0 max-w-full flex-col overflow-x-hidden ${
+          editing ? "overflow-hidden" : "overflow-y-auto"
         }`}
         style={
           editing
             ? undefined
             : { paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))" }
         }
-        onClick={(event) => event.stopPropagation()}
       >
-        <div className="sticky top-0 z-[5] shrink-0 border-b border-[var(--border)] bg-[var(--surface)] px-5 pt-5 pb-4 sm:px-6 sm:pt-6">
-          <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-[var(--border)] sm:hidden" />
+        <div className="sticky top-0 z-[5] shrink-0 border-b border-[var(--border)] bg-[var(--surface)] px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-4 sm:px-6">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <h2 className="font-display text-xl tracking-tight">
@@ -477,7 +478,9 @@ export function TaskModal({
         >
           <div
             className={`min-w-0 px-5 pb-5 sm:px-6 sm:pb-6 ${
-              editing ? "min-h-0 lg:flex-1 lg:overflow-y-auto md:px-7 md:pb-7" : ""
+              editing
+                ? "min-h-0 flex-1 overflow-y-auto md:px-7 md:pb-7"
+                : "w-full max-w-2xl"
             }`}
             style={
               editing
@@ -961,7 +964,7 @@ export function TaskModal({
             <aside
               className={`min-h-0 flex-col overflow-hidden bg-[var(--surface)] lg:relative lg:flex lg:w-[24rem] lg:border-l lg:border-[var(--border)] lg:bg-[var(--background)]/50 xl:w-[26rem] ${
                 mobileCommentsOpen
-                  ? "absolute inset-0 z-10 flex rounded-t-2xl sm:rounded-xl lg:rounded-none"
+                  ? "absolute inset-0 z-10 flex"
                   : "hidden"
               }`}
               aria-label="Comments"
